@@ -1,0 +1,395 @@
+# Hermes Personal Agent System Master Plan
+
+## 1. Vision
+
+Build a private, long-running personal agent system that can remember, research, simulate, summarize, and assist with execution while keeping the owner in control.
+
+The system should become a practical personal operating layer:
+
+- A durable memory base for projects, people, preferences, decisions, research, and agent activity.
+- A backend agent runner for scheduled jobs, web research, tool execution, monitoring, and structured workflows.
+- A Chinese interaction surface through Feishu, WeChat-compatible bridges, and optional BaiLongma UI/persona features.
+- A scenario simulation lab for complex decisions, market analysis, product planning, and multi-agent debate.
+- A research-first financial analysis workflow with strict safety boundaries.
+- API-first search, image recognition, speech transcription, and video understanding without running heavy local models on the lightweight VPS.
+
+## 2. Core Stack
+
+| Layer | Tool | Role |
+| --- | --- | --- |
+| Durable memory | Obsidian | Human-readable long-term memory, backlinks, project notes, reports, decision records |
+| Runtime agent | Hermes | Server-side automation, scheduled jobs, research, tool execution, MCP and skill orchestration |
+| Chinese interaction | BaiLongma | WeChat/Feishu-style interaction, Brain UI, persona memory, Chinese UX |
+| Simulation lab | MiroFish | Multi-agent scenario simulation, prediction, decision rehearsal, report generation |
+| Messaging | Feishu first, WeChat later | Alerts, daily summaries, manual commands, confirmation loops |
+| Financial research | Hermes skills + external data APIs | Watchlists, news, filings, indicators, summaries, risk analysis |
+| Search APIs | SearXNG/Firecrawl/Tavily/SerpAPI or equivalent | Web search, crawling, source extraction, research inputs |
+| Vision APIs | OCR and multimodal model APIs | Image OCR, screenshot analysis, chart reading, document image understanding |
+| Video APIs | Speech-to-text and video understanding APIs | Transcription, scene summaries, timeline extraction, clip analysis |
+| Storage/search | SQLite/Zep/vector store as needed | Machine-readable recall and semantic search |
+
+## 3. Recommended System Shape
+
+```text
+Owner
+  |
+  v
+Feishu / WeChat / Web UI / CLI
+  |
+  v
+BaiLongma interaction layer
+  |
+  v
+Hermes backend agent runner
+  |
+  +--> Obsidian durable memory
+  +--> MiroFish simulation lab
+  +--> Market/news/research tools
+  +--> Server and project automation
+  +--> Notification adapters
+```
+
+The system should avoid placing all responsibility in one agent. Each tool should do the job it is strongest at.
+
+## 4. Component Responsibilities
+
+### 4.1 Obsidian
+
+Obsidian is the main memory warehouse.
+
+It should store:
+
+- Owner preferences and durable instructions.
+- Project files and project status.
+- Agent roles, capabilities, and boundaries.
+- Research notes and source summaries.
+- Financial watchlists and thesis notes.
+- Daily, weekly, and monthly reports.
+- Decision logs and postmortems.
+- MiroFish simulation outputs.
+- Hermes and BaiLongma activity summaries.
+
+Obsidian should not be treated as a hidden database. It is the readable, portable, editable source of truth.
+
+### 4.2 Hermes
+
+Hermes is the backend operator.
+
+It should handle:
+
+- Scheduled research and reporting.
+- Web search and source-backed summaries.
+- Market watch jobs.
+- GitHub/project monitoring.
+- Server health checks.
+- Tool and MCP orchestration.
+- Command execution inside guarded environments.
+- Writing summaries and reports back to Obsidian.
+
+Hermes should not be given unrestricted authority over financial trades, account settings, or irreversible operations.
+
+### 4.3 BaiLongma
+
+BaiLongma is the Chinese-facing interaction and persona layer.
+
+It should handle:
+
+- Chinese chat UX.
+- Feishu and WeChat-style message surfaces.
+- Brain UI style memory display.
+- Lightweight companionship and continuous presence.
+- Routing owner messages into Hermes workflows.
+- Returning concise summaries and confirmations.
+
+BaiLongma should not replace Obsidian as the durable memory store. It can keep interaction memory, but final durable records should be written to Obsidian.
+
+### 4.4 MiroFish
+
+MiroFish is the scenario simulation and report lab.
+
+It should handle:
+
+- Multi-agent debates.
+- Market scenario analysis.
+- Product strategy simulation.
+- Risk/opportunity rehearsals.
+- Decision comparison reports.
+
+MiroFish should not be the main memory database. Its best role is to consume selected context from Obsidian, run simulations, and write the final report back to Obsidian.
+
+## 5. Advanced Workflows
+
+### 5.1 Daily Intelligence Briefing
+
+Inputs:
+
+- AI news.
+- GitHub repository changes.
+- Project status.
+- Market news.
+- Watchlist movement.
+- Server health.
+
+Process:
+
+1. Hermes collects signals on a schedule.
+2. Hermes ranks signals by relevance and urgency.
+3. Hermes writes a detailed report to Obsidian.
+4. Feishu sends a short summary.
+5. Owner can ask follow-up questions through Feishu or WeChat.
+
+Output:
+
+- One concise notification.
+- One complete Obsidian report.
+
+### 5.2 Financial Research Pipeline
+
+Inputs:
+
+- Watchlist.
+- Price and volume data.
+- News.
+- Filings and earnings reports.
+- Macro events.
+- Social sentiment if available.
+
+Agent roles:
+
+- Bull analyst.
+- Bear analyst.
+- Risk analyst.
+- News analyst.
+- Technical analyst.
+- Final judge.
+
+Output:
+
+- Watchlist status.
+- Bull thesis.
+- Bear thesis.
+- Key catalysts.
+- Risk list.
+- Suggested next review date.
+- Human-only decision checkpoint.
+
+Real trading must remain disabled until a separate approval and safety design is completed.
+
+### 5.3 Decision Simulation
+
+Use MiroFish when the owner needs a structured simulation.
+
+Examples:
+
+- Should this project be built?
+- Should this stock stay on the watchlist?
+- Which agent architecture is better?
+- What are the second-order risks?
+- What execution plan has the best risk/reward?
+
+Workflow:
+
+1. Select relevant Obsidian context.
+2. Convert it into a simulation brief.
+3. Run MiroFish multi-agent simulation.
+4. Export the report.
+5. Write report and final decision back to Obsidian.
+
+### 5.4 Personal Command Center
+
+The owner should be able to ask:
+
+- What matters today?
+- What did the agents do last night?
+- Which projects are stuck?
+- What market signals changed?
+- What needs my approval?
+- Summarize this topic from memory and latest sources.
+
+The system should answer from both durable memory and current research, and it should clearly separate old memory from newly fetched information.
+
+### 5.5 API-First Multimodal Intelligence
+
+The current lightweight VPS should not run large local vision or video models. It should run:
+
+- Hermes and adapters.
+- Message callbacks.
+- API routing.
+- Queues and retries.
+- Lightweight caching.
+- Obsidian write-back.
+- Logs and health checks.
+
+Search, image recognition, OCR, speech transcription, and video understanding should be external API calls first.
+
+Recommended capability split:
+
+- Search: SearXNG, Firecrawl, Tavily, SerpAPI, Brave Search API, or similar.
+- Private memory search: Meilisearch or a lightweight local index over Obsidian notes.
+- OCR: PaddleOCR service, cloud OCR, or multimodal model OCR API.
+- Image understanding: Qwen-VL, GPT vision, Claude vision, Gemini vision, or equivalent API.
+- Speech transcription: Whisper-compatible API or hosted speech-to-text service.
+- Video understanding: video-capable multimodal API, or a pipeline of transcription plus sampled-frame image understanding.
+
+Default rule:
+
+```text
+VPS = orchestrator and memory writer
+External APIs = heavy search, vision, speech, and video intelligence
+Obsidian = durable final memory
+```
+
+## 6. Deployment Strategy
+
+### Phase 0: Repository and Planning
+
+Status: in progress.
+
+Deliverables:
+
+- Master plan.
+- Architecture doc.
+- Roadmap.
+- Risk guardrails.
+- Initial deployment assumptions.
+
+### Phase 1: Hermes MVP
+
+Deliverables:
+
+- Docker-based Hermes deployment on VPS.
+- Non-root deployment user.
+- Environment file template.
+- API-first deployment profile for lightweight VPS.
+- Reverse proxy plan if a domain is available.
+- Basic health check.
+- One scheduled daily summary job.
+
+### Phase 2: Obsidian Memory Base
+
+Deliverables:
+
+- Vault folder structure.
+- Memory schema.
+- Report templates.
+- Decision log templates.
+- Agent activity log templates.
+- Write-back convention from Hermes.
+
+### Phase 3: Feishu Bot
+
+Deliverables:
+
+- Feishu app setup guide.
+- Event callback service.
+- Message command router.
+- Daily briefing push.
+- Manual approval command format.
+
+### Phase 4: Financial Research MVP
+
+Deliverables:
+
+- Watchlist file.
+- Market data adapter.
+- News/research adapter.
+- Daily market summary.
+- Risk-only output.
+- No real trading.
+
+### Phase 4.5: Search and Multimodal API MVP
+
+Deliverables:
+
+- Search API adapter.
+- Web crawling/extraction adapter.
+- OCR API adapter.
+- Image understanding API adapter.
+- Speech transcription API adapter.
+- Video summary workflow.
+- Obsidian write-back template for multimodal analysis.
+
+The VPS should only store inputs, outputs, metadata, and logs. It should not process large local models.
+
+### Phase 5: BaiLongma Integration
+
+Deliverables:
+
+- BaiLongma deployment or adapter.
+- Chinese conversation surface.
+- Memory sync boundaries.
+- Feishu/WeChat routing decision.
+
+### Phase 6: MiroFish Simulation Lab
+
+Deliverables:
+
+- MiroFish deployment.
+- Simulation input template.
+- Obsidian-to-MiroFish export.
+- MiroFish report import back to Obsidian.
+
+### Phase 7: Hardened Operations
+
+Deliverables:
+
+- Backups.
+- Logs.
+- Access control.
+- Secrets management.
+- Update procedure.
+- Disaster recovery notes.
+
+## 7. Open Decisions
+
+These decisions must be made before runtime deployment:
+
+- Model provider: OpenAI, OpenRouter, Anthropic, local Ollama, or mixed.
+- Domain name and HTTPS strategy.
+- Feishu first or WeChat first.
+- Whether BaiLongma should run on the same VPS or separately.
+- Whether MiroFish should run only on demand or as a persistent service.
+- Financial data provider.
+- Search API provider.
+- OCR/image/video API providers.
+- Whether any broker/trading API will ever be connected.
+
+## 8. Success Criteria
+
+The first successful version should prove:
+
+- The owner can send a command from Feishu or CLI.
+- Hermes can complete a research task.
+- The result is written to Obsidian.
+- A short summary is pushed back to the owner.
+- The system keeps logs and can be audited.
+- No high-risk action happens without confirmation.
+
+## 9. Non-Goals for the First Version
+
+- Fully autonomous trading.
+- Unrestricted WeChat personal account automation.
+- Letting an agent run arbitrary root commands.
+- Replacing Obsidian with opaque memory.
+- Building every integration at once.
+
+## 10. Final Recommendation
+
+Start with:
+
+```text
+Hermes on VPS
++ Obsidian durable memory
++ Feishu notification and command bot
++ research-only financial watchlist
+```
+
+Then add:
+
+```text
+BaiLongma for Chinese interaction
++ MiroFish for simulation
++ WeChat bridge only after risk review
+```
+
+This gives the owner useful automation quickly while keeping the system understandable, recoverable, and safe.
