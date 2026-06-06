@@ -23,11 +23,13 @@ This repository currently contains the full architecture and rollout plan. Runti
 - [Master Plan](docs/MASTER_PLAN.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Optimized Architecture](docs/OPTIMIZED_ARCHITECTURE.md)
+- [Memory Governance](docs/MEMORY_GOVERNANCE.md)
 - [API Integrations](docs/API_INTEGRATIONS.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Risk and Guardrails](docs/RISK_AND_GUARDRAILS.md)
 - [Chinese Report Policy](docs/CHINESE_REPORT_POLICY.md)
 - [Current Chinese Phase Report](reports/phase-00-architecture-plan.zh-CN.md)
+- [Memory Governance Chinese Report](reports/phase-00-memory-governance.zh-CN.md)
 
 ## Recommended First Milestone
 
@@ -46,6 +48,8 @@ WeChat companionship, BaiLongma persona features, MiroFish simulations, and trad
 ## Guiding Principle
 
 Memory must remain portable and readable. Automation must remain reversible and auditable. Any high-risk action must stop at a human confirmation boundary.
+
+Memory must be associative and governed. Time is metadata, not the main structure. The system should remember fewer, better, relationship-rich, source-backed, owner-correctable facts instead of storing every chat message, log, and API output as permanent memory.
 
 ## Reporting Rule
 

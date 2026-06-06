@@ -99,10 +99,14 @@ Risks:
 Guardrails:
 
 - Store final durable memory in Obsidian.
+- Do not store every chat message, log, and API output as permanent memory.
+- Use an inbox/review flow before promoting uncertain memory.
+- Link durable memories to people, projects, goals, decisions, reports, risks, or events.
 - Mark uncertain information.
 - Keep sources where possible.
 - Use vector stores only as indexes.
 - Add memory correction and deletion procedures.
+- Add stale-memory review and cleanup schedules.
 
 ## 3. Approval Levels
 

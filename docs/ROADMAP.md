@@ -81,6 +81,14 @@ Tasks:
 
 - Create vault structure.
 - Add note templates.
+- Add memory governance rules.
+- Add associative memory axes for people, projects, goals, decisions, reports, risks, and events.
+- Add `00-Inbox/needs-review`.
+- Add MOC topic maps.
+- Add Canvas visual memory maps.
+- Add correction and deletion workflow.
+- Add weekly cleanup workflow.
+- Add stale-memory review metadata.
 - Add daily report template.
 - Add decision log template.
 - Add market watch template.
@@ -91,6 +99,9 @@ Exit criteria:
 
 - Hermes can write a report into the vault.
 - The owner can read and edit the result directly.
+- New memory passes through an intake gate instead of saving every raw message.
+- Important memory links to relationship axes, not only timestamps.
+- The owner can correct, archive, delete, or relink memory.
 
 ## Phase 4: Feishu Workflow Hardening
 

@@ -14,12 +14,14 @@ The system should become a practical personal operating layer:
 - A scenario simulation lab for complex decisions, market analysis, product planning, and multi-agent debate.
 - A research-first financial analysis workflow with strict safety boundaries.
 - API-first search, image recognition, speech transcription, and video understanding without running heavy local models on the lightweight VPS.
+- Associative memory governance that prevents noisy, duplicate, stale, or sensitive data from becoming permanent memory.
 
 ## 2. Core Stack
 
 | Layer | Tool | Role |
 | --- | --- | --- |
 | Durable memory | Obsidian | Human-readable long-term memory, backlinks, project notes, reports, decision records |
+| Memory governance | Obsidian links, MOC notes, Canvas, inbox, review rules | Relationship-based memory, deduplication, staleness review, correction, deletion, and index rebuilds |
 | Runtime agent | Hermes | Server-side automation, scheduled jobs, research, tool execution, MCP and skill orchestration |
 | Company console | Feishu | Tasks, reports, projects, approvals, meetings, dashboards, and owner confirmation loops |
 | Personal channel | WeChat | Companionship, personal reminders, quick capture, lightweight alerts |
@@ -78,6 +80,8 @@ It should store:
 - Hermes and BaiLongma activity summaries.
 
 Obsidian should not be treated as a hidden database. It is the readable, portable, editable source of truth.
+
+Durable memory should not accept every raw input. Low-value chat noise, temporary drafts, unverified guesses, duplicate summaries, and raw logs should stay temporary, be summarized, or be archived. Time is only one index; durable memory should link to people, projects, goals, decisions, reports, risks, and events.
 
 ### 4.2 Hermes
 
@@ -342,6 +346,12 @@ Deliverables:
 
 - Vault folder structure.
 - Memory schema.
+- Memory governance rules.
+- Associative memory axes.
+- Obsidian MOC notes and Canvas map plan.
+- Inbox and review workflow.
+- Correction and deletion workflow.
+- Staleness and cleanup schedule.
 - Report templates.
 - Decision log templates.
 - Agent activity log templates.
@@ -448,6 +458,8 @@ The first successful version should prove:
 - Unrestricted WeChat personal account automation.
 - Letting an agent run arbitrary root commands.
 - Replacing Obsidian with opaque memory.
+- Saving every chat message, log, or API result as permanent memory.
+- Organizing memory only by time without relationships.
 - Building every integration at once.
 
 ## 10. Final Recommendation
