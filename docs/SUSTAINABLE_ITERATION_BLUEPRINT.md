@@ -108,7 +108,9 @@ The repository should keep these document roles clear:
 | `docs/OPTIMIZED_ARCHITECTURE.md` | Company/personal/backend plane design |
 | `docs/CANDIDATE_PROJECT_EVALUATION.md` | External project fit, license, and adoption plan |
 | `docs/PHASE_01_RUNTIME_FOUNDATION.md` | Minimal Hermes runtime, health checks, deployment commands, and safe-mode defaults |
+| `docs/CORE_MVP_RUNBOOK.md` | Current Hermes + BaiLongma core verification and cleanup checklist |
 | `docs/MEMORY_GOVERNANCE.md` | Memory intake, graph, cleanup, correction, and index policy |
+| `docs/OBSIDIAN_WRITEBACK_WORKFLOW.md` | Practical Obsidian inbox, promotion, correction, and phase cleanup workflow |
 | `docs/API_INTEGRATIONS.md` | External search runtime plus API-first OCR, image, speech, and video strategy |
 | `docs/SEARCH_RUNTIME.md` | TrendRadar/SearXNG search-project runtime plan |
 | `docs/WECHAT_COMPANION.md` | WeChat companion-channel strategy, official-channel preference, proactive chat limits, and memory boundary |
@@ -259,11 +261,29 @@ Deliverables:
 - Basic logging.
 - Chinese deployment report.
 
-### Phase 2: Feishu Company Management MVP
+### Phase 2: Core Hermes and BaiLongma MVP
 
 Goal:
 
-Make Feishu the first useful production surface.
+Stabilize the personal core before expanding into company workflows or video.
+
+Deliverables:
+
+- Hermes installed on the VPS.
+- BaiLongma Brain UI protected by the public domain.
+- GPT-5.5 gateway configured.
+- TrendRadar enabled through Hermes MCP.
+- Governed BaiLongma working memory and Obsidian write-back rules.
+- Image understanding through `analyze_image`.
+- Voice input through local Whisper.
+- Video hidden from the current tool route.
+- Chinese phase report.
+
+### Phase 3: Feishu Company Management MVP
+
+Goal:
+
+Make Feishu the first useful company production surface.
 
 Deliverables:
 
@@ -274,7 +294,7 @@ Deliverables:
 - Owner approval queue.
 - Chinese phase report.
 
-### Phase 3: Obsidian Governed Memory MVP
+### Phase 4: Obsidian Governed Memory MVP
 
 Goal:
 
@@ -291,18 +311,19 @@ Deliverables:
 - Cleanup schedule.
 - Chinese phase report.
 
-### Phase 4: Search Runtime and API-First Multimodal Layer
+### Phase 5: Search Runtime and API-First Multimodal Layer
 
 Goal:
 
-Add external search-project intelligence, plus crawl, OCR, image, speech, and video intelligence through APIs.
+Add external search-project intelligence, plus crawl, OCR, image, speech, and later video intelligence through APIs.
 
 Deliverables:
 
 - Search-project adapter.
 - Web extraction adapter.
 - OCR/image adapter.
-- Speech/video workflow.
+- Speech workflow.
+- Video workflow only after the owner reopens video scope.
 - Cost/rate limits.
 - Obsidian write-back.
 - Chinese phase report.
@@ -312,7 +333,7 @@ Candidate additions:
 - TrendRadar for external trend/news intelligence, isolated because of GPL-3.0.
 - Graphify for graph and corpus mapping, especially when memory/document visualization is needed.
 
-### Phase 5: Company Workflow Hardening
+### Phase 6: Company Workflow Hardening
 
 Goal:
 
@@ -328,7 +349,7 @@ Deliverables:
 - Audit logs.
 - Chinese phase report.
 
-### Phase 6: Personal Companion Layer
+### Phase 7: Personal Companion Layer
 
 Goal:
 
@@ -345,7 +366,7 @@ Deliverables:
 - Proactive-chat limit, mute, and audit rules before enabling proactive messages.
 - Chinese phase report.
 
-### Phase 7: MiroFish Simulation Lab
+### Phase 8: MiroFish Simulation Lab
 
 Goal:
 
@@ -364,7 +385,7 @@ Candidate additions:
 
 - Nuwa Skill for advisory-board persona generation and simulation roles.
 
-### Phase 8: Optional Execution Integrations
+### Phase 9: Optional Execution Integrations
 
 Goal:
 
@@ -437,15 +458,19 @@ The project is sustainable when:
 The next implementation phase should be:
 
 ```text
-Phase 1: VPS Runtime Foundation
+Phase 2: Core Hermes and BaiLongma MVP
 ```
 
-But if Feishu credentials are ready, Phase 1 can include a very small Feishu smoke test:
+The current priority is:
 
 ```text
-Hermes/service runner on VPS
-+ health check
-+ one Feishu test message
-+ one Obsidian write-back placeholder
-+ Chinese Phase 1 report
+Hermes core
++ BaiLongma Brain UI
++ TrendRadar tool calling
++ governed memory
++ image understanding
++ local Whisper voice input
++ Chinese Phase 2 report
 ```
+
+Video, Feishu, TTS, simulations, and trading should wait until this core loop passes verification and memory cleanup.

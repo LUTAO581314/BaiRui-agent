@@ -16,9 +16,18 @@ The goal is not to install one chatbot. The goal is to build a layered AI operat
 
 ## Current Status
 
-Phase 0 planning is complete. Phase 1 runtime foundation now includes a minimal Hermes runtime with health checks, structured logs, environment templates, Docker/Compose files, VPS helper scripts, tests, AI gateway discovery, WeChat channel configuration readiness, and Chinese phase reports.
+Phase 0 planning and Phase 1 runtime foundation are complete. Phase 2 is now focused on the core Hermes + BaiLongma loop:
 
-The first runtime stays in safe mode. Feishu, Obsidian write-back, TrendRadar, Graphify, BaiLongma, MiroFish, and trading-related capabilities remain future adapters or external runtimes. WeChat is currently configuration-ready only: official channels are preferred, proactive chat is disabled, and personal-account bridging is disabled.
+- BaiLongma Brain UI is running behind the protected `bairui.chat` domain.
+- Hermes is installed on the VPS.
+- TrendRadar is enabled as an isolated Hermes MCP search/trend runtime.
+- The active BaiLongma model path uses the custom GPT-5.5 gateway.
+- Local Whisper is configured as the transitional voice-input ASR.
+- Image understanding is exposed through `analyze_image`.
+- Video understanding is intentionally frozen for this phase.
+- BaiLongma memory is treated as working memory; Obsidian remains the durable memory source of truth.
+
+Current priority: stabilize Hermes, governed human-like memory, tool calling, image understanding, and voice input before expanding into Feishu, video, TTS, simulations, or trading.
 
 ## Documents
 
@@ -28,10 +37,12 @@ The first runtime stays in safe mode. Feishu, Obsidian write-back, TrendRadar, G
 - [Optimized Architecture](docs/OPTIMIZED_ARCHITECTURE.md)
 - [Candidate Project Evaluation](docs/CANDIDATE_PROJECT_EVALUATION.md)
 - [Phase 01 Runtime Foundation](docs/PHASE_01_RUNTIME_FOUNDATION.md)
+- [Core MVP Runbook](docs/CORE_MVP_RUNBOOK.md)
 - [Search Runtime Strategy](docs/SEARCH_RUNTIME.md)
 - [AI Model Gateway](docs/AI_MODEL_GATEWAY.md)
 - [WeChat Companion Channel](docs/WECHAT_COMPANION.md)
 - [Memory Governance](docs/MEMORY_GOVERNANCE.md)
+- [Obsidian Write-Back Workflow](docs/OBSIDIAN_WRITEBACK_WORKFLOW.md)
 - [API Integrations](docs/API_INTEGRATIONS.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Risk and Guardrails](docs/RISK_AND_GUARDRAILS.md)
@@ -42,6 +53,7 @@ The first runtime stays in safe mode. Feishu, Obsidian write-back, TrendRadar, G
 - [Candidate Projects Chinese Report](reports/phase-00-candidate-projects.zh-CN.md)
 - [Phase 01 Runtime Foundation Chinese Report](reports/phase-01-runtime-foundation.zh-CN.md)
 - [WeChat Companion Readiness Chinese Report](reports/phase-01-wechat-companion-readiness.zh-CN.md)
+- [Phase 02 Core Hermes and BaiLongma Chinese Report](reports/phase-02-core-hermes-bailongma.zh-CN.md)
 
 ## Run The Minimal Runtime
 
@@ -56,19 +68,18 @@ Invoke-RestMethod http://127.0.0.1:8787/health
 Invoke-RestMethod http://127.0.0.1:8787/ready
 ```
 
-## Recommended First Milestone
+## Recommended Current Milestone
 
-Build a minimal but useful system through the sustainable iteration loop:
+Finish Phase 2 as a stable core:
 
-1. Deploy the minimal Hermes/runtime foundation on the VPS.
-2. Add a Feishu smoke test if credentials are ready.
-3. Create the governed Obsidian memory structure.
-4. Add Feishu company tables for projects, customers, sales pipeline, receivables, risks, and employee reports.
-5. Write every important output back to Obsidian through the memory intake gate.
-6. Add external search projects, plus APIs for OCR, image understanding, speech transcription, and video understanding.
-7. End every phase with verification, memory cleanup, and a Chinese owner report.
+1. Verify Hermes, BaiLongma, TrendRadar, image, voice, and memory count with [Core MVP Runbook](docs/CORE_MVP_RUNBOOK.md).
+2. Keep video frozen until the owner reopens that scope.
+3. Route useful memory candidates through [Obsidian Write-Back Workflow](docs/OBSIDIAN_WRITEBACK_WORKFLOW.md).
+4. Clean BaiLongma setup/test memories after each smoke test.
+5. Write every phase result into a Chinese report.
+6. After the core loop is stable, move to Feishu company management or TTS based on available credentials.
 
-WeChat companionship can now be planned against safe runtime flags, but the real callback adapter should still be added after owner-approved official-channel credentials are ready. BaiLongma persona features, MiroFish simulations, and trading execution should be added only after the company-management and memory loop is stable.
+WeChat companionship can be used only as a personal surface. Feishu remains the planned company-management surface. MiroFish simulations and trading execution stay later-stage capabilities with separate safety gates.
 
 ## Guiding Principle
 

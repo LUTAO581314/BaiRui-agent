@@ -38,20 +38,60 @@ Trade-offs:
 - Sensitive inputs need privacy review.
 - Provider outages need fallback behavior.
 
-## 3. Capability Map
+## 3. Current Core Scope
+
+Current scope is deliberately narrower than "all media capabilities".
+
+Core capabilities to solve first:
+
+- Hermes as the orchestration core.
+- Human-like governed memory.
+- Tool calling and external project routing.
+- Image understanding and OCR through the active multimodal model.
+- Voice input through local Whisper as a transitional ASR.
+
+Temporarily out of scope:
+
+- Video understanding.
+- AI video generation.
+- Music generation.
+- Voice cloning.
+- Autonomous trading.
+
+These out-of-scope capabilities can be added later after the core loop is stable.
+
+## 4. Current Server State
+
+Verified current state:
+
+- BaiLongma backend is running behind `https://bairui.chat/brain-ui.html`.
+- Main model is configured as a custom OpenAI-compatible endpoint using `gpt-5.5`.
+- Hermes is installed and available on the server.
+- TrendRadar MCP is enabled for Hermes at `127.0.0.1:3333/mcp`.
+- Local Whisper `tiny` is installed in a dedicated virtual environment and reachable through BaiLongma voice WebSocket flow.
+- BaiLongma image understanding tool is available through `analyze_image`; video is intentionally not exposed.
+
+Known gaps:
+
+- BaiLongma's own `/settings/web-search` provider keys are empty. Search should use Hermes + TrendRadar first.
+- TTS provider settings exist, but no TTS key is configured yet.
+- MiniMax is not configured yet, so MiniMax image/music/lyrics/TTS generation stays disabled.
+- Feishu credentials are not configured yet.
+
+## 5. Capability Map
 
 | Capability | Recommended First Approach | Notes |
 | --- | --- | --- |
 | Web search and trends | External project runtime: TrendRadar first, SearXNG optional | Use source-backed output and cache repeated searches |
 | Web crawling | Firecrawl or equivalent API | Convert pages to Markdown or structured JSON |
 | Private memory search | Meilisearch or lightweight local index | Index Obsidian notes, not a replacement for Obsidian |
-| OCR | OCR API or multimodal OCR | Use for screenshots, PDFs, receipts, tables, and images with text |
-| Image understanding | Vision model API | Analyze screenshots, charts, documents, product photos, and UI states |
-| Speech transcription | Whisper-compatible API | Convert audio/video speech to text |
-| Video understanding | Video API or transcription plus sampled frames | Summarize clips, extract timelines, detect key moments |
+| OCR | Active multimodal model first, dedicated OCR API later | Use for screenshots, PDFs, receipts, tables, and images with text |
+| Image understanding | Active multimodal model API | Implemented as BaiLongma `analyze_image` using the current `gpt-5.5` gateway |
+| Speech transcription | Local Whisper tiny first, cloud ASR later if needed | Current transition solution is local Whisper on the VPS |
+| Video understanding | Deferred | Do not expose in the current core phase |
 | Financial data | Market data API | Research-only until a separate trading safety design exists |
 
-## 4. Suggested First Providers
+## 6. Suggested First Providers
 
 The exact providers can change. The architecture should hide providers behind adapters.
 
@@ -67,11 +107,16 @@ Image and OCR:
 - A hosted multimodal model API for general image understanding.
 - A dedicated OCR API when accuracy on Chinese text, tables, or documents matters.
 
-Speech and video:
+Speech:
 
-- Whisper-compatible speech-to-text API.
-- Video-capable multimodal API for direct video understanding.
-- Fallback workflow: extract audio transcript and sample frames, then summarize both.
+- Local Whisper `tiny` for transition.
+- Cloud ASR can replace it later if latency or accuracy is not enough.
+- Voice cloning is not ASR and should require explicit authorization and a separate provider.
+
+Video:
+
+- Frozen in the current core phase.
+- Future fallback workflow: extract transcript and frames, then summarize both.
 
 Private memory:
 
@@ -79,7 +124,7 @@ Private memory:
 - Meilisearch or SQLite FTS can provide fast local search.
 - Vector search can be added as an index, not as the only memory store.
 
-## 5. Adapter Contract
+## 7. Adapter Contract
 
 Every API or external-project adapter should return a normalized result:
 
@@ -97,7 +142,7 @@ Every API or external-project adapter should return a normalized result:
 }
 ```
 
-## 6. Cost and Rate Limits
+## 8. Cost and Rate Limits
 
 Required controls:
 
@@ -105,12 +150,12 @@ Required controls:
 - Retry limit.
 - Daily cost estimate.
 - Max file size.
-- Max video length.
+- Max video length when video scope is reopened.
 - Max pages per crawl.
 - Cache repeated URL analysis.
 - Log failures without retry loops.
 
-## 7. Privacy Rules
+## 9. Privacy Rules
 
 Do not send sensitive data to external APIs unless the owner has approved that provider and workflow.
 
@@ -123,7 +168,7 @@ Sensitive examples:
 - Private contracts.
 - Unpublished business documents.
 
-## 8. Obsidian Write-Back
+## 10. Obsidian Write-Back
 
 Every useful API result should become a readable note:
 
@@ -139,7 +184,7 @@ uncertainties
 next action
 ```
 
-For video:
+For video when the video phase is reopened:
 
 ```text
 title
@@ -150,17 +195,33 @@ key frames
 decisions or tasks
 ```
 
-## 9. Minimal MVP
+## 11. Core MVP
+
+The current core MVP should prove:
+
+1. Hermes can call TrendRadar or another external project runtime.
+2. BaiLongma can call the main model through the custom `gpt-5.5` gateway.
+3. BaiLongma can use local Whisper for voice input.
+4. BaiLongma can analyze one image through `analyze_image`.
+5. Memory growth is governed by explicit intake, review, and cleanup rules.
+6. Each completed phase writes a Chinese report.
+
+Operational runbook:
+
+- Use [Core MVP Runbook](CORE_MVP_RUNBOOK.md) for service and capability verification.
+- Use [Obsidian Write-Back Workflow](OBSIDIAN_WRITEBACK_WORKFLOW.md) for memory candidates, image conclusions, voice transcripts, corrections, and phase cleanup.
+
+## 12. Later API MVP
 
 The first API MVP should prove:
 
 1. Hermes can read one search/trend result from an external project runtime.
 2. Hermes can crawl one page and write a source-backed note.
 3. Hermes can analyze one image through a vision/OCR API.
-4. Hermes can summarize one short video through transcript plus frames or a direct video API.
+4. Hermes can summarize one short video through transcript plus frames or a direct video API after video scope is reopened.
 5. Every output is written to Obsidian and summarized to Feishu.
 
-## 10. Iteration Policy
+## 13. Iteration Policy
 
 API integrations should be added one capability at a time.
 
@@ -170,8 +231,10 @@ Recommended order:
 2. Web crawl/extraction.
 3. OCR/image understanding.
 4. Speech transcription.
-5. Video summary.
-6. Financial data.
+5. TTS.
+6. Feishu workflow.
+7. Video summary.
+8. Financial data.
 
 Candidate tools:
 

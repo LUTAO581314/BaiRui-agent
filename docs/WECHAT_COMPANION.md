@@ -5,10 +5,13 @@
 WeChat should be a personal companion and lightweight reminder channel, not the
 primary company-management or high-risk execution channel.
 
-The first implementation state is configuration readiness only:
+The current implementation uses BaiLongma's WeChat ClawBot bridge for the
+personal companion plane. Official channels remain the preferred production
+route for lower platform risk.
 
 - Official channels are preferred.
-- The personal-account bridge is disabled by default.
+- The personal-account bridge is allowed only for the owner-controlled
+  companion plane.
 - Sensitive commands stay blocked in WeChat.
 - Proactive chat is disabled by default and must be rate-limited when enabled.
 - Secrets stay in the server-side `.env` file and never enter Git.
@@ -22,7 +25,7 @@ Use the lowest-risk official route first:
 | 1 | WeChat Official Account | Owner chat, quick capture, lightweight replies | Preferred first WeChat path |
 | 2 | WeCom customer service | Customer-style service conversations and company-owned account flows | Good when WeCom is acceptable |
 | 3 | Mini Program or Official Account combination | Richer UI, forms, and structured personal tools | Later |
-| 4 | Personal-account bridge | Private-account style chat | Disabled until separate risk acceptance |
+| 4 | Personal-account bridge | Private-account style chat | In use for owner companion, not company control |
 
 ## 3. Configuration
 
@@ -128,6 +131,15 @@ relationship-rich and source-backed:
 - risks,
 - useful reflections.
 
+Current BaiLongma rule:
+
+- Voice or text chat may influence the current conversation.
+- Only stable preferences, decisions, recurring patterns, and owner-approved
+  facts become durable memory.
+- Setup tests, greetings, affection phrases, and one-off noise should use
+  `skip_recognition` or be cleaned during phase closeout.
+- Useful WeChat captures should first land in Obsidian `00-Inbox/needs-review`.
+
 ## 7. Command Boundary
 
 Allowed by default in WeChat:
@@ -182,6 +194,25 @@ Exit criteria:
 - No sensitive commands are executable from WeChat.
 - `/health` shows the channel and configured-secret state.
 - A Chinese phase report records the result and remaining risks.
+
+## 9.1 Current ClawBot Runtime State
+
+Current verified state:
+
+- BaiLongma logs show ClawBot restored saved credentials.
+- One context token was restored.
+- This means the previous QR scan likely succeeded.
+- The channel is suitable for personal companion chat and quick capture.
+
+Boundaries:
+
+- Do not use WeChat for company approvals, money, HR, legal, or trading.
+- Do not send mass messages.
+- Do not enable proactive chat without owner-approved schedule and daily cap.
+- Do not store raw WeChat content as durable memory without intake review.
+
+Current core phase uses WeChat as a personal surface only. Feishu remains the
+planned company-management surface.
 
 ## 10. Source Notes
 

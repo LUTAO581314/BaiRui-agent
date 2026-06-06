@@ -71,7 +71,64 @@ Verification:
 - No secrets are committed.
 - Chinese report records access method, risks, and next steps.
 
-## Phase 2: Feishu Company Management MVP
+## Phase 2: Core Hermes and BaiLongma MVP
+
+Status: in progress.
+
+Goal: stabilize the personal core before expanding into company workflows or video.
+
+Locked scope:
+
+- Hermes core runtime.
+- BaiLongma Brain UI.
+- GPT-5.5 custom model gateway.
+- TrendRadar as external project search runtime.
+- Human-like memory governance.
+- Tool calling.
+- Image understanding and OCR.
+- Voice input through local Whisper.
+
+Explicitly out of scope for this phase:
+
+- Video understanding.
+- AI video generation.
+- Autonomous trading.
+- Feishu company operations.
+- Voice cloning.
+
+Completed:
+
+- BaiLongma is running behind the protected `bairui.chat` domain.
+- GPT-5.5 is configured as the active custom model.
+- Hermes is installed on the server.
+- TrendRadar MCP is enabled for Hermes.
+- WeChat ClawBot has restored saved credentials.
+- Local Whisper `tiny` is installed and connected through BaiLongma `/voice/cloud`.
+- BaiLongma image understanding is available through `analyze_image`.
+- Video understanding is intentionally not exposed.
+- Write Phase 02 Chinese report. Completed.
+- Add a core capability verification runbook. Completed locally.
+- Add an Obsidian write-back workflow. Completed locally.
+- Add a memory cleanup runbook for BaiLongma runtime memories. Completed locally.
+
+Remaining:
+
+- Turn Obsidian write-back into a Hermes tool or script.
+- Turn BaiLongma memory cleanup into a one-command check.
+- Configure TTS only after the owner provides MiniMax, Doubao, OpenAI TTS, or another approved key.
+- Keep BaiLongma web-search settings empty unless a dedicated provider or SearXNG is selected; use Hermes + TrendRadar first.
+
+Verification:
+
+- Main model status shows `custom / gpt-5.5`.
+- Hermes version command works.
+- Hermes MCP list shows TrendRadar enabled.
+- BaiLongma `/status` returns running and memory count.
+- Local Whisper returns `asr_status` and `config_ok`.
+- `analyze_image` can OCR a PNG test image.
+- Memory count is monitored after setup tests.
+
+## Phase 3: Feishu Company Management MVP
 
 Goal: make Feishu the first useful production surface.
 
@@ -88,7 +145,7 @@ Tasks:
 - Create risk register.
 - Add morning briefing job.
 - Add owner approval queue.
-- Write Phase 02 Chinese report.
+- Write Phase 03 Chinese report.
 
 Verification:
 
@@ -97,7 +154,7 @@ Verification:
 - Sensitive actions wait for owner approval.
 - Report records configured tables, permissions, and remaining risks.
 
-## Phase 3: Obsidian Governed Memory MVP
+## Phase 4: Obsidian Governed Memory MVP
 
 Goal: create durable, visual, owner-correctable memory.
 
@@ -115,7 +172,7 @@ Tasks:
 - Add correction/deletion workflow.
 - Add weekly cleanup workflow.
 - Add stale-memory review metadata.
-- Write Phase 03 Chinese report.
+- Write Phase 04 Chinese report.
 
 Verification:
 
@@ -125,9 +182,9 @@ Verification:
 - Owner can correct, archive, delete, or relink memory.
 - Search/vector index policy is documented.
 
-## Phase 4: Search Runtime and API-First Multimodal Layer
+## Phase 5: Search Runtime and API-First Multimodal Layer
 
-Goal: let the system search through external projects, then crawl, read images, transcribe speech, and summarize video through APIs.
+Goal: let the system search through external projects, then crawl, read images, transcribe speech, and later summarize video through APIs.
 
 Tasks:
 
@@ -137,20 +194,21 @@ Tasks:
 - Add optional SearXNG configuration only if plain metasearch is still needed.
 - Add OCR or image-understanding adapter.
 - Add speech transcription workflow.
-- Add video summary workflow.
+- Add video summary workflow only after the core phase is stable.
 - Add cost/rate-limit controls.
 - Add Obsidian write-back templates.
-- Write Phase 04 Chinese report.
+- Write Phase 05 Chinese report.
 
 Verification:
 
 - One TrendRadar or search-project result is summarized with sources.
 - One webpage is extracted to a structured note.
 - One image or OCR task is processed.
-- One speech/video workflow is tested.
+- One speech workflow is tested.
+- Video remains frozen unless explicitly reopened.
 - No heavy local model is required on the VPS.
 
-## Phase 5: Feishu Workflow Hardening
+## Phase 6: Feishu Workflow Hardening
 
 Goal: move from a bot to a reliable company operating assistant.
 
@@ -162,7 +220,7 @@ Tasks:
 - Add exception alert thresholds.
 - Add structured audit logs.
 - Add approval boundary checks.
-- Write Phase 05 Chinese report.
+- Write Phase 06 Chinese report.
 
 Verification:
 
@@ -171,7 +229,7 @@ Verification:
 - Reminders and exception alerts are logged.
 - Sensitive actions require owner approval.
 
-## Phase 6: Research and Market Watch
+## Phase 7: Research and Market Watch
 
 Goal: create a research-only financial and opportunity watch pipeline.
 
@@ -183,7 +241,7 @@ Tasks:
 - Add bull/bear/risk analysis template.
 - Add daily market summary.
 - Add Feishu summary.
-- Write Phase 06 Chinese report.
+- Write Phase 07 Chinese report.
 
 Verification:
 
@@ -192,7 +250,7 @@ Verification:
 - No broker or trading API is connected.
 - Risk language is explicit.
 
-## Phase 7: BaiLongma Personal Interaction Layer
+## Phase 8: BaiLongma Personal Interaction Layer
 
 Goal: add Chinese persona and richer personal interaction.
 
@@ -207,7 +265,7 @@ Tasks:
 - Add natural Chinese companion response policy.
 - Add proactive-chat schedule, limit, mute, and audit controls before enabling proactive messages.
 - Add Brain UI access boundary if used.
-- Write Phase 07 Chinese report.
+- Write Phase 08 Chinese report.
 
 Verification:
 
@@ -215,7 +273,7 @@ Verification:
 - Personal notes do not bypass memory governance.
 - Company-sensitive actions remain in Feishu/admin approval flows.
 
-## Phase 8: WeChat Bridge Review
+## Phase 9: WeChat Bridge Review
 
 Goal: support real WeChat messaging only within acceptable risk boundaries.
 
@@ -230,7 +288,7 @@ Tasks:
 - Add rate limits.
 - Add manual confirmation.
 - Keep sensitive commands disabled.
-- Write Phase 08 Chinese report.
+- Write Phase 09 Chinese report.
 
 Verification:
 
@@ -238,7 +296,7 @@ Verification:
 - Owner understands trade-offs.
 - No high-risk automation is enabled by default.
 
-## Phase 9: MiroFish Simulation Lab
+## Phase 10: MiroFish Simulation Lab
 
 Goal: add structured multi-agent simulation and decision rehearsal.
 
@@ -250,7 +308,7 @@ Tasks:
 - Build report import process.
 - Test one company/project simulation.
 - Test one market scenario simulation.
-- Write Phase 09 Chinese report.
+- Write Phase 10 Chinese report.
 
 Verification:
 

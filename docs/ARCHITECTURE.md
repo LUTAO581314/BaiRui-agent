@@ -133,9 +133,9 @@ Feishu CLI and MCP tools are execution tools, not the first message-entry layer.
 ### 3.6 API-First Multimodal Flow
 
 ```text
-Image / PDF / video / web URL
+Image / PDF / voice / web URL
   -> Hermes task router
-  -> external API provider
+  -> external API provider or approved local lightweight service
   -> normalized text, entities, timestamps, and confidence notes
   -> Obsidian report
   -> optional private search index
@@ -143,6 +143,12 @@ Image / PDF / video / web URL
 ```
 
 The VPS should not run heavy local image or video models by default. It should coordinate API calls, validate outputs, keep logs, and write final artifacts.
+
+Current core phase exception:
+
+- Local Whisper `tiny` is allowed as a temporary CPU ASR service because it is lightweight enough for the current VPS.
+- Image understanding uses the active multimodal model through the configured gateway.
+- Video is frozen and should not be exposed through the current tool route.
 
 ### 3.7 Simulation Flow
 

@@ -20,12 +20,39 @@ This system should imitate that pattern:
 - Obsidian is the durable human-readable source of truth.
 - Feishu is operational memory for active company work.
 - Vector search is only an index, not the source of truth.
+- BaiLongma runtime memory is a working memory layer, not the final source of truth.
 - Logs are not memory.
 - Time is metadata, not the main memory structure.
 - Temporary context expires.
 - Important memories need source, timestamp, confidence, and relationship links.
 - Uncertain information must be marked as uncertain.
 - The owner must be able to correct, archive, or delete memory.
+
+## 2.1 Current Runtime Rule
+
+Current core phase rule:
+
+```text
+conversation/logs
+  -> BaiLongma working memory candidate
+  -> intake gate
+  -> Obsidian 00-Inbox/needs-review
+  -> owner correction or weekly consolidation
+  -> durable linked note
+  -> optional search/vector index
+```
+
+BaiLongma memory may help short-term conversation, but it must not freely become permanent memory.
+
+The current verified BaiLongma memory count is 30. Growth should be monitored. A sudden increase after setup tests, greetings, or tool checks is a cleanup signal.
+
+Runtime write policy:
+
+- Use `skip_recognition` when the turn is only test output, greeting, status check, or transient troubleshooting.
+- Use `upsert_memory` only for stable preferences, decisions, project facts, recurring patterns, or explicit owner instructions.
+- Prefer updating an existing `mem_id` over creating a near duplicate.
+- Use `downgrade_memory` or archive flow for stale, noisy, or weak memory.
+- Never store API keys, passwords, tokens, QR login material, or raw private screenshots.
 
 ## 3. Memory Classes
 
@@ -163,6 +190,10 @@ Do not promote these by default:
 - Sensitive credentials.
 - Private screenshots unless explicitly approved.
 - Old task state after the task is closed and summarized.
+- Tool smoke-test outputs such as "API OK", "permission fixed", or "health check passed".
+- One-turn setup friction unless it becomes a reusable runbook.
+- Agent affection phrases, roleplay fragments, or tone experiments unless the owner explicitly says to remember them.
+- Logs from ASR/image tests unless they reveal a durable bug or configuration decision.
 
 ## 9. Memory Intake Gate
 
@@ -176,8 +207,24 @@ Before writing durable memory, the agent should ask:
 6. Should it be stored as a report instead of a fact?
 7. Which person, project, goal, topic, decision, or event should it link to?
 8. Does the owner need to approve saving it?
+9. Is this a stable fact, or only a recent event?
+10. Which existing note or `mem_id` should be updated instead of creating a new one?
 
 If the answer is unclear, store it in temporary context or `00-Inbox/needs-review`, not in permanent memory.
+
+### Current Core Intake Checklist
+
+For the Hermes/BaiLongma core, a memory can pass only if it fits at least one:
+
+- Owner preference that will affect future interaction.
+- Architecture decision.
+- Server/runtime configuration decision.
+- Integration credential status without exposing the credential.
+- Project roadmap change.
+- Repeated behavior pattern confirmed by multiple interactions.
+- Owner-approved company/person/project fact.
+
+Everything else stays temporary or becomes a report note.
 
 ## 10. Promotion Rules
 
@@ -241,6 +288,56 @@ Suggested defaults:
 ## 13. Garbage Collection
 
 Run memory cleanup regularly.
+
+After every setup phase:
+
+- Query recent BaiLongma memories.
+- Delete or downgrade test memories.
+- Confirm memory count did not jump because of smoke tests.
+- Write useful setup facts into a Chinese phase report instead of raw memory.
+- If an item is useful but uncertain, place it in `00-Inbox/needs-review`.
+
+### 13.1 BaiLongma Phase-End Cleanup Runbook
+
+For the current Hermes/BaiLongma core, every capability test should have a small memory audit.
+
+Before testing:
+
+```text
+record memory_count_before
+mark test turns as setup/smoke-test
+avoid real secrets, private screenshots, and sensitive business data
+```
+
+After testing:
+
+```text
+record memory_count_after
+if memory_count_after > memory_count_before:
+  inspect recent memory items
+  keep only stable preferences, decisions, project facts, repeated patterns, or owner-approved facts
+  delete or downgrade test output, greetings, status checks, and temporary troubleshooting
+  write useful setup facts into the Chinese phase report instead of durable memory
+```
+
+Recommended labels:
+
+- `promote`: stable and useful enough for Obsidian.
+- `merge`: overlaps with an existing note or `mem_id`.
+- `inbox`: useful but uncertain; place under `00-Inbox/needs-review`.
+- `report-only`: useful phase fact, but not a long-term memory.
+- `delete`: test garbage, duplicate, or sensitive accidental capture.
+
+Examples:
+
+| Item | Decision |
+| --- | --- |
+| `本地 Whisper tiny 已接通` | report-only or decision note |
+| `图片测试识别 MOXI CORE OK` | report-only |
+| `权限问题已永久解决` | delete unless tied to a reusable runbook |
+| `主人希望每阶段写中文报告` | promote because it is a stable preference |
+| `主人当前阶段冻结视频` | promote or decision note because it affects scope |
+| raw API key, password, QR token | delete or redact immediately |
 
 Weekly:
 

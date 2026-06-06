@@ -46,6 +46,14 @@ It must not report the API key.
 
 ## 4. Current Status
 
-Phase 1 supports configuration discovery only.
+The local minimal Hermes runtime still exposes configuration state only.
 
-The runtime does not yet send model requests. Actual model calls should be added through a narrow adapter in the next implementation step, with tests and rate/cost controls.
+BaiLongma is already configured on the VPS to call the custom GPT-5.5 gateway for chat and image understanding. The real API key stays only in server-side configuration.
+
+Next Hermes-side model work should be added through a narrow adapter with:
+
+- no key exposure in logs or health output,
+- timeout and retry limits,
+- per-capability model slots,
+- cost/rate tracking,
+- tests for failure and redaction behavior.

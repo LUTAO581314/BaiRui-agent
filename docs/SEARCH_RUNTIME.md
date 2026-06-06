@@ -24,7 +24,7 @@ HERMES_TRENDRADAR_MCP_COMMAND=
 HERMES_SEARXNG_BASE_URL=
 ```
 
-The empty values mean the runtime foundation is ready, but the external search project is not yet attached.
+These template values remain useful for reproducible deployment, but the active VPS already has TrendRadar attached through Hermes MCP for the core phase.
 
 ## 3. TrendRadar Role
 
@@ -71,18 +71,36 @@ Hermes should normalize search-project output into the same shape used by other 
 
 ## 6. Phase Placement
 
-Phase 4 should build the first external search-project adapter.
+TrendRadar has moved into Phase 2 as the first working external search/trend runtime.
+
+Later search phases should improve normalization, Obsidian write-back, source tracking, and optional metasearch.
 
 Recommended order:
 
-1. Configure TrendRadar as an isolated runtime.
-2. Add a Hermes adapter that can read TrendRadar output through MCP, HTTP, CLI, or report files.
-3. Write one source-backed trend/search report to Obsidian.
-4. Send a short owner-facing summary through Feishu after Feishu is ready.
-5. Add SearXNG only if plain metasearch is still needed.
+1. Keep TrendRadar as an isolated runtime.
+2. Verify Hermes can see TrendRadar through MCP.
+3. Normalize TrendRadar output into source-backed notes or reports.
+4. Write one trend/search result to Obsidian through the intake workflow.
+5. Send a short owner-facing summary through Feishu after Feishu is ready.
+6. Add SearXNG only if plain metasearch is still needed.
 
 ## 7. Current Status
 
-Phase 1 only declares the configuration shape.
+TrendRadar is now attached as the first external search/trend runtime for the core Hermes phase.
 
-The Hermes runtime can report that search mode is `external_project`, but it does not call TrendRadar or SearXNG yet.
+Current verified direction:
+
+- TrendRadar runs as an isolated external project.
+- Hermes MCP points to TrendRadar at `127.0.0.1:3333/mcp`.
+- BaiLongma's own web-search provider keys can stay empty for now.
+- Search should go through Hermes + TrendRadar first.
+- SearXNG remains optional and should be added only if plain metasearch is still needed.
+
+Phase 2 acceptance check:
+
+```bash
+runuser -u hermes -- env HOME=/home/hermes PATH="/home/hermes/.local/bin:/home/hermes/.hermes/node/bin:/usr/local/bin:/usr/bin:/bin" \
+  hermes mcp list
+```
+
+TrendRadar should appear enabled. Output should not include secrets.

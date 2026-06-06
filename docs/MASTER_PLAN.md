@@ -18,6 +18,10 @@ The system should become a practical personal operating layer:
 - External-project search plus API-first image recognition, speech transcription, and video understanding without running heavy local models on the lightweight VPS.
 - Associative memory governance that prevents noisy, duplicate, stale, or sensitive data from becoming permanent memory.
 
+Current implementation note:
+
+The active implementation phase is narrower than the full plan. It is focused on Hermes, BaiLongma, governed human-like memory, tool calling, image understanding, and local Whisper voice input. Video, Feishu company operations, TTS, simulations, and trading remain later-stage capabilities until the core loop is stable.
+
 ## 2. Core Stack
 
 | Layer | Tool | Role |
