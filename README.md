@@ -20,6 +20,7 @@ This repository currently contains the full architecture and rollout plan. Runti
 
 ## Documents
 
+- [Sustainable Iteration Blueprint](docs/SUSTAINABLE_ITERATION_BLUEPRINT.md)
 - [Master Plan](docs/MASTER_PLAN.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Optimized Architecture](docs/OPTIMIZED_ARCHITECTURE.md)
@@ -30,18 +31,19 @@ This repository currently contains the full architecture and rollout plan. Runti
 - [Chinese Report Policy](docs/CHINESE_REPORT_POLICY.md)
 - [Current Chinese Phase Report](reports/phase-00-architecture-plan.zh-CN.md)
 - [Memory Governance Chinese Report](reports/phase-00-memory-governance.zh-CN.md)
+- [Sustainable Iteration Chinese Report](reports/phase-00-sustainable-iteration.zh-CN.md)
 
 ## Recommended First Milestone
 
-Build a minimal but useful system first:
+Build a minimal but useful system through the sustainable iteration loop:
 
-1. Deploy Hermes on the VPS.
-2. Create an Obsidian vault structure for durable memory.
-3. Add a Feishu company-management bot for tasks, reports, project tracking, and owner approvals.
-4. Create company tables for projects, customers, sales pipeline, receivables, risks, and employee reports.
-5. Add a research-only market watch workflow.
-6. Write every important output back to Obsidian.
-7. Add external APIs for search, OCR, image understanding, speech transcription, and video understanding.
+1. Deploy the minimal Hermes/runtime foundation on the VPS.
+2. Add a Feishu smoke test if credentials are ready.
+3. Create the governed Obsidian memory structure.
+4. Add Feishu company tables for projects, customers, sales pipeline, receivables, risks, and employee reports.
+5. Write every important output back to Obsidian through the memory intake gate.
+6. Add external APIs for search, OCR, image understanding, speech transcription, and video understanding.
+7. End every phase with verification, memory cleanup, and a Chinese owner report.
 
 WeChat companionship, BaiLongma persona features, MiroFish simulations, and trading execution should be added only after the company-management and memory loop is stable.
 
@@ -54,3 +56,7 @@ Memory must be associative and governed. Time is metadata, not the main structur
 ## Reporting Rule
 
 Every implementation phase must produce a Chinese report for the owner. Research notes and source materials may remain in English, but phase summaries, delivery status, decisions, risks, and next actions must be written in Chinese.
+
+## Iteration Rule
+
+Every phase follows the same loop: phase brief, scope lock, implementation, verification, Chinese report, memory cleanup, risk review, and next-phase decision.

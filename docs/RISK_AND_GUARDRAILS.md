@@ -182,3 +182,17 @@ The first deployed system should run in safe mode:
 - No irreversible automation.
 
 Safe mode is still useful because it can research, summarize, remember, and notify.
+
+## 9. Iteration Guardrail
+
+Each phase must pass a risk review before it is considered complete.
+
+The review should check:
+
+- No secrets committed.
+- No unauthorized money movement.
+- No unrestricted personal WeChat automation.
+- No silent HR, legal, or contract action.
+- No raw sensitive memory promoted to durable memory.
+- No public unauthenticated agent dashboard.
+- A Chinese phase report exists and states the remaining risks.

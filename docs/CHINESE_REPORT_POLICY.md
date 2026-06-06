@@ -50,6 +50,8 @@ Each Chinese phase report should include:
 5. 风险与边界
 6. 需要主人确认的事项
 7. 下一阶段计划
+8. 记忆整理与清理结果
+9. 风险复核结果
 
 ## 5. Style
 

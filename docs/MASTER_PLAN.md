@@ -4,6 +4,8 @@
 
 Build a private, long-running personal and company agent system that can remember, research, simulate, summarize, manage workflows, and assist with execution while keeping the owner in control.
 
+This plan should be implemented through the sustainable iteration loop defined in [Sustainable Iteration Blueprint](SUSTAINABLE_ITERATION_BLUEPRINT.md). Each phase must be small, verified, reported in Chinese, and followed by memory cleanup.
+
 The system should become a practical personal operating layer:
 
 - A durable memory base for projects, people, company operations, preferences, decisions, research, and agent activity.
@@ -318,7 +320,7 @@ Obsidian = durable final memory
 
 ### Phase 0: Repository and Planning
 
-Status: in progress.
+Status: completed as the planning foundation.
 
 Deliverables:
 
@@ -327,6 +329,8 @@ Deliverables:
 - Roadmap.
 - Risk guardrails.
 - Initial deployment assumptions.
+- Sustainable iteration blueprint.
+- Phase Chinese reports.
 
 ### Phase 1: Hermes MVP
 
@@ -339,6 +343,7 @@ Deliverables:
 - Reverse proxy plan if a domain is available.
 - Basic health check.
 - One scheduled daily summary job.
+- Chinese phase report.
 
 ### Phase 2: Obsidian Memory Base
 
@@ -356,6 +361,7 @@ Deliverables:
 - Decision log templates.
 - Agent activity log templates.
 - Write-back convention from Hermes.
+- Chinese phase report.
 
 ### Phase 3: Feishu Bot
 
@@ -368,6 +374,7 @@ Deliverables:
 - Manual approval command format.
 - Company-management tables for projects, customers, sales pipeline, receivables, risks, and daily reports.
 - Morning briefing, exception alerts, and evening company summary.
+- Chinese phase report.
 
 ### Phase 4: Financial Research MVP
 
@@ -379,6 +386,7 @@ Deliverables:
 - Daily market summary.
 - Risk-only output.
 - No real trading.
+- Chinese phase report.
 
 ### Phase 4.5: Search and Multimodal API MVP
 
@@ -394,6 +402,8 @@ Deliverables:
 
 The VPS should only store inputs, outputs, metadata, and logs. It should not process large local models.
 
+- Chinese phase report.
+
 ### Phase 5: BaiLongma Integration
 
 Deliverables:
@@ -402,6 +412,7 @@ Deliverables:
 - Chinese conversation surface.
 - Memory sync boundaries.
 - Feishu/WeChat routing decision.
+- Chinese phase report.
 
 ### Phase 6: MiroFish Simulation Lab
 
@@ -411,6 +422,7 @@ Deliverables:
 - Simulation input template.
 - Obsidian-to-MiroFish export.
 - MiroFish report import back to Obsidian.
+- Chinese phase report.
 
 ### Phase 7: Hardened Operations
 
@@ -422,6 +434,7 @@ Deliverables:
 - Secrets management.
 - Update procedure.
 - Disaster recovery notes.
+- Chinese phase report.
 
 ## 7. Open Decisions
 

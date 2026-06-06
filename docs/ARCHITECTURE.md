@@ -7,6 +7,7 @@
 - High-risk operations require explicit owner confirmation.
 - Each tool should have a narrow role.
 - Company management and personal companionship should be separated by channel and permission.
+- The system should be advanced through small verified phases, not one large deployment.
 - Deployment should be reproducible from this repository.
 - Secrets must stay outside committed files.
 
@@ -321,3 +322,20 @@ Not allowed by default:
 Primary channel: CLI or protected web UI.
 
 Requires owner confirmation for any destructive or externally visible operation.
+
+## 12. Iteration Architecture
+
+Every implementation phase should preserve the same control loop:
+
+```text
+phase scope
+  -> implementation
+  -> verification
+  -> Chinese report
+  -> Obsidian memory update
+  -> memory cleanup
+  -> risk review
+  -> next phase
+```
+
+Architecture changes must update this document, the roadmap, and any affected phase report.

@@ -1,54 +1,62 @@
 # Roadmap
 
-## Phase 0: Plan and Repository
+This roadmap follows the sustainable iteration loop:
 
-Goal: turn the empty repository into the control center for the system.
+```text
+phase brief -> scope lock -> implementation -> verification -> Chinese report -> memory cleanup -> risk review -> next phase
+```
 
-Tasks:
+## Phase 0: Planning Foundation
 
-- Add master plan.
-- Add architecture.
-- Add risk guardrails.
-- Add implementation roadmap.
-- Add optimized company/personal/backend architecture.
-- Add Chinese phase report.
-- Add Chinese reporting policy for every future phase.
-- Push to GitHub.
+Status: completed in documentation.
+
+Goal: turn the empty repository into a complete, sustainable planning base.
+
+Completed:
+
+- Master plan.
+- Technical architecture.
+- Optimized company/personal/backend architecture.
+- API-first integration strategy.
+- Memory governance.
+- Chinese report policy.
+- Risk guardrails.
+- Sustainable iteration blueprint.
+- Phase 00 Chinese reports.
 
 Exit criteria:
 
-- Repository clearly explains the intended system.
-- Next engineer or agent can continue from the docs.
-- A Chinese phase report exists for the owner.
+- Repository explains the intended system.
+- Every core decision has a document.
+- Future phases have reporting and memory cleanup rules.
 
-## Phase 1: Hermes VPS MVP
+## Phase 1: VPS Runtime Foundation
 
-Goal: deploy Hermes safely on the VPS.
+Goal: deploy the minimal runtime safely on the VPS.
 
 Tasks:
 
-- Install Docker and Docker Compose plugin.
-- Create `hermes` Linux user.
+- Create non-root service user.
+- Install Docker or selected service runner.
 - Create `/opt/hermes-system`.
-- Add `docker-compose.yml`.
-- Add `.env.example`.
-- Configure model provider.
-- Configure search and multimodal API provider placeholders.
-- Start Hermes.
+- Add environment template.
 - Add health check.
-- Document start/stop/update commands.
-- Write a Chinese phase report after deployment.
+- Add basic logs.
+- Add safe stop/start/update commands.
+- Optional: send one Feishu test message if credentials are ready.
+- Write Phase 01 Chinese report.
 
-Exit criteria:
+Verification:
 
-- Hermes runs on the VPS.
-- It can complete one safe command or research task.
-- Logs are visible.
-- A Chinese report records deployment result, access method, risks, and next steps.
+- Service starts.
+- Health check responds.
+- Logs are readable.
+- No secrets are committed.
+- Chinese report records access method, risks, and next steps.
 
 ## Phase 2: Feishu Company Management MVP
 
-Goal: make Feishu the first production company-management surface.
+Goal: make Feishu the first useful production surface.
 
 Tasks:
 
@@ -62,146 +70,129 @@ Tasks:
 - Create daily report table.
 - Create risk register.
 - Add morning briefing job.
-- Add evening summary job.
 - Add owner approval queue.
-- Write a Chinese phase report.
+- Write Phase 02 Chinese report.
 
-Exit criteria:
+Verification:
 
 - Owner receives a company briefing in Feishu.
-- Agent can detect one delayed task, missed follow-up, or high-risk item.
+- Agent can detect one delayed task, missed follow-up, or risk item.
 - Sensitive actions wait for owner approval.
-- A Chinese report records configured tables, bot behavior, approval boundaries, and remaining risks.
+- Report records configured tables, permissions, and remaining risks.
 
-## Phase 3: Obsidian Memory MVP
+## Phase 3: Obsidian Governed Memory MVP
 
-Goal: make Obsidian the durable memory base.
+Goal: create durable, visual, owner-correctable memory.
 
 Tasks:
 
 - Create vault structure.
-- Add note templates.
-- Add memory governance rules.
-- Add associative memory axes for people, projects, goals, decisions, reports, risks, and events.
 - Add `00-Inbox/needs-review`.
+- Add owner preferences and corrections notes.
 - Add MOC topic maps.
-- Add Canvas visual memory maps.
-- Add correction and deletion workflow.
+- Add Canvas visual memory map plan.
+- Add report templates.
+- Add decision log template.
+- Add memory intake gate.
+- Add correction/deletion workflow.
 - Add weekly cleanup workflow.
 - Add stale-memory review metadata.
-- Add daily report template.
-- Add decision log template.
-- Add market watch template.
-- Define file naming conventions.
-- Add Hermes write-back process.
+- Write Phase 03 Chinese report.
 
-Exit criteria:
+Verification:
 
-- Hermes can write a report into the vault.
-- The owner can read and edit the result directly.
-- New memory passes through an intake gate instead of saving every raw message.
-- Important memory links to relationship axes, not only timestamps.
-- The owner can correct, archive, delete, or relink memory.
+- One report is written to Obsidian.
+- One memory candidate passes through inbox review.
+- New durable memory links to at least one relationship axis.
+- Owner can correct, archive, delete, or relink memory.
+- Search/vector index policy is documented.
 
-## Phase 4: Feishu Workflow Hardening
+## Phase 4: API-First Research and Multimodal Layer
 
-Goal: harden Feishu from a bot into a reliable company-management workflow.
+Goal: let the system search, crawl, read images, transcribe speech, and summarize video through APIs.
 
 Tasks:
 
-- Add command parser.
-- Add daily briefing push.
-- Add manual approval response pattern.
-- Add meeting-note workflow.
+- Add search API adapter.
+- Add crawl/extraction adapter.
+- Add OCR or image-understanding adapter.
+- Add speech transcription workflow.
+- Add video summary workflow.
+- Add cost/rate-limit controls.
+- Add Obsidian write-back templates.
+- Write Phase 04 Chinese report.
+
+Verification:
+
+- One search result is summarized with sources.
+- One webpage is extracted to a structured note.
+- One image or OCR task is processed.
+- One speech/video workflow is tested.
+- No heavy local model is required on the VPS.
+
+## Phase 5: Feishu Workflow Hardening
+
+Goal: move from a bot to a reliable company operating assistant.
+
+Tasks:
+
 - Add task reminder workflow.
-- Add weekly management report.
-- Add structured logs.
+- Add daily and weekly company reports.
+- Add meeting-note workflow.
+- Add exception alert thresholds.
+- Add structured audit logs.
+- Add approval boundary checks.
+- Write Phase 05 Chinese report.
 
-Exit criteria:
+Verification:
 
-- Owner can ask for a summary from Feishu.
-- System can push one daily briefing.
-- Sensitive actions require approval.
+- Owner can request a company summary.
+- System can push daily briefing and weekly report.
+- Reminders and exception alerts are logged.
+- Sensitive actions require owner approval.
 
-## Phase 5: Research and Market Watch
+## Phase 6: Research and Market Watch
 
-Goal: create a useful research pipeline without trading.
+Goal: create a research-only financial and opportunity watch pipeline.
 
 Tasks:
 
 - Create watchlist.
 - Add market data source.
-- Add news source.
-- Add source citation convention.
+- Add news/research source.
 - Add bull/bear/risk analysis template.
-- Add daily market note generation.
+- Add daily market summary.
 - Add Feishu summary.
+- Write Phase 06 Chinese report.
 
-Exit criteria:
+Verification:
 
 - A daily market brief is generated.
 - Output is research-only.
 - No broker or trading API is connected.
+- Risk language is explicit.
 
-## Phase 6: Search and Multimodal API Layer
+## Phase 7: BaiLongma Personal Interaction Layer
 
-Goal: let the system search, read images, transcribe speech, and summarize videos through APIs while keeping the VPS lightweight.
-
-Tasks:
-
-- Add search API adapter.
-- Add web crawling/extraction API adapter.
-- Add OCR API adapter.
-- Add image understanding API adapter.
-- Add speech transcription API adapter.
-- Add video summary workflow.
-- Add cost and rate-limit controls.
-- Add Obsidian templates for image/video/web analysis.
-
-Exit criteria:
-
-- Hermes can call one search provider.
-- Hermes can analyze one image through an API.
-- Hermes can transcribe or summarize one video through an API workflow.
-- Results are written to Obsidian.
-- No heavy local model is required on the VPS.
-
-## Phase 7: BaiLongma Interaction Layer
-
-Goal: add Chinese persona and richer interaction.
+Goal: add Chinese persona and richer personal interaction.
 
 Tasks:
 
 - Deploy BaiLongma or create adapter.
-- Decide whether it routes to Hermes or shares memory files.
-- Configure Feishu integration.
-- Evaluate WeChat bridge separately.
-- Add Brain UI access boundary.
+- Define personal memory boundary.
+- Configure Feishu or WeChat-compatible interaction path.
+- Add personal check-in.
+- Add quick capture.
+- Add Brain UI access boundary if used.
+- Write Phase 07 Chinese report.
 
-Exit criteria:
+Verification:
 
-- Owner can interact in Chinese through BaiLongma.
-- Important results still write back to Obsidian.
+- Owner can interact in Chinese.
+- Personal notes do not bypass memory governance.
+- Company-sensitive actions remain in Feishu/admin approval flows.
 
-## Phase 8: MiroFish Simulation Lab
-
-Goal: add structured multi-agent simulation.
-
-Tasks:
-
-- Deploy MiroFish.
-- Create simulation brief template.
-- Build Obsidian export process.
-- Build report import process.
-- Test one project decision simulation.
-- Test one market scenario simulation.
-
-Exit criteria:
-
-- A simulation can start from Obsidian context.
-- The final report returns to Obsidian.
-
-## Phase 9: WeChat Bridge Review
+## Phase 8: WeChat Bridge Review
 
 Goal: support WeChat only within acceptable risk boundaries.
 
@@ -213,12 +204,33 @@ Tasks:
 - Add rate limits.
 - Add manual confirmation.
 - Keep sensitive commands disabled.
+- Write Phase 08 Chinese report.
 
-Exit criteria:
+Verification:
 
 - WeChat route is documented.
 - Owner understands trade-offs.
 - No high-risk automation is enabled by default.
+
+## Phase 9: MiroFish Simulation Lab
+
+Goal: add structured multi-agent simulation and decision rehearsal.
+
+Tasks:
+
+- Deploy or connect MiroFish.
+- Create simulation brief template.
+- Build Obsidian export process.
+- Build report import process.
+- Test one company/project simulation.
+- Test one market scenario simulation.
+- Write Phase 09 Chinese report.
+
+Verification:
+
+- Simulation starts from Obsidian context.
+- Final report returns to Obsidian.
+- Decision output is marked as analysis, not certainty.
 
 ## Phase 10: Operations Hardening
 
@@ -229,15 +241,18 @@ Tasks:
 - Add backup script.
 - Add restore runbook.
 - Add log rotation.
-- Add service update command.
+- Add update procedure.
 - Add health monitor.
 - Add alerting.
 - Add secret rotation notes.
+- Add quarterly memory/index review.
+- Write Phase 10 Chinese report.
 
-Exit criteria:
+Verification:
 
-- System can be recovered from backup.
-- Services can be updated without guesswork.
+- System can be stopped, started, updated, backed up, and restored.
+- Logs and alerts work.
+- Recovery procedure is documented.
 
 ## Phase 11: Optional Execution Integrations
 
@@ -246,18 +261,20 @@ Goal: evaluate whether any real-world action APIs should be connected.
 Examples:
 
 - Broker API.
-- Cloud provider API.
-- GitHub write operations.
+- Payment.
+- Cloud provider write operations.
+- Public posting.
 - Deployment automation.
 
 Required before enabling:
 
 - Separate threat model.
-- Approval flow.
+- Owner approval flow.
 - Spending or position limits.
 - Full audit log.
 - Kill switch.
 - Dry-run mode.
+- Chinese risk report.
 
 Exit criteria:
 

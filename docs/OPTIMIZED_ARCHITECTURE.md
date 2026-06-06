@@ -20,6 +20,8 @@ Backend Intelligence Plane
 
 This separation prevents one chat interface from controlling everything. It also makes the system easier to secure, audit, and expand.
 
+The planes should be built iteratively. Do not deploy all planes at once. Start with the backend runtime and Feishu company surface, then add governed Obsidian memory, then API intelligence, then personal companionship and simulations.
+
 ## 2. Core Decision
 
 Feishu should be the first production surface.
@@ -288,6 +290,7 @@ Hermes on VPS
 + Obsidian operating reports
 + API-first search and summarization
 + owner approval queue
++ Chinese phase report
 ```
 
 Do not start with:

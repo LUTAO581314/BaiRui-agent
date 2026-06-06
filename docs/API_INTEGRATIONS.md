@@ -154,3 +154,26 @@ The first API MVP should prove:
 3. Hermes can analyze one image through a vision/OCR API.
 4. Hermes can summarize one short video through transcript plus frames or a direct video API.
 5. Every output is written to Obsidian and summarized to Feishu.
+
+## 10. Iteration Policy
+
+API integrations should be added one capability at a time.
+
+Recommended order:
+
+1. Search.
+2. Web crawl/extraction.
+3. OCR/image understanding.
+4. Speech transcription.
+5. Video summary.
+6. Financial data.
+
+Each new adapter must define:
+
+- Provider.
+- Input limits.
+- Cost/rate limit.
+- Privacy boundary.
+- Normalized output contract.
+- Obsidian write-back template.
+- Chinese phase report entry.

@@ -323,3 +323,15 @@ When unsure:
 - Ask the owner only when the decision matters.
 
 The system should prefer fewer, better, relationship-rich memories over many noisy time-stamped memories.
+
+## 18. Phase Memory Gate
+
+Every phase must end with memory hygiene:
+
+- Promote only stable decisions, reports, and source-backed conclusions.
+- Link new durable notes to people, projects, goals, decisions, risks, or reports.
+- Keep raw logs out of durable memory.
+- Archive or delete temporary notes.
+- Update relevant MOC notes or Canvas maps.
+- Rebuild or invalidate search indexes when memory changes.
+- Record owner corrections when they affect future behavior.
