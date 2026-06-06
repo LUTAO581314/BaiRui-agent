@@ -94,6 +94,7 @@ Each tool capability must pass three checks before it is treated as usable:
 | Voice | `/voice/cloud` status | Local Whisper returns `asr_status` and `config_ok` |
 | Memory | pre/post memory count | Setup tests do not create noisy durable memories |
 | Search | TrendRadar MCP call or report | Output contains sources or clear uncertainty |
+| Runtime graph | `/memory/graph?limit=80` | Returns governed graph with working/review/durable/noise counts |
 
 ## 6. Server Verification Commands
 
@@ -113,6 +114,7 @@ PASS=$(awk -F': ' '/^password:/{print $2}' /root/bairui-chat-basic-auth.txt)
 curl -sS https://bairui.chat/health
 curl -sS -u "owner:$PASS" -H 'Origin: https://bairui.chat' https://bairui.chat/status
 curl -sS -u "owner:$PASS" -H 'Origin: https://bairui.chat' https://bairui.chat/settings/voice | python3 -m json.tool
+curl -sS -u "owner:$PASS" -H 'Origin: https://bairui.chat' 'https://bairui.chat/memory/graph?limit=80' | python3 -m json.tool
 unset PASS
 ```
 
@@ -189,6 +191,7 @@ The core phase is considered stable only when:
 - Image route exposes `analyze_image` and hides video.
 - Voice route works through local Whisper.
 - Memory count does not jump because of smoke tests.
+- Brain UI memory graph shows runtime memory as candidates, with Obsidian marked as source of truth.
 - Obsidian write-back workflow exists.
 - Chinese phase report is updated.
 - Git secret scan finds no committed key, password, token, or QR material.

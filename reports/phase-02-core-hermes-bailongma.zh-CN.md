@@ -27,6 +27,8 @@
 - 白龙马 `/voice/cloud` 已支持本地 Whisper，并增加了等待重试，避免首次加载模型时抢跑失败。
 - 图片理解工具 `analyze_image` 已接入当前主模型。
 - 视频理解工具暂不暴露给模型，避免阶段跑偏。
+- 白龙马 Brain UI 记忆图谱已升级为“工作记忆候选图”，区分工作记忆、待审核、Obsidian 正本边界、清理风险和关系轴。
+- 新增只读接口 `/memory/graph`，只用于前端展示，不写入、不晋升、不替代 Obsidian。
 
 ## 3. 验证结果
 
@@ -42,6 +44,9 @@
 - 本地 Whisper WebSocket 返回 `asr_status` 和 `config_ok`。
 - 3723 本地语音端口由 Whisper Python 服务监听。
 - `analyze_image` 对 PNG 测试图识别出 `MOXI CORE OK`。
+- `/memory/graph?limit=80` 返回正常：当前 30 条白龙马运行时记忆、66 个图谱节点、197 条连线。
+- Brain UI 前端资源已验证包含 `memory-governance` 状态条和 `/memory/graph` 调用。
+- 本次图谱验证后记忆数量仍为 30，没有新增测试垃圾记忆。
 
 ## 4. 当前缺口
 
@@ -64,6 +69,13 @@
   -> 主人修正或每周整合
   -> 持久双链笔记
   -> 可重建索引
+```
+
+白龙马图谱定位：
+
+```text
+白龙马图谱 = 当前工作记忆/候选记忆的可视化
+Obsidian 图谱 = 主人确认后的长期正本
 ```
 
 规则：
@@ -97,6 +109,7 @@
 - `docs/CORE_MVP_RUNBOOK.md`：核心 Hermes + 白龙马验收手册。
 - `docs/OBSIDIAN_WRITEBACK_WORKFLOW.md`：Obsidian 写回、准入、纠错、清理流程。
 - `scripts/check-core-mvp.sh`：服务器核心能力检查脚本。
+- 白龙马服务器端 `/memory/graph` 只读接口和 Brain UI 记忆治理状态条。
 
 已同步：
 

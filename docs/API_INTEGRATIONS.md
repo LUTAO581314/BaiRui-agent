@@ -70,6 +70,7 @@ Verified current state:
 - TrendRadar MCP is enabled for Hermes at `127.0.0.1:3333/mcp`.
 - Local Whisper `tiny` is installed in a dedicated virtual environment and reachable through BaiLongma voice WebSocket flow.
 - BaiLongma image understanding tool is available through `analyze_image`; video is intentionally not exposed.
+- BaiLongma Brain UI exposes a read-only governed memory graph through `/memory/graph`; Obsidian remains the durable source of truth.
 
 Known gaps:
 
@@ -204,7 +205,8 @@ The current core MVP should prove:
 3. BaiLongma can use local Whisper for voice input.
 4. BaiLongma can analyze one image through `analyze_image`.
 5. Memory growth is governed by explicit intake, review, and cleanup rules.
-6. Each completed phase writes a Chinese report.
+6. BaiLongma can visualize runtime memory as a governed candidate graph without promoting it automatically.
+7. Each completed phase writes a Chinese report.
 
 Operational runbook:
 

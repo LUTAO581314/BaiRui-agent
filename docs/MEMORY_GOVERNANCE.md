@@ -115,6 +115,29 @@ Use:
 | Structured index | MOC note | Human-readable entry point for a topic |
 | Filtered table | Bases or Dataview-like workflow | Review active tasks, stale notes, reports |
 
+### 5.1 BaiLongma Runtime Graph Position
+
+BaiLongma Brain UI can show a graph, but its graph is a runtime visualization layer, not the final memory store.
+
+Current server implementation:
+
+- `GET /memory/graph` exposes a read-only governed graph for the Brain UI.
+- The graph separates working memory, review candidates, Obsidian source-of-truth boundary, cleanup risk, and relationship axes.
+- It does not write memory, promote memory, or change Obsidian notes.
+- It visualizes the current BaiLongma runtime memory pool so the owner can see what the agent is associating.
+
+Recommended split:
+
+```text
+BaiLongma graph
+  -> live working-memory and candidate visualization
+
+Obsidian graph
+  -> durable owner-approved linked memory
+```
+
+This keeps BaiLongma lively and inspectable without letting a beautiful graph become a hidden source of truth.
+
 ## 6. Recommended Obsidian Memory Layout
 
 ```text

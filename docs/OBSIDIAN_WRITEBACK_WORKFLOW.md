@@ -228,3 +228,29 @@ side effect: no permanent promotion without review
 ```
 
 This keeps the system useful while preventing memory from turning into hidden clutter.
+
+## 11. BaiLongma Graph Boundary
+
+The BaiLongma Brain UI graph is useful for inspection and live interaction.
+
+Use it to see:
+
+- current working memories,
+- candidate memories,
+- repeated concepts,
+- people, project, tag, and concept axes,
+- possible cleanup risk.
+
+Do not treat it as automatic long-term memory.
+
+Promotion still goes through:
+
+```text
+BaiLongma graph node
+  -> memory intake gate
+  -> 00-Inbox/needs-review
+  -> owner correction or weekly consolidation
+  -> durable Obsidian note
+```
+
+The graph may display `Obsidian 正本` as a boundary node, but it does not mean the displayed runtime memory has already been written into Obsidian.
