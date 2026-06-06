@@ -6,6 +6,7 @@
 - Agent execution must be logged.
 - High-risk operations require explicit owner confirmation.
 - Each tool should have a narrow role.
+- Company management and personal companionship should be separated by channel and permission.
 - Deployment should be reproducible from this repository.
 - Secrets must stay outside committed files.
 
@@ -13,16 +14,29 @@
 
 ```text
 Interaction Layer
-  Feishu bot
-  WeChat bridge
+  Feishu company-management bot
+  WeChat personal-companion bridge
   BaiLongma UI
   CLI
+
+Channel Policy Layer
+  company-management plane
+  personal-companion plane
+  admin plane
+  approval gate
 
 Orchestration Layer
   Hermes
   job scheduler
   tool router
   MCP adapters
+
+Company Operations Layer
+  Feishu tasks
+  Feishu bitable
+  Feishu docs/wiki
+  Feishu approvals
+  Feishu calendar
 
 Knowledge Layer
   Obsidian vault
@@ -53,6 +67,7 @@ External Data Layer
 ```text
 Owner command
   -> Feishu / WeChat / CLI
+  -> channel policy router
   -> BaiLongma or Hermes command router
   -> Hermes task planner
   -> tools and data sources
@@ -74,7 +89,33 @@ Raw input
 
 Obsidian remains the canonical readable record. Vector search is an index, not the source of truth.
 
-### 3.3 API-First Multimodal Flow
+### 3.3 Company Management Flow
+
+```text
+Feishu project/customer/task/report data
+  -> Hermes company-management jobs
+  -> delay, risk, missing-report, and follow-up detection
+  -> low-risk reminders
+  -> owner approval queue for sensitive actions
+  -> Feishu company summary
+  -> Obsidian durable operating report
+```
+
+Feishu is the system of action for company workflows. Obsidian is the durable memory and review archive.
+
+### 3.4 Personal Companionship Flow
+
+```text
+Owner personal message or scheduled check-in
+  -> WeChat or BaiLongma
+  -> personal context retrieval
+  -> lightweight reply or reminder
+  -> important facts written to Obsidian
+```
+
+WeChat should be personal and lightweight. Company decisions, money, approvals, and employee management should stay in Feishu or owner-confirmed admin flows.
+
+### 3.5 API-First Multimodal Flow
 
 ```text
 Image / PDF / video / web URL
@@ -88,7 +129,7 @@ Image / PDF / video / web URL
 
 The VPS should not run heavy local image or video models by default. It should coordinate API calls, validate outputs, keep logs, and write final artifacts.
 
-### 3.4 Simulation Flow
+### 3.6 Simulation Flow
 
 ```text
 Obsidian notes
@@ -114,6 +155,14 @@ vault/
     mirofish.md
     guardrails.md
   30-Projects/
+  35-Company/
+    operating-briefs/
+    customers/
+    sales-pipeline/
+    receivables/
+    risks/
+    meetings/
+    approvals/
   40-Research/
   50-Markets/
     watchlist.md
@@ -146,6 +195,7 @@ The current lightweight VPS profile is enough for:
 
 - Hermes orchestration.
 - Feishu and callback adapters.
+- Feishu company-management workflows.
 - Search/crawl API calls.
 - OCR, image, speech, and video API routing.
 - Lightweight local indexing.
@@ -225,3 +275,49 @@ Plan for:
 - Compromised token.
 
 Each failure should degrade to notification and manual intervention rather than silent autonomous action.
+
+## 11. Permission Planes
+
+### Company Plane
+
+Primary channel: Feishu.
+
+Allowed by default:
+
+- Read tasks, tables, docs, calendars, and reports.
+- Generate summaries.
+- Send reminders.
+- Draft documents.
+- Detect risks and missing updates.
+
+Requires owner approval:
+
+- Approving expenses.
+- Changing compensation.
+- Sending external commitments.
+- Changing legal or contract documents.
+- HR disciplinary actions.
+
+### Personal Plane
+
+Primary channel: WeChat or BaiLongma.
+
+Allowed by default:
+
+- Daily check-ins.
+- Personal reminders.
+- Idea capture.
+- Personal summaries.
+
+Not allowed by default:
+
+- Company-wide instructions.
+- Money movement.
+- Legal commitments.
+- Account or credential changes.
+
+### Admin Plane
+
+Primary channel: CLI or protected web UI.
+
+Requires owner confirmation for any destructive or externally visible operation.

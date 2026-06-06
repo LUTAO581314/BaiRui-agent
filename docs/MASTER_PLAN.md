@@ -2,12 +2,14 @@
 
 ## 1. Vision
 
-Build a private, long-running personal agent system that can remember, research, simulate, summarize, and assist with execution while keeping the owner in control.
+Build a private, long-running personal and company agent system that can remember, research, simulate, summarize, manage workflows, and assist with execution while keeping the owner in control.
 
 The system should become a practical personal operating layer:
 
-- A durable memory base for projects, people, preferences, decisions, research, and agent activity.
+- A durable memory base for projects, people, company operations, preferences, decisions, research, and agent activity.
 - A backend agent runner for scheduled jobs, web research, tool execution, monitoring, and structured workflows.
+- A Feishu-based company management console for projects, tasks, customer follow-up, daily reports, approvals, and operating dashboards.
+- A WeChat-facing personal companionship and lightweight reminder channel.
 - A Chinese interaction surface through Feishu, WeChat-compatible bridges, and optional BaiLongma UI/persona features.
 - A scenario simulation lab for complex decisions, market analysis, product planning, and multi-agent debate.
 - A research-first financial analysis workflow with strict safety boundaries.
@@ -19,6 +21,8 @@ The system should become a practical personal operating layer:
 | --- | --- | --- |
 | Durable memory | Obsidian | Human-readable long-term memory, backlinks, project notes, reports, decision records |
 | Runtime agent | Hermes | Server-side automation, scheduled jobs, research, tool execution, MCP and skill orchestration |
+| Company console | Feishu | Tasks, reports, projects, approvals, meetings, dashboards, and owner confirmation loops |
+| Personal channel | WeChat | Companionship, personal reminders, quick capture, lightweight alerts |
 | Chinese interaction | BaiLongma | WeChat/Feishu-style interaction, Brain UI, persona memory, Chinese UX |
 | Simulation lab | MiroFish | Multi-agent scenario simulation, prediction, decision rehearsal, report generation |
 | Messaging | Feishu first, WeChat later | Alerts, daily summaries, manual commands, confirmation loops |
@@ -37,12 +41,16 @@ Owner
 Feishu / WeChat / Web UI / CLI
   |
   v
-BaiLongma interaction layer
+Channel router
+  |-- Feishu company-management plane
+  |-- WeChat personal-companion plane
+  |-- CLI/admin plane
   |
   v
 Hermes backend agent runner
   |
   +--> Obsidian durable memory
+  +--> Feishu company tables, tasks, docs, approvals, calendar
   +--> MiroFish simulation lab
   +--> Market/news/research tools
   +--> Server and project automation
@@ -103,7 +111,38 @@ It should handle:
 
 BaiLongma should not replace Obsidian as the durable memory store. It can keep interaction memory, but final durable records should be written to Obsidian.
 
-### 4.4 MiroFish
+### 4.4 Feishu
+
+Feishu is the company management plane.
+
+It should handle:
+
+- Company task assignment and reminders.
+- Project progress tracking.
+- Customer and sales pipeline tables.
+- Receivables and risk tracking.
+- Daily, weekly, and monthly operating reports.
+- Meeting scheduling and meeting-note workflows.
+- Approval reminders and owner confirmation loops.
+- Employee status collection.
+
+Feishu should be the first production interaction channel because it has official app, bot, task, document, calendar, approval, and table APIs. It should not be used to silently approve money movement, HR actions, public promises, or contract commitments.
+
+### 4.5 WeChat
+
+WeChat is the personal companionship and lightweight reminder plane.
+
+It should handle:
+
+- Personal daily check-ins.
+- Quick capture of ideas.
+- Lightweight reminders.
+- Personal summaries.
+- Carefully selected important alerts.
+
+WeChat should not be the first channel for company operations. Personal-account bridges should remain optional and risk-reviewed.
+
+### 4.6 MiroFish
 
 MiroFish is the scenario simulation and report lab.
 
@@ -143,7 +182,39 @@ Output:
 - One concise notification.
 - One complete Obsidian report.
 
-### 5.2 Financial Research Pipeline
+### 5.2 Company Management Loop
+
+Feishu should become the first real production scenario.
+
+Inputs:
+
+- Project table.
+- Customer table.
+- Sales pipeline.
+- Receivables table.
+- Employee daily reports.
+- Meeting notes.
+- Approval status.
+- Risk register.
+
+Process:
+
+1. Hermes collects Feishu table, task, calendar, document, and approval signals.
+2. Hermes identifies delayed tasks, missing reports, stalled deals, overdue receivables, and unhandled risks.
+3. Hermes drafts reminders or summaries.
+4. Low-risk reminders are sent automatically.
+5. Sensitive actions ask the owner for approval.
+6. Final reports are written to Obsidian and Feishu docs.
+
+Output:
+
+- Morning operating briefing.
+- Midday exception alerts.
+- Evening company summary.
+- Weekly management report.
+- Owner approval queue.
+
+### 5.3 Financial Research Pipeline
 
 Inputs:
 
@@ -175,7 +246,7 @@ Output:
 
 Real trading must remain disabled until a separate approval and safety design is completed.
 
-### 5.3 Decision Simulation
+### 5.4 Decision Simulation
 
 Use MiroFish when the owner needs a structured simulation.
 
@@ -195,7 +266,7 @@ Workflow:
 4. Export the report.
 5. Write report and final decision back to Obsidian.
 
-### 5.4 Personal Command Center
+### 5.5 Personal Command Center
 
 The owner should be able to ask:
 
@@ -208,7 +279,7 @@ The owner should be able to ask:
 
 The system should answer from both durable memory and current research, and it should clearly separate old memory from newly fetched information.
 
-### 5.5 API-First Multimodal Intelligence
+### 5.6 API-First Multimodal Intelligence
 
 The current lightweight VPS should not run large local vision or video models. It should run:
 
@@ -285,6 +356,8 @@ Deliverables:
 - Message command router.
 - Daily briefing push.
 - Manual approval command format.
+- Company-management tables for projects, customers, sales pipeline, receivables, risks, and daily reports.
+- Morning briefing, exception alerts, and evening company summary.
 
 ### Phase 4: Financial Research MVP
 
@@ -346,7 +419,8 @@ These decisions must be made before runtime deployment:
 
 - Model provider: OpenAI, OpenRouter, Anthropic, local Ollama, or mixed.
 - Domain name and HTTPS strategy.
-- Feishu first or WeChat first.
+- Feishu app permissions and company-management table schema.
+- WeChat bridge risk acceptance and channel boundary.
 - Whether BaiLongma should run on the same VPS or separately.
 - Whether MiroFish should run only on demand or as a persistent service.
 - Financial data provider.
@@ -359,11 +433,14 @@ These decisions must be made before runtime deployment:
 The first successful version should prove:
 
 - The owner can send a command from Feishu or CLI.
+- The owner can receive a Feishu company briefing.
+- The system can identify one delayed task, overdue follow-up, or company risk from structured data.
 - Hermes can complete a research task.
 - The result is written to Obsidian.
 - A short summary is pushed back to the owner.
 - The system keeps logs and can be audited.
 - No high-risk action happens without confirmation.
+- Every completed phase includes a Chinese owner-facing report.
 
 ## 9. Non-Goals for the First Version
 
@@ -380,7 +457,8 @@ Start with:
 ```text
 Hermes on VPS
 + Obsidian durable memory
-+ Feishu notification and command bot
++ Feishu company-management bot
++ Feishu project/customer/sales/risk tables
 + research-only financial watchlist
 ```
 

@@ -10,12 +10,16 @@ Tasks:
 - Add architecture.
 - Add risk guardrails.
 - Add implementation roadmap.
+- Add optimized company/personal/backend architecture.
+- Add Chinese phase report.
+- Add Chinese reporting policy for every future phase.
 - Push to GitHub.
 
 Exit criteria:
 
 - Repository clearly explains the intended system.
 - Next engineer or agent can continue from the docs.
+- A Chinese phase report exists for the owner.
 
 ## Phase 1: Hermes VPS MVP
 
@@ -33,14 +37,43 @@ Tasks:
 - Start Hermes.
 - Add health check.
 - Document start/stop/update commands.
+- Write a Chinese phase report after deployment.
 
 Exit criteria:
 
 - Hermes runs on the VPS.
 - It can complete one safe command or research task.
 - Logs are visible.
+- A Chinese report records deployment result, access method, risks, and next steps.
 
-## Phase 2: Obsidian Memory MVP
+## Phase 2: Feishu Company Management MVP
+
+Goal: make Feishu the first production company-management surface.
+
+Tasks:
+
+- Create Feishu app.
+- Configure event subscription.
+- Add company bot.
+- Create project table.
+- Create customer table.
+- Create sales pipeline table.
+- Create receivables table.
+- Create daily report table.
+- Create risk register.
+- Add morning briefing job.
+- Add evening summary job.
+- Add owner approval queue.
+- Write a Chinese phase report.
+
+Exit criteria:
+
+- Owner receives a company briefing in Feishu.
+- Agent can detect one delayed task, missed follow-up, or high-risk item.
+- Sensitive actions wait for owner approval.
+- A Chinese report records configured tables, bot behavior, approval boundaries, and remaining risks.
+
+## Phase 3: Obsidian Memory MVP
 
 Goal: make Obsidian the durable memory base.
 
@@ -59,18 +92,19 @@ Exit criteria:
 - Hermes can write a report into the vault.
 - The owner can read and edit the result directly.
 
-## Phase 3: Feishu MVP
+## Phase 4: Feishu Workflow Hardening
 
-Goal: add a stable messaging channel before WeChat.
+Goal: harden Feishu from a bot into a reliable company-management workflow.
 
 Tasks:
 
-- Create Feishu app.
-- Configure event subscription.
-- Build or deploy callback adapter.
 - Add command parser.
 - Add daily briefing push.
 - Add manual approval response pattern.
+- Add meeting-note workflow.
+- Add task reminder workflow.
+- Add weekly management report.
+- Add structured logs.
 
 Exit criteria:
 
@@ -78,7 +112,7 @@ Exit criteria:
 - System can push one daily briefing.
 - Sensitive actions require approval.
 
-## Phase 4: Research and Market Watch
+## Phase 5: Research and Market Watch
 
 Goal: create a useful research pipeline without trading.
 
@@ -98,7 +132,7 @@ Exit criteria:
 - Output is research-only.
 - No broker or trading API is connected.
 
-## Phase 4.5: Search and Multimodal API Layer
+## Phase 6: Search and Multimodal API Layer
 
 Goal: let the system search, read images, transcribe speech, and summarize videos through APIs while keeping the VPS lightweight.
 
@@ -121,7 +155,7 @@ Exit criteria:
 - Results are written to Obsidian.
 - No heavy local model is required on the VPS.
 
-## Phase 5: BaiLongma Interaction Layer
+## Phase 7: BaiLongma Interaction Layer
 
 Goal: add Chinese persona and richer interaction.
 
@@ -138,7 +172,7 @@ Exit criteria:
 - Owner can interact in Chinese through BaiLongma.
 - Important results still write back to Obsidian.
 
-## Phase 6: MiroFish Simulation Lab
+## Phase 8: MiroFish Simulation Lab
 
 Goal: add structured multi-agent simulation.
 
@@ -156,7 +190,7 @@ Exit criteria:
 - A simulation can start from Obsidian context.
 - The final report returns to Obsidian.
 
-## Phase 7: WeChat Bridge Review
+## Phase 9: WeChat Bridge Review
 
 Goal: support WeChat only within acceptable risk boundaries.
 
@@ -175,7 +209,7 @@ Exit criteria:
 - Owner understands trade-offs.
 - No high-risk automation is enabled by default.
 
-## Phase 8: Operations Hardening
+## Phase 10: Operations Hardening
 
 Goal: make the system maintainable.
 
@@ -194,7 +228,7 @@ Exit criteria:
 - System can be recovered from backup.
 - Services can be updated without guesswork.
 
-## Phase 9: Optional Execution Integrations
+## Phase 11: Optional Execution Integrations
 
 Goal: evaluate whether any real-world action APIs should be connected.
 
