@@ -45,6 +45,10 @@ class HermesHandler(BaseHTTPRequestHandler):
                     "service": self.server.config.app_name,
                     "env": self.server.config.env,
                     "safe_mode": self.server.config.safe_mode,
+                    "search": {
+                        "mode": self.server.config.search_mode,
+                        "project": self.server.config.search_project,
+                    },
                     "created_at": utc_now(),
                 },
             )

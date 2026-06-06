@@ -28,6 +28,11 @@ class RuntimeTests(unittest.TestCase):
                 obsidian_vault_dir=base / "obsidian-vault",
                 safe_mode=True,
                 enable_feishu_smoke=False,
+                search_mode="external_project",
+                search_project="trendradar",
+                trendradar_base_url="",
+                trendradar_mcp_command="",
+                searxng_base_url="",
             )
             config.log_dir.mkdir()
             config.data_dir.mkdir()
@@ -51,6 +56,11 @@ class RuntimeTests(unittest.TestCase):
                 obsidian_vault_dir=base / "obsidian-vault",
                 safe_mode=True,
                 enable_feishu_smoke=False,
+                search_mode="external_project",
+                search_project="trendradar",
+                trendradar_base_url="",
+                trendradar_mcp_command="",
+                searxng_base_url="",
             )
             logger = configure_logging(config.log_dir)
             server = build_server(config, logger)
@@ -72,6 +82,8 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(payload["status"], "ok")
                 self.assertEqual(payload["service"], "test-hermes")
                 self.assertTrue(payload["safe_mode"])
+                self.assertEqual(payload["search"]["mode"], "external_project")
+                self.assertEqual(payload["search"]["project"], "trendradar")
             finally:
                 server.shutdown()
                 server.server_close()

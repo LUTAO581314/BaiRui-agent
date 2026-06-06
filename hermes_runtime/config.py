@@ -33,6 +33,11 @@ class RuntimeConfig:
     obsidian_vault_dir: Path
     safe_mode: bool
     enable_feishu_smoke: bool
+    search_mode: str
+    search_project: str
+    trendradar_base_url: str
+    trendradar_mcp_command: str
+    searxng_base_url: str
 
 
 def load_config() -> RuntimeConfig:
@@ -52,4 +57,9 @@ def load_config() -> RuntimeConfig:
         obsidian_vault_dir=obsidian_vault_dir,
         safe_mode=_as_bool(os.getenv("HERMES_SAFE_MODE"), True),
         enable_feishu_smoke=_as_bool(os.getenv("HERMES_ENABLE_FEISHU_SMOKE"), False),
+        search_mode=os.getenv("HERMES_SEARCH_MODE", "external_project"),
+        search_project=os.getenv("HERMES_SEARCH_PROJECT", "trendradar"),
+        trendradar_base_url=os.getenv("HERMES_TRENDRADAR_BASE_URL", ""),
+        trendradar_mcp_command=os.getenv("HERMES_TRENDRADAR_MCP_COMMAND", ""),
+        searxng_base_url=os.getenv("HERMES_SEARXNG_BASE_URL", ""),
     )

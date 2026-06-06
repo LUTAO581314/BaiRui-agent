@@ -2,13 +2,14 @@
 
 ## 1. Decision
 
-The first production version should be API-first.
+The first production version should be API-first for heavy model capabilities, but search is project-runtime-first.
 
 The lightweight VPS is enough when it only runs:
 
 - Hermes orchestration.
 - Feishu and optional WeChat/BaiLongma adapters.
 - API request routing.
+- External search project routing.
 - Queues, retries, and rate limits.
 - Lightweight caching.
 - Obsidian write-back.
@@ -16,7 +17,7 @@ The lightweight VPS is enough when it only runs:
 
 The VPS should not run heavy local models for image recognition, video understanding, or large language model inference.
 
-## 2. Why API-First
+## 2. Why API-First And Project-First
 
 Benefits:
 
@@ -26,6 +27,7 @@ Benefits:
 - Easier upgrades when better models appear.
 - Allows provider switching.
 - Keeps GPU needs out of the first milestone.
+- Allows search to use maintained projects such as TrendRadar or SearXNG without requiring a hosted search provider key.
 
 Trade-offs:
 
@@ -38,7 +40,7 @@ Trade-offs:
 
 | Capability | Recommended First Approach | Notes |
 | --- | --- | --- |
-| Web search | Search API or self-hosted SearXNG | Use source-backed output and cache repeated searches |
+| Web search and trends | External project runtime: TrendRadar first, SearXNG optional | Use source-backed output and cache repeated searches |
 | Web crawling | Firecrawl or equivalent API | Convert pages to Markdown or structured JSON |
 | Private memory search | Meilisearch or lightweight local index | Index Obsidian notes, not a replacement for Obsidian |
 | OCR | OCR API or multimodal OCR | Use for screenshots, PDFs, receipts, tables, and images with text |
@@ -53,9 +55,10 @@ The exact providers can change. The architecture should hide providers behind ad
 
 Search and crawling:
 
+- TrendRadar as the first search/trend/news/RSS runtime.
 - SearXNG for self-hosted metasearch if needed.
 - Firecrawl for crawl and extraction workflows.
-- Tavily, SerpAPI, Brave Search API, or similar for hosted search.
+- Hosted search providers are not part of the current plan unless the owner explicitly changes direction later.
 
 Image and OCR:
 
@@ -76,12 +79,12 @@ Private memory:
 
 ## 5. Adapter Contract
 
-Every API adapter should return a normalized result:
+Every API or external-project adapter should return a normalized result:
 
 ```json
 {
   "provider": "provider-name",
-  "capability": "search|crawl|ocr|image|speech|video|market",
+  "capability": "search|trend|rss|crawl|ocr|image|speech|video|market",
   "input_ref": "url-or-file-id",
   "summary": "short result",
   "structured_data": {},
@@ -149,7 +152,7 @@ decisions or tasks
 
 The first API MVP should prove:
 
-1. Hermes can call a search API.
+1. Hermes can read one search/trend result from an external project runtime.
 2. Hermes can crawl one page and write a source-backed note.
 3. Hermes can analyze one image through a vision/OCR API.
 4. Hermes can summarize one short video through transcript plus frames or a direct video API.
@@ -171,6 +174,7 @@ Recommended order:
 Candidate tools:
 
 - TrendRadar can provide trend/news intelligence through isolated MCP, HTTP, CLI, or report ingestion.
+- SearXNG can provide self-hosted metasearch if plain web search is needed.
 - Graphify can provide corpus graphing and document/code/media knowledge maps, especially for Obsidian and repository analysis.
 
 Each new adapter must define:

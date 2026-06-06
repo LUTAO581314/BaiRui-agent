@@ -118,15 +118,16 @@ Verification:
 - Owner can correct, archive, delete, or relink memory.
 - Search/vector index policy is documented.
 
-## Phase 4: API-First Research and Multimodal Layer
+## Phase 4: Search Runtime and API-First Multimodal Layer
 
-Goal: let the system search, crawl, read images, transcribe speech, and summarize video through APIs.
+Goal: let the system search through external projects, then crawl, read images, transcribe speech, and summarize video through APIs.
 
 Tasks:
 
-- Add search API adapter.
+- Add external search-project adapter.
 - Add crawl/extraction adapter.
-- Evaluate TrendRadar as an isolated external trend/news intelligence runtime.
+- Evaluate and configure TrendRadar as an isolated external trend/news/search runtime.
+- Add optional SearXNG configuration only if plain metasearch is still needed.
 - Add OCR or image-understanding adapter.
 - Add speech transcription workflow.
 - Add video summary workflow.
@@ -136,7 +137,7 @@ Tasks:
 
 Verification:
 
-- One search result is summarized with sources.
+- One TrendRadar or search-project result is summarized with sources.
 - One webpage is extracted to a structured note.
 - One image or OCR task is processed.
 - One speech/video workflow is tested.

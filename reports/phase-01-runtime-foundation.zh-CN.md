@@ -52,7 +52,7 @@
 
 - 连接飞书真实应用。
 - 连接微信。
-- 调用搜索、图像、语音、视频 API。
+- 调用 TrendRadar/SearXNG 搜索项目，或调用图像、语音、视频 API。
 - 写入真实 Obsidian vault。
 - 执行交易或任何高风险动作。
 
@@ -73,6 +73,15 @@ Hermes Runtime
 ```
 
 后续飞书、Obsidian、TrendRadar、Graphify、BaiLongma、MiroFish 都应该作为适配器或外部运行时接入，不直接挤进核心服务。
+
+搜索层纠偏：
+
+```text
+搜索不是必须配置托管搜索服务密钥。
+当前按外部项目运行时接入：
+TrendRadar = 第一优先
+SearXNG = 可选补充
+```
 
 ## 5. 风险与边界
 

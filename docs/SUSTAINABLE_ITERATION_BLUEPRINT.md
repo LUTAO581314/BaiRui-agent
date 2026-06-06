@@ -109,7 +109,8 @@ The repository should keep these document roles clear:
 | `docs/CANDIDATE_PROJECT_EVALUATION.md` | External project fit, license, and adoption plan |
 | `docs/PHASE_01_RUNTIME_FOUNDATION.md` | Minimal Hermes runtime, health checks, deployment commands, and safe-mode defaults |
 | `docs/MEMORY_GOVERNANCE.md` | Memory intake, graph, cleanup, correction, and index policy |
-| `docs/API_INTEGRATIONS.md` | API-first search, OCR, image, speech, and video strategy |
+| `docs/API_INTEGRATIONS.md` | External search runtime plus API-first OCR, image, speech, and video strategy |
+| `docs/SEARCH_RUNTIME.md` | TrendRadar/SearXNG search-project runtime plan |
 | `docs/RISK_AND_GUARDRAILS.md` | Safety, approvals, secrets, trading, WeChat, Feishu, memory risks |
 | `docs/ROADMAP.md` | Phase-by-phase delivery plan |
 | `docs/CHINESE_REPORT_POLICY.md` | Required Chinese owner-facing reporting rule |
@@ -151,7 +152,7 @@ Examples:
 - "Hermes runs on VPS."
 - "Feishu bot sends company briefing."
 - "Obsidian memory vault accepts governed write-back."
-- "Search and image APIs work through adapters."
+- "Search project runtime and image APIs work through adapters."
 
 ### 5.3 Verification
 
@@ -288,15 +289,15 @@ Deliverables:
 - Cleanup schedule.
 - Chinese phase report.
 
-### Phase 4: API-First Research and Multimodal Layer
+### Phase 4: Search Runtime and API-First Multimodal Layer
 
 Goal:
 
-Add external search, crawl, OCR, image, speech, and video intelligence through APIs.
+Add external search-project intelligence, plus crawl, OCR, image, speech, and video intelligence through APIs.
 
 Deliverables:
 
-- Search adapter.
+- Search-project adapter.
 - Web extraction adapter.
 - OCR/image adapter.
 - Speech/video workflow.

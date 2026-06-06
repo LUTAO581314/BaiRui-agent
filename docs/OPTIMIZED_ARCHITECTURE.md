@@ -13,9 +13,9 @@ Personal Companion Plane
   WeChat / BaiLongma
   check-ins, reminders, quick capture, personal summaries
 
-Backend Intelligence Plane
+  Backend Intelligence Plane
   Hermes
-  API-first search, vision, video, research, automation, memory write-back
+  external-project search, API-first vision/video, research, automation, memory write-back
 ```
 
 This separation prevents one chat interface from controlling everything. It also makes the system easier to secure, audit, and expand.
@@ -288,7 +288,7 @@ Hermes on VPS
 + Feishu company bot
 + Feishu project/customer/sales/risk tables
 + Obsidian operating reports
-+ API-first search and summarization
++ external search runtime and summarization
 + owner approval queue
 + Chinese phase report
 ```

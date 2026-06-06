@@ -15,7 +15,7 @@ The system should become a practical personal operating layer:
 - A Chinese interaction surface through Feishu, WeChat-compatible bridges, and optional BaiLongma UI/persona features.
 - A scenario simulation lab for complex decisions, market analysis, product planning, and multi-agent debate.
 - A research-first financial analysis workflow with strict safety boundaries.
-- API-first search, image recognition, speech transcription, and video understanding without running heavy local models on the lightweight VPS.
+- External-project search plus API-first image recognition, speech transcription, and video understanding without running heavy local models on the lightweight VPS.
 - Associative memory governance that prevents noisy, duplicate, stale, or sensitive data from becoming permanent memory.
 
 ## 2. Core Stack
@@ -31,7 +31,8 @@ The system should become a practical personal operating layer:
 | Simulation lab | MiroFish | Multi-agent scenario simulation, prediction, decision rehearsal, report generation |
 | Messaging | Feishu first, WeChat later | Alerts, daily summaries, manual commands, confirmation loops |
 | Financial research | Hermes skills + external data APIs | Watchlists, news, filings, indicators, summaries, risk analysis |
-| Search APIs | SearXNG/Firecrawl/Tavily/SerpAPI or equivalent | Web search, crawling, source extraction, research inputs |
+| Search runtimes | TrendRadar first, SearXNG optional | Web search, hot-news tracking, RSS, trend intelligence, research inputs |
+| Crawl APIs | Firecrawl or equivalent | Webpage extraction and source conversion |
 | Vision APIs | OCR and multimodal model APIs | Image OCR, screenshot analysis, chart reading, document image understanding |
 | Video APIs | Speech-to-text and video understanding APIs | Transcription, scene summaries, timeline extraction, clip analysis |
 | Storage/search | SQLite/Zep/vector store as needed | Machine-readable recall and semantic search |
@@ -301,7 +302,8 @@ Search, image recognition, OCR, speech transcription, and video understanding sh
 
 Recommended capability split:
 
-- Search: SearXNG, Firecrawl, Tavily, SerpAPI, Brave Search API, or similar.
+- Search: TrendRadar as external trend/news/search runtime; SearXNG optional for self-hosted metasearch.
+- Crawl/extraction: Firecrawl or equivalent API if webpage extraction is needed.
 - Private memory search: Meilisearch or a lightweight local index over Obsidian notes.
 - OCR: PaddleOCR service, cloud OCR, or multimodal model OCR API.
 - Image understanding: Qwen-VL, GPT vision, Claude vision, Gemini vision, or equivalent API.
@@ -312,7 +314,8 @@ Default rule:
 
 ```text
 VPS = orchestrator and memory writer
-External APIs = heavy search, vision, speech, and video intelligence
+External projects = search, trend, RSS, and hot-news intelligence
+External APIs = heavy crawl, vision, speech, and video intelligence
 Obsidian = durable final memory
 ```
 
@@ -388,11 +391,12 @@ Deliverables:
 - No real trading.
 - Chinese phase report.
 
-### Phase 4.5: Search and Multimodal API MVP
+### Phase 4.5: Search Runtime and Multimodal API MVP
 
 Deliverables:
 
-- Search API adapter.
+- TrendRadar external-runtime adapter.
+- Optional SearXNG metasearch adapter.
 - Web crawling/extraction adapter.
 - OCR API adapter.
 - Image understanding API adapter.
@@ -447,7 +451,7 @@ These decisions must be made before runtime deployment:
 - Whether BaiLongma should run on the same VPS or separately.
 - Whether MiroFish should run only on demand or as a persistent service.
 - Financial data provider.
-- Search API provider.
+- Search runtime provider or project.
 - OCR/image/video API providers.
 - Whether any broker/trading API will ever be connected.
 

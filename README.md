@@ -12,7 +12,7 @@ The goal is not to install one chatbot. The goal is to build a layered AI operat
 - MiroFish acts as a scenario simulation and report lab.
 - Feishu and WeChat deliver summaries, alerts, and human confirmation loops.
 - Financial workflows stay research-first and require explicit human approval before any real trading action.
-- Search, image recognition, and video understanding are API-first integrations; the lightweight VPS runs orchestration, not heavy local models.
+- Search uses external project runtimes such as TrendRadar or SearXNG; image recognition, speech, and video understanding remain API-first integrations. The lightweight VPS runs orchestration, not heavy local models.
 
 ## Current Status
 
@@ -28,6 +28,7 @@ The first runtime stays in safe mode. Feishu, WeChat, Obsidian write-back, Trend
 - [Optimized Architecture](docs/OPTIMIZED_ARCHITECTURE.md)
 - [Candidate Project Evaluation](docs/CANDIDATE_PROJECT_EVALUATION.md)
 - [Phase 01 Runtime Foundation](docs/PHASE_01_RUNTIME_FOUNDATION.md)
+- [Search Runtime Strategy](docs/SEARCH_RUNTIME.md)
 - [Memory Governance](docs/MEMORY_GOVERNANCE.md)
 - [API Integrations](docs/API_INTEGRATIONS.md)
 - [Roadmap](docs/ROADMAP.md)
@@ -61,7 +62,7 @@ Build a minimal but useful system through the sustainable iteration loop:
 3. Create the governed Obsidian memory structure.
 4. Add Feishu company tables for projects, customers, sales pipeline, receivables, risks, and employee reports.
 5. Write every important output back to Obsidian through the memory intake gate.
-6. Add external APIs for search, OCR, image understanding, speech transcription, and video understanding.
+6. Add external search projects, plus APIs for OCR, image understanding, speech transcription, and video understanding.
 7. End every phase with verification, memory cleanup, and a Chinese owner report.
 
 WeChat companionship, BaiLongma persona features, MiroFish simulations, and trading execution should be added only after the company-management and memory loop is stable.
