@@ -73,7 +73,7 @@ Verification:
 
 ## Phase 2: Core Hermes and BaiLongma MVP
 
-Status: core MVP verified; still open for Obsidian automation, memory dream actions, and TTS.
+Status: core MVP verified; still open for Obsidian automation, memory dream actions, and provider-grade TTS.
 
 Goal: stabilize the personal core before expanding into company workflows or video.
 
@@ -104,7 +104,10 @@ Completed:
 - TrendRadar MCP is enabled for Hermes.
 - WeChat ClawBot has restored saved credentials.
 - Local Whisper `tiny` is installed and returns real transcripts through BaiLongma `/voice/cloud`.
+- Brain UI has browser SpeechSynthesis fallback for web voice replies when cloud TTS credentials are missing.
 - BaiLongma image understanding is available through `analyze_image`.
+- Brain UI image attachments and WeChat ClawBot inbound images both route to `analyze_image`; one real WeChat image retest has passed.
+- WeChat image-reading turns have a first performance guard: higher local priority, locked queue handling, typing hint attempt, and intake latency logging.
 - Video understanding is intentionally not exposed.
 - Write Phase 02 Chinese report. Completed.
 - Add a core capability verification runbook. Completed locally.
@@ -116,7 +119,7 @@ Remaining:
 
 - Turn Obsidian write-back into a Hermes tool or script.
 - Turn BaiLongma memory dream suggestions into reviewed forget/merge/inbox/promote actions.
-- Configure TTS only after the owner provides MiniMax, Doubao, OpenAI TTS, or another approved key.
+- Configure provider-grade TTS only after the owner provides MiniMax, Doubao, OpenAI TTS, or another approved key.
 - Keep BaiLongma web-search settings empty unless a dedicated provider or SearXNG is selected; use Hermes + TrendRadar first.
 
 Verification:
@@ -133,27 +136,63 @@ Verification:
 
 Goal: make Feishu the first useful production surface.
 
+Reference plan: [Feishu Company Management Plan](FEISHU_COMPANY_MANAGEMENT.md).
+
 Tasks:
 
-- Create Feishu app.
-- Configure event subscription.
-- Add company bot.
-- Create project table.
-- Create customer table.
-- Create sales pipeline table.
-- Create receivables table.
-- Create daily report table.
-- Create risk register.
-- Add morning briefing job.
-- Add owner approval queue.
+- Owner retests one real Feishu group @ event and confirms the reply appears in the same group.
+- Verify one real Feishu single-chat event after the current identity patch.
+- Review latest Feishu logs and conversation rows after real retest.
+- Event idempotency by `event_id` or `message_id`. Completed for the first Feishu callback implementation.
+- Fast callback ACK plus async processing queue. Completed for the first Feishu callback implementation.
+- Feishu group-reply routing by `chat_id`. Completed for the first Feishu callback implementation.
+- Add Feishu contact, department, role, and group/project context mapping.
+- Add read-only document and file search.
+- Add read-only Bitable record search.
+- Create project, customer, sales, receivables, task, risk, daily report, approval queue, and audit-log tables.
+- Add morning briefing and evening summary jobs.
+- Add owner confirmation cards before any task/calendar/table write.
 - Write Phase 03 Chinese report.
 
 Verification:
 
-- Owner receives a company briefing in Feishu.
+- Owner receives a company briefing in Feishu based on real Feishu data.
 - Agent can detect one delayed task, missed follow-up, or risk item.
+- Agent can answer one company-document or Bitable question with a source link.
 - Sensitive actions wait for owner approval.
 - Report records configured tables, permissions, and remaining risks.
+
+## Phase 3.5: Optimized Technical Path And Public Copy Pack
+
+Status: completed locally for the documentation path; website publishing is the
+next optional step.
+
+Goal: make the architecture easy to copy, review, and attribute without exposing
+private deployment details.
+
+Completed:
+
+- Add [Optimized Technical Path](OPTIMIZED_TECHNICAL_PATH.md) as the internal
+  current engineering route.
+- Rewrite [Public Technical Path](../public-ai-brief/TECHNICAL_PATH.md) as a
+  white-label, copyable architecture and implementation sequence.
+- Add [Batch Copy Pack](../public-ai-brief/COPY_PACK.md) for classmates and
+  external AI reviewers.
+- Add [Attribution Rules](../public-ai-brief/ATTRIBUTION.md) with the required
+  repository source line.
+- Update README and public brief entry points.
+- Ignore local remote mirrors and exported public-brief folders.
+
+Verification:
+
+- Public copy materials must export without blocked private runtime terms.
+- Secret scan must not find real credentials in committed docs.
+- Chinese phase report records the optimization decision and next actions.
+
+Next:
+
+- Add or update the public website page from the public copy pack.
+- Push the documentation update to GitHub after verification.
 
 ## Phase 4: Obsidian Governed Memory MVP
 

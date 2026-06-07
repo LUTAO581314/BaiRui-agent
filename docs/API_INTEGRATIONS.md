@@ -65,30 +65,41 @@ These out-of-scope capabilities can be added later after the core loop is stable
 Verified current state:
 
 - BaiLongma backend is running behind `https://bairui.chat/brain-ui.html`.
+- MOXI Brain UI has a visible hotspot button that opens the current hot-list/public-opinion panel.
 - Main model is configured as a custom OpenAI-compatible endpoint using `gpt-5.5`.
 - Hermes is installed and available on the server.
 - TrendRadar MCP is enabled for Hermes at `127.0.0.1:3333/mcp`.
-- Local Whisper `tiny` is installed in a dedicated virtual environment and reachable through BaiLongma voice WebSocket flow.
-- BaiLongma image understanding tool is available through `analyze_image`; video is intentionally not exposed.
+- BaiLongma `/hotspots` returns real hot-list content across Douyin, Xiaohongshu, WeChat hot topics, and Weibo, plus a TrendRadar-backed news/RSS feed for the bottom public-opinion event stream. This is a visual hot-list surface; deeper public-opinion analysis should be routed to Hermes + TrendRadar or a dedicated public-opinion runtime.
+- Local Whisper `tiny` is installed in a dedicated virtual environment and verified through BaiLongma voice WebSocket flow.
+- Brain UI voice output now has a no-cost browser SpeechSynthesis fallback when `/tts/stream` fails because provider credentials are missing.
+- BaiLongma image understanding tool is available through `analyze_image`; direct GPT-5.5 vision smoke tests work. Brain UI chat now accepts pasted, dragged, or selected image attachments and routes them into `analyze_image`. WeChat ClawBot inbound image items now use the same read-image path after server-side media download.
 - BaiLongma Brain UI exposes a read-only governed memory graph through `/memory/graph`; Obsidian remains the durable source of truth.
+- Feishu personal/bot chat webhook is configured and verified at `https://bairui.chat/social/feishu/webhook`; callback challenge passes through Nginx without Basic Auth, encrypted callback verification is supported, and the backend can obtain a Feishu tenant access token.
+- Feishu inbound identity now keeps each Feishu sender as a separate company-context user (`FEISHU:<open_id>`) while preserving `feishu:open_id:<open_id>` as the reply target.
 
 Known gaps:
 
 - BaiLongma's own `/settings/web-search` provider keys are empty. Search should use Hermes + TrendRadar first.
-- TTS provider settings exist, but no TTS key is configured yet.
-- MiniMax is not configured yet, so MiniMax image/music/lyrics/TTS generation stays disabled.
-- Feishu credentials are not configured yet.
+- TTS provider settings exist, but no production TTS key is configured yet. Browser speech fallback is usable for web testing, but it is not a stable provider-grade TTS path.
+- MiniMax is not required for image understanding, including Brain UI image attachments and WeChat inbound image reading. MiniMax is not configured yet, so MiniMax image/music/lyrics/TTS generation stays disabled. `image2` / image generation remains a separate provider capability and is not fixed by the GPT-5.5 vision path.
+- Feishu chat callback and sender identity separation are ready, but file/document and company-management workflows are not implemented yet.
 
 ## 5. Capability Map
 
 | Capability | Recommended First Approach | Notes |
 | --- | --- | --- |
 | Web search and trends | External project runtime: TrendRadar first, SearXNG optional | Use source-backed output and cache repeated searches |
+| Hot-list/public-opinion panel | MOXI Brain UI `/hotspots` first, TrendRadar/deeper runtime for analysis | Panel shows crawled hot lists and TrendRadar feed cards; Hermes can later send selected topics to TrendRadar for clustering, risk scoring, and reports |
 | Web crawling | Firecrawl or equivalent API | Convert pages to Markdown or structured JSON |
 | Private memory search | Meilisearch or lightweight local index | Index Obsidian notes, not a replacement for Obsidian |
 | OCR | Active multimodal model first, dedicated OCR API later | Use for screenshots, PDFs, receipts, tables, and images with text |
-| Image understanding | Active multimodal model API | Implemented as BaiLongma `analyze_image` using the current `gpt-5.5` gateway |
+| Image understanding | Active multimodal model API | Implemented as BaiLongma `analyze_image` using the current `gpt-5.5` gateway; Brain UI and WeChat inbound images share this path; does not require MiniMax |
+| Image generation | Dedicated image provider | Separate from image understanding; `image2` is still unavailable until a generation provider/key is configured |
 | Speech transcription | Local Whisper tiny first, cloud ASR later if needed | Current transition solution is local Whisper on the VPS |
+| Feishu chat and identity | Official Feishu event callback first | Webhook path must bypass site Basic Auth; encrypted events are supported; each Feishu sender is separated by open_id |
+| Feishu files and docs | Read-only Feishu Drive/Docs/Search APIs first | Add only after permissions, tenant installation, and audit rules are explicit |
+| Feishu company data | Bitable read-only first, write actions later | Projects, customers, tasks, receivables, risks, reports, approval queue, and audit log become the first operating tables |
+| Feishu tasks/calendar/approval | Confirmation-gated tools | Read first; create/update/approve only after cards, policy gates, and audit logs exist |
 | Video understanding | Deferred | Do not expose in the current core phase |
 | Financial data | Market data API | Research-only until a separate trading safety design exists |
 
@@ -99,9 +110,17 @@ The exact providers can change. The architecture should hide providers behind ad
 Search and crawling:
 
 - TrendRadar as the first search/trend/news/RSS runtime.
+- MOXI hotspot panel as the first visual surface for already-collected hot lists and external trend feed cards.
 - SearXNG for self-hosted metasearch if needed.
 - Firecrawl for crawl and extraction workflows.
 - Hosted search providers are not part of the current plan unless the owner explicitly changes direction later.
+
+Model routing for public-opinion work:
+
+- `gpt-5.4-mini` or another cheap/fast model can handle high-volume labels, clustering, deduplication, sentiment tags, risk tags, and brief summaries.
+- `gpt-5.4` can handle readable summaries, topic clustering, hotspot digests, daily/weekly public-opinion drafts, and medium-depth trend synthesis.
+- `gpt-5.5` or another strongest available model should be reserved for final synthesis, strategy judgment, sensitive business decisions, or owner-facing reports.
+- Crawling and source collection must remain a tool/runtime responsibility, not a model responsibility.
 
 Image and OCR:
 
@@ -124,6 +143,15 @@ Private memory:
 - Obsidian remains the source of truth.
 - Meilisearch or SQLite FTS can provide fast local search.
 - Vector search can be added as an index, not as the only memory store.
+
+Feishu company workflow:
+
+- Use the official Feishu event callback or Channel SDK as the conversation layer.
+- Treat Feishu CLI/OpenAPI MCP as an execution layer, not the public entry layer.
+- Start with real-message verification, group @ context, contact/department lookup, and read-only document/Bitable search.
+- Require explicit owner confirmation cards before task creation, calendar creation, table writes, announcements, or approval actions.
+- Keep a structured audit log for actor, action, tool, input summary, output summary, and confirmation result.
+- See [Feishu Company Management Plan](FEISHU_COMPANY_MANAGEMENT.md) for the full staged plan.
 
 ## 7. Adapter Contract
 

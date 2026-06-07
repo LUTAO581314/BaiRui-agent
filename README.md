@@ -19,18 +19,24 @@ The goal is not to install one chatbot. The goal is to build a layered AI operat
 Phase 0 planning and Phase 1 runtime foundation are complete. Phase 2 is now focused on the core Hermes + BaiLongma loop:
 
 - BaiLongma Brain UI is running behind the protected `bairui.chat` domain.
+- The public-facing Brain UI brand, browser title, agent profile name, and mark now show `MOXI`; BaiLongma remains the underlying runtime/project name.
 - Hermes is installed on the VPS.
 - TrendRadar is enabled as an isolated Hermes MCP search/trend runtime.
 - The active BaiLongma model path uses the custom GPT-5.5 gateway.
-- Local Whisper is configured as the transitional voice-input ASR.
+- Local Whisper is configured and verified as the transitional voice-input ASR.
+- Cloud TTS still needs an approved provider key; the Brain UI now falls back to browser speech synthesis when cloud TTS is unavailable.
 - Image understanding is exposed through `analyze_image`.
 - Video understanding is intentionally frozen for this phase.
 - BaiLongma memory is treated as working memory; Obsidian remains the durable memory source of truth.
+- Feishu callback, encrypted event handling, sender identity separation, event idempotency, fast ACK, and group-reply routing are implemented; real group retest by the owner is still required.
 
-Current priority: stabilize Hermes, governed human-like memory, tool calling, image understanding, and voice input before expanding into Feishu, video, TTS, simulations, or trading.
+Current priority: finish the stable core while continuing Feishu Phase 3 with owner retesting, company identity mapping, read-only company data, and owner-confirmed actions.
 
 ## Documents
 
+- [White-label Public AI Brief](public-ai-brief/README.md) - use this folder when asking external AI for technical-path advice without exposing the private runtime stack.
+- [Optimized Technical Path](docs/OPTIMIZED_TECHNICAL_PATH.md) - the current internal engineering path, module boundaries, performance plan, and copy/credit strategy.
+- [Technical Path Chinese Summary](docs/TECHNICAL_PATH_SUMMARY.zh-CN.md)
 - [Sustainable Iteration Blueprint](docs/SUSTAINABLE_ITERATION_BLUEPRINT.md)
 - [Master Plan](docs/MASTER_PLAN.md)
 - [Architecture](docs/ARCHITECTURE.md)
@@ -38,6 +44,7 @@ Current priority: stabilize Hermes, governed human-like memory, tool calling, im
 - [Candidate Project Evaluation](docs/CANDIDATE_PROJECT_EVALUATION.md)
 - [Phase 01 Runtime Foundation](docs/PHASE_01_RUNTIME_FOUNDATION.md)
 - [Core MVP Runbook](docs/CORE_MVP_RUNBOOK.md)
+- [Feishu Company Management Plan](docs/FEISHU_COMPANY_MANAGEMENT.md)
 - [Search Runtime Strategy](docs/SEARCH_RUNTIME.md)
 - [AI Model Gateway](docs/AI_MODEL_GATEWAY.md)
 - [WeChat Companion Channel](docs/WECHAT_COMPANION.md)
@@ -54,6 +61,24 @@ Current priority: stabilize Hermes, governed human-like memory, tool calling, im
 - [Phase 01 Runtime Foundation Chinese Report](reports/phase-01-runtime-foundation.zh-CN.md)
 - [WeChat Companion Readiness Chinese Report](reports/phase-01-wechat-companion-readiness.zh-CN.md)
 - [Phase 02 Core Hermes and BaiLongma Chinese Report](reports/phase-02-core-hermes-bailongma.zh-CN.md)
+- [Phase 03 Feishu Company Management Chinese Report](reports/phase-03-feishu-company-management.zh-CN.md)
+- [Phase 04 Optimized Technical Path Chinese Report](reports/phase-04-optimized-technical-path.zh-CN.md)
+
+## Public Copy And Attribution
+
+External reviewers and classmates should use the public brief instead of the
+internal architecture documents:
+
+- [Website Copy Workspace](index.html)
+- [Public Technical Path](public-ai-brief/TECHNICAL_PATH.md)
+- [Batch Copy Pack](public-ai-brief/COPY_PACK.md)
+- [Attribution Rules](public-ai-brief/ATTRIBUTION.md)
+
+Required source line for copied technical paths:
+
+```text
+Technical path source: https://github.com/LUTAO581314/hermes-
+```
 
 ## Run The Minimal Runtime
 
@@ -77,7 +102,7 @@ Finish Phase 2 as a stable core:
 3. Route useful memory candidates through [Obsidian Write-Back Workflow](docs/OBSIDIAN_WRITEBACK_WORKFLOW.md).
 4. Run BaiLongma memory dream consolidation after noisy tests, then clean or merge only after review.
 5. Write every phase result into a Chinese report.
-6. After the core loop is stable, move to Feishu company management or TTS based on available credentials.
+6. Start Feishu company management from real-message verification, not from broad company write permissions.
 
 WeChat companionship can be used only as a personal surface. Feishu remains the planned company-management surface. MiroFish simulations and trading execution stay later-stage capabilities with separate safety gates.
 

@@ -203,6 +203,12 @@ Current verified state:
 - One context token was restored.
 - This means the previous QR scan likely succeeded.
 - The channel is suitable for personal companion chat and quick capture.
+- Inbound WeChat image items now have a server-side read-image path. ClawBot
+  downloads image media through `wechat-ilink-client`, saves at most four
+  images under the BaiLongma sandbox upload folder, and sends those saved paths
+  into the same `analyze_image` tool used by Brain UI.
+- This read-image path uses the current GPT-5.5 vision-capable gateway. MiniMax
+  is not required for image understanding.
 
 Boundaries:
 
@@ -210,6 +216,11 @@ Boundaries:
 - Do not send mass messages.
 - Do not enable proactive chat without owner-approved schedule and daily cap.
 - Do not store raw WeChat content as durable memory without intake review.
+- Do not treat WeChat voice messages as completed voice chat yet. Voice needs a
+  separate ASR intake path after image intake is confirmed.
+- Live WeChat image delivery still requires an owner retest with a harmless
+  image. Syntax, service health, and ClawBot startup are verified; live CDN
+  download depends on the current WeChat session and platform response.
 
 Current core phase uses WeChat as a personal surface only. Feishu remains the
 planned company-management surface.

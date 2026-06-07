@@ -36,6 +36,18 @@ TrendRadar should provide:
 - MCP, HTTP, CLI, or report-file integration when available.
 - Feishu and Obsidian report inputs after the adapter is built.
 
+MOXI Brain UI hotspot panel and TrendRadar are complementary:
+
+- The MOXI hotspot panel is the visual inspection surface. It should open directly from the UI and show already-collected hot lists, not act as decoration.
+- The current BaiLongma hotspot API can provide crawled hot-list content from Douyin, Xiaohongshu, WeChat hot topics, and Weibo.
+- The current MOXI hotspot panel also reads TrendRadar's latest local output as a source-backed news/RSS event feed, so the public-opinion project's crawled items appear in the visible panel instead of staying hidden in backend files.
+- TrendRadar or a dedicated public-opinion runtime should do deeper work: topic clustering, source expansion, sentiment/risk scoring, recurring tracking, and report generation.
+- The UI panel should be able to hand a selected hotspot/topic to Hermes + TrendRadar for deeper analysis after the adapter is built.
+- Cheap models such as `gpt-5.4-mini` may be used for batch classification, sentiment labels, and deduplication.
+- Mid-tier models such as `gpt-5.4` may be used for hotspot summaries, digest drafts, and medium-depth trend synthesis.
+- Stronger models such as `gpt-5.5` should be reserved for final judgment, strategy, and high-stakes reports.
+- Models should not replace crawlers or source-backed trend runtimes.
+
 License boundary:
 
 - TrendRadar is GPL-3.0.
@@ -92,6 +104,10 @@ Current verified direction:
 
 - TrendRadar runs as an isolated external project.
 - Hermes MCP points to TrendRadar at `127.0.0.1:3333/mcp`.
+- MOXI Brain UI has a visible hotspot button and its `/hotspots` endpoint is the first visual hot-list surface.
+- `/hotspots` currently returns real hot-list content across Douyin, Xiaohongshu, WeChat hot topics, and Weibo.
+- `/hotspots` now also returns a `feed` array sourced from TrendRadar's latest local news/RSS output. Brain UI renders that feed as clickable bottom event cards.
+- Hot-list titles are clickable. If a source item has an original URL, the UI opens that URL; otherwise it falls back to a platform search URL.
 - BaiLongma's own web-search provider keys can stay empty for now.
 - Search should go through Hermes + TrendRadar first.
 - SearXNG remains optional and should be added only if plain metasearch is still needed.

@@ -106,9 +106,11 @@ The repository should keep these document roles clear:
 | `docs/MASTER_PLAN.md` | Full product and system plan |
 | `docs/ARCHITECTURE.md` | Technical architecture and flows |
 | `docs/OPTIMIZED_ARCHITECTURE.md` | Company/personal/backend plane design |
+| `docs/OPTIMIZED_TECHNICAL_PATH.md` | Current optimized technical path, module boundaries, performance plan, and public copy strategy |
 | `docs/CANDIDATE_PROJECT_EVALUATION.md` | External project fit, license, and adoption plan |
 | `docs/PHASE_01_RUNTIME_FOUNDATION.md` | Minimal Hermes runtime, health checks, deployment commands, and safe-mode defaults |
 | `docs/CORE_MVP_RUNBOOK.md` | Current Hermes + BaiLongma core verification and memory dream checklist |
+| `docs/FEISHU_COMPANY_MANAGEMENT.md` | Feishu company-management gap analysis, permissions, phased plan, and official-reference links |
 | `docs/MEMORY_GOVERNANCE.md` | Memory intake, graph, dream consolidation, correction, and index policy |
 | `docs/OBSIDIAN_WRITEBACK_WORKFLOW.md` | Practical Obsidian inbox, promotion, correction, dream consolidation, and reviewed cleanup workflow |
 | `docs/API_INTEGRATIONS.md` | External search runtime plus API-first OCR, image, speech, and video strategy |
@@ -118,6 +120,7 @@ The repository should keep these document roles clear:
 | `docs/ROADMAP.md` | Phase-by-phase delivery plan |
 | `docs/CHINESE_REPORT_POLICY.md` | Required Chinese owner-facing reporting rule |
 | `reports/*.zh-CN.md` | Phase reports for the owner |
+| `public-ai-brief/*.md` | White-label copyable technical path for external AI review and classmates |
 
 ## 5. Iteration Loop
 

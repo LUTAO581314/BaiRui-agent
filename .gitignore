@@ -12,3 +12,5 @@ obsidian-vault/
 backups/
 graphify-out/
 *.log
+.remote-*/
+public-ai-brief-export/
