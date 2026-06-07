@@ -91,7 +91,7 @@ Each tool capability must pass three checks before it is treated as usable:
 | Brain UI | `/health` and `/status` | Service is running and memory count is visible |
 | Model gateway | BaiLongma settings/status | Provider is `custom`, model is the intended model |
 | Image | `analyze_image` smoke test | A test image can be described or OCR'd correctly |
-| Voice | `/voice/cloud` status | Local Whisper returns `asr_status` and `config_ok` |
+| Voice | `/voice/cloud` transcript smoke | Local Whisper returns `asr_status`, `config_ok`, and a real transcript through BaiLongma |
 | Memory | pre/post memory count | Setup tests do not create noisy durable memories |
 | Search | TrendRadar MCP call or report | Output contains sources or clear uncertainty |
 | Runtime graph | `/memory/graph?limit=80` | Returns governed graph with working/review/durable/noise counts |
@@ -148,6 +148,30 @@ Expected result:
 }
 ```
 
+Voice transcript smoke check:
+
+```bash
+cd /home/hermes/external/BaiLongma
+runuser -u hermes -- env HOME=/home/hermes PATH="/home/hermes/.hermes/node/bin:/usr/local/bin:/usr/bin:/bin" \
+  /home/hermes/.hermes/node/bin/node scripts/smoke-voice-cloud.mjs
+```
+
+Expected result:
+
+```text
+transcript: Hello world this is a final local voice test.
+```
+
+If `npm ci` or any Electron-related install step has just run in the BaiLongma
+repository, rebuild the Node native SQLite module before restarting the backend:
+
+```bash
+cd /home/hermes/external/BaiLongma
+runuser -u hermes -- env HOME=/home/hermes PATH="/home/hermes/.hermes/node/bin:/usr/local/bin:/usr/bin:/bin" \
+  npm rebuild better-sqlite3 --build-from-source
+systemctl restart bailongma
+```
+
 ## 7. Memory Hygiene During Tests
 
 Before a smoke test:
@@ -189,7 +213,7 @@ The core phase is considered stable only when:
 - Brain UI is reachable through the protected domain.
 - Hermes MCP shows TrendRadar enabled.
 - Image route exposes `analyze_image` and hides video.
-- Voice route works through local Whisper.
+- Voice route returns a real transcript through local Whisper.
 - Memory count does not jump because of smoke tests.
 - Brain UI memory graph shows runtime memory as candidates, with Obsidian marked as source of truth.
 - Obsidian write-back workflow exists.

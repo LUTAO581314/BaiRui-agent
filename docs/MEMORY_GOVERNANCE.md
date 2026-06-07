@@ -44,7 +44,7 @@ conversation/logs
 
 BaiLongma memory may help short-term conversation, but it must not freely become permanent memory.
 
-The current verified BaiLongma memory count is 30. Growth should be monitored. A sudden increase after setup tests, greetings, or tool checks is a cleanup signal.
+The current verified BaiLongma memory count is 31. Growth should be monitored. A sudden increase after setup tests, greetings, or tool checks is a cleanup signal.
 
 Runtime write policy:
 

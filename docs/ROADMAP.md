@@ -73,7 +73,7 @@ Verification:
 
 ## Phase 2: Core Hermes and BaiLongma MVP
 
-Status: in progress.
+Status: core MVP verified; still open for Obsidian automation, memory cleanup automation, and TTS.
 
 Goal: stabilize the personal core before expanding into company workflows or video.
 
@@ -103,7 +103,7 @@ Completed:
 - Hermes is installed on the server.
 - TrendRadar MCP is enabled for Hermes.
 - WeChat ClawBot has restored saved credentials.
-- Local Whisper `tiny` is installed and connected through BaiLongma `/voice/cloud`.
+- Local Whisper `tiny` is installed and returns real transcripts through BaiLongma `/voice/cloud`.
 - BaiLongma image understanding is available through `analyze_image`.
 - Video understanding is intentionally not exposed.
 - Write Phase 02 Chinese report. Completed.
@@ -124,7 +124,7 @@ Verification:
 - Hermes version command works.
 - Hermes MCP list shows TrendRadar enabled.
 - BaiLongma `/status` returns running and memory count.
-- Local Whisper returns `asr_status` and `config_ok`.
+- Local Whisper returns `asr_status`, `config_ok`, and a real transcript through `/voice/cloud`.
 - `analyze_image` can OCR a PNG test image.
 - Memory count is monitored after setup tests.
 

@@ -25,6 +25,8 @@
 - 微信 ClawBot 已从持久化凭证恢复，说明之前扫码状态仍可用。
 - 本地 Whisper `tiny` 已安装在独立虚拟环境中。
 - 白龙马 `/voice/cloud` 已支持本地 Whisper，并增加了等待重试，避免首次加载模型时抢跑失败。
+- 已修复白龙马 `/voice/cloud` 本地代理问题：WebSocket 现在区分二进制 PCM 音频帧和 JSON 控制帧，避免把 `flush` 当成音频转发给 Whisper。
+- 已增加本地 Whisper 就绪前的音频帧缓冲，避免前端开始说话早于 Whisper `config_ok` 时丢帧。
 - 图片理解工具 `analyze_image` 已接入当前主模型。
 - 视频理解工具暂不暴露给模型，避免阶段跑偏。
 - 白龙马 Brain UI 记忆图谱已升级为“工作记忆候选图”，区分工作记忆、待审核、Obsidian 正本边界、清理风险和关系轴。
@@ -38,15 +40,16 @@
 - `trendradar-mcp` 服务为 active。
 - `nginx` 服务为 active。
 - `https://bairui.chat/health` 返回正常。
-- 白龙马 `/status` 返回 running，当前记忆数量为 30。
+- 白龙马 `/status` 返回 running，当前记忆数量为 31。
 - 主模型状态显示 `custom / gpt-5.5`。
 - Hermes MCP 列表显示 TrendRadar enabled。
 - 本地 Whisper WebSocket 返回 `asr_status` 和 `config_ok`。
 - 3723 本地语音端口由 Whisper Python 服务监听。
+- 白龙马 `/voice/cloud` 已完成真实转写烟测，返回文本：`Hello world this is a final local voice test.`
 - `analyze_image` 对 PNG 测试图识别出 `MOXI CORE OK`。
-- `/memory/graph?limit=80` 返回正常：当前 30 条白龙马运行时记忆、66 个图谱节点、197 条连线。
+- `/memory/graph?limit=80` 返回正常：当前 31 条白龙马运行时记忆、69 个图谱节点、200 条连线。
 - Brain UI 前端资源已验证包含 `memory-governance` 状态条和 `/memory/graph` 调用。
-- 本次图谱验证后记忆数量仍为 30，没有新增测试垃圾记忆。
+- 本次图谱验证后记忆数量仍为 31，没有新增测试垃圾记忆。
 
 ## 4. 当前缺口
 
