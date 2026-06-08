@@ -55,6 +55,11 @@ def make_config(base: Path, **overrides: object) -> RuntimeConfig:
         "wecom_agent_id_configured": False,
         "wecom_secret_configured": False,
         "wecom_customer_service_token_configured": False,
+        "qq_mode": "disabled",
+        "qq_bot_app_id_configured": False,
+        "qq_bot_token_configured": False,
+        "qq_bot_secret_configured": False,
+        "qq_webhook_token_configured": False,
         "sticker_bridge_enabled": False,
         "sticker_default_provider": "metadata_only",
         "sticker_default_style": "kawaii_anime",
@@ -89,12 +94,17 @@ class RuntimeTests(unittest.TestCase):
                 "HERMES_WECHAT_PROACTIVE_CHAT": "true",
                 "HERMES_WECHAT_MAX_DAILY_PROACTIVE_MESSAGES": "2",
                 "HERMES_WECHAT_PERSONAL_BRIDGE_ENABLED": "false",
-                "HERMES_WECHAT_OFFICIAL_APP_SECRET": "test-secret",
-                "HERMES_WECOM_SECRET": "test-secret",
+                "HERMES_WECHAT_OFFICIAL_APP_SECRET": "configured-value",
+                "HERMES_WECOM_SECRET": "configured-value",
+                "HERMES_QQ_MODE": "planned",
+                "HERMES_QQ_BOT_APP_ID": "test-app-id",
+                "HERMES_QQ_BOT_TOKEN": "configured-value",
+                "HERMES_QQ_BOT_SECRET": "configured-value",
+                "HERMES_QQ_WEBHOOK_TOKEN": "configured-value",
                 "HERMES_STICKER_BRIDGE_ENABLED": "true",
                 "HERMES_STICKER_DEFAULT_PROVIDER": "stipop",
                 "HERMES_STICKER_DEFAULT_STYLE": "kawaii_anime",
-                "HERMES_STICKER_API_KEY": "test-secret",
+                "HERMES_STICKER_API_KEY": "configured-value",
                 "HERMES_STICKER_IMAGE_GENERATION_ENABLED": "true",
                 "HERMES_STICKER_IMAGE_GENERATION_BASE_URL": "https://example.invalid",
                 "HERMES_STICKER_IMAGE_GENERATION_MODEL": "image2",
@@ -119,6 +129,11 @@ class RuntimeTests(unittest.TestCase):
             self.assertFalse(config.wechat_personal_bridge_enabled)
             self.assertTrue(config.wechat_official_app_secret_configured)
             self.assertTrue(config.wecom_secret_configured)
+            self.assertEqual(config.qq_mode, "planned")
+            self.assertTrue(config.qq_bot_app_id_configured)
+            self.assertTrue(config.qq_bot_token_configured)
+            self.assertTrue(config.qq_bot_secret_configured)
+            self.assertTrue(config.qq_webhook_token_configured)
             self.assertTrue(config.sticker_bridge_enabled)
             self.assertEqual(config.sticker_default_provider, "stipop")
             self.assertEqual(config.sticker_default_style, "kawaii_anime")
@@ -188,6 +203,13 @@ class RuntimeTests(unittest.TestCase):
                 )
                 self.assertFalse(payload["wechat"]["wecom"]["secret_configured"])
                 self.assertFalse(payload["stickers"]["bridge_enabled"])
+                self.assertEqual(payload["qq"]["mode"], "disabled")
+                self.assertFalse(payload["qq"]["official_bot"]["app_id_configured"])
+                self.assertFalse(payload["qq"]["official_bot"]["token_configured"])
+                self.assertFalse(payload["qq"]["official_bot"]["secret_configured"])
+                self.assertFalse(
+                    payload["qq"]["official_bot"]["webhook_token_configured"]
+                )
                 self.assertEqual(payload["stickers"]["default_provider"], "metadata_only")
                 self.assertEqual(payload["stickers"]["default_style"], "kawaii_anime")
                 self.assertFalse(payload["stickers"]["api_key_configured"])
@@ -773,4 +795,5 @@ class RuntimeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
 

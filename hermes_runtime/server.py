@@ -107,6 +107,23 @@ class HermesHandler(BaseHTTPRequestHandler):
                             ),
                         },
                     },
+                    "qq": {
+                        "mode": self.server.config.qq_mode,
+                        "official_bot": {
+                            "app_id_configured": (
+                                self.server.config.qq_bot_app_id_configured
+                            ),
+                            "token_configured": (
+                                self.server.config.qq_bot_token_configured
+                            ),
+                            "secret_configured": (
+                                self.server.config.qq_bot_secret_configured
+                            ),
+                            "webhook_token_configured": (
+                                self.server.config.qq_webhook_token_configured
+                            ),
+                        },
+                    },
                     "stickers": {
                         "bridge_enabled": self.server.config.sticker_bridge_enabled,
                         "default_provider": self.server.config.sticker_default_provider,

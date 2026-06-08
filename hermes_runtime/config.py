@@ -61,6 +61,11 @@ class RuntimeConfig:
     wecom_agent_id_configured: bool
     wecom_secret_configured: bool
     wecom_customer_service_token_configured: bool
+    qq_mode: str
+    qq_bot_app_id_configured: bool
+    qq_bot_token_configured: bool
+    qq_bot_secret_configured: bool
+    qq_webhook_token_configured: bool
     sticker_bridge_enabled: bool
     sticker_default_provider: str
     sticker_default_style: str
@@ -136,6 +141,11 @@ def load_config() -> RuntimeConfig:
         wecom_customer_service_token_configured=bool(
             os.getenv("HERMES_WECOM_CUSTOMER_SERVICE_TOKEN", "")
         ),
+        qq_mode=os.getenv("HERMES_QQ_MODE", "disabled"),
+        qq_bot_app_id_configured=bool(os.getenv("HERMES_QQ_BOT_APP_ID", "")),
+        qq_bot_token_configured=bool(os.getenv("HERMES_QQ_BOT_TOKEN", "")),
+        qq_bot_secret_configured=bool(os.getenv("HERMES_QQ_BOT_SECRET", "")),
+        qq_webhook_token_configured=bool(os.getenv("HERMES_QQ_WEBHOOK_TOKEN", "")),
         sticker_bridge_enabled=_as_bool(
             os.getenv("HERMES_STICKER_BRIDGE_ENABLED"), False
         ),

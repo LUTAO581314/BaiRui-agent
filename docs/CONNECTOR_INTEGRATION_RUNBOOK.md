@@ -151,6 +151,9 @@ Use stable target ids:
 - WeChat room: `wechat:room:<id>`
 - Feishu direct message: `feishu:open_id:<open_id>`
 - Feishu group: `feishu:chat_id:<chat_id>`
+- QQ direct message: `qq:user:<id>`
+- QQ group: `qq:group:<id>`
+- QQ guild/channel: `qq:guild:<guild_id>:channel:<channel_id>`
 - Web chat: `web:session:<id>`
 
 The exact platform id can stay private inside the connector. Public reports

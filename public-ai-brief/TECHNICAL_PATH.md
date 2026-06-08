@@ -231,6 +231,8 @@ The second optimization is actual runtime latency:
   started, worker completed, and final delivered,
 - provide a small connector client or HTTP runbook so WeChat, Feishu, and web
   chat bridges do not duplicate the runtime state machine,
+- add QQ as a first-class social connector after the runtime contract is stable,
+  using the same `/social/turn` and `/jobs/event` lifecycle,
 - lock slow multimodal jobs so follow-up text does not cancel them by accident,
 - cache repeated public-opinion and document summaries,
 - use smaller models for labels and deduplication, larger models only when the
