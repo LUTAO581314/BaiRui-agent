@@ -25,6 +25,16 @@ class JobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class JobEvent(str, Enum):
+    ACK_SENT = "ack_sent"
+    WORKER_STARTED = "worker_started"
+    WORKER_COMPLETED = "worker_completed"
+    WORKER_FAILED = "worker_failed"
+    FINAL_DELIVERED = "final_delivered"
+    FAILURE_DELIVERED = "failure_delivered"
+    CANCEL_REQUESTED = "cancel_requested"
+
+
 ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
     JobStatus.QUEUED: {JobStatus.ACKNOWLEDGED, JobStatus.RUNNING, JobStatus.CANCELLED},
     JobStatus.ACKNOWLEDGED: {JobStatus.RUNNING, JobStatus.CANCELLED},
@@ -40,6 +50,16 @@ ACTIVE_STATUSES = {
     JobStatus.QUEUED.value,
     JobStatus.ACKNOWLEDGED.value,
     JobStatus.RUNNING.value,
+}
+
+EVENT_TRANSITIONS: dict[JobEvent, JobStatus] = {
+    JobEvent.ACK_SENT: JobStatus.ACKNOWLEDGED,
+    JobEvent.WORKER_STARTED: JobStatus.RUNNING,
+    JobEvent.WORKER_COMPLETED: JobStatus.COMPLETED,
+    JobEvent.WORKER_FAILED: JobStatus.FAILED,
+    JobEvent.FINAL_DELIVERED: JobStatus.DELIVERED,
+    JobEvent.FAILURE_DELIVERED: JobStatus.FAILURE_DELIVERED,
+    JobEvent.CANCEL_REQUESTED: JobStatus.CANCELLED,
 }
 
 
@@ -130,6 +150,26 @@ class AsyncJobStore:
                 job.error_message = _clean_error(error_message)
             return job
 
+    def apply_event(
+        self,
+        job_id: str,
+        event: str,
+        *,
+        result_pointer: str = "",
+        error_message: str = "",
+    ) -> AsyncJob:
+        try:
+            job_event = JobEvent(event)
+        except ValueError as error:
+            raise ValueError("invalid job event") from error
+        next_status = EVENT_TRANSITIONS[job_event]
+        return self.transition(
+            job_id,
+            next_status.value,
+            result_pointer=result_pointer,
+            error_message=error_message,
+        )
+
     def list(self, limit: int = 50) -> list[AsyncJob]:
         safe_limit = max(1, min(int(limit or 50), 200))
         with self._lock:
@@ -158,6 +198,7 @@ def jobs_payload(store: AsyncJobStore, limit: int = 50) -> dict[str, Any]:
         "status": "ok",
         "jobs": [asdict(job) for job in store.list(limit)],
         "allowed_statuses": [status.value for status in JobStatus],
+        "allowed_events": [event.value for event in JobEvent],
         "privacy": "stores metadata, previews, and result pointers only",
     }
 

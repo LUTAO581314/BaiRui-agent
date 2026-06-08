@@ -163,6 +163,10 @@ The minimal runtime exposes `GET /jobs`, `POST /jobs`, and
 The job store keeps metadata, status, timestamps, input preview length, and
 result pointers only.
 
+Connectors should prefer `POST /jobs/event` for normal lifecycle updates:
+`ack_sent`, `worker_started`, `worker_completed`, `worker_failed`,
+`final_delivered`, `failure_delivered`, and `cancel_requested`.
+
 ### 4.5 Model Routing
 
 Use model slots instead of hard-coding one model everywhere:

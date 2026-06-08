@@ -71,6 +71,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 07 Context Slimming And Async Jobs Chinese Report](reports/phase-07-context-slimming-async-jobs.zh-CN.md)
 - [Phase 08 Social Turn Planner Chinese Report](reports/phase-08-social-turn-planner.zh-CN.md)
 - [Phase 09 Active Job Follow-Up Chinese Report](reports/phase-09-active-job-follow-up.zh-CN.md)
+- [Phase 10 Worker Lifecycle Events Chinese Report](reports/phase-10-worker-lifecycle-events.zh-CN.md)
 
 ## Public Copy And Attribution
 
@@ -110,6 +111,7 @@ Connector quick-ack plan:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8787/social/turn -Method POST -ContentType "application/json" -Body '{"channel":"wechat","target_id":"user-1","message":"generate image avatar"}'
+Invoke-RestMethod http://127.0.0.1:8787/jobs/event -Method POST -ContentType "application/json" -Body '{"job_id":"<job-id>","event":"worker_started"}'
 ```
 
 ## Recommended Current Milestone

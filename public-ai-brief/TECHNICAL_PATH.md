@@ -227,6 +227,8 @@ The second optimization is actual runtime latency:
   into async jobs,
 - expose safe slow-job metadata and state transitions without storing raw
   messages, screenshots, API responses, or secrets,
+- expose connector lifecycle events such as acknowledgement sent, worker
+  started, worker completed, and final delivered,
 - lock slow multimodal jobs so follow-up text does not cancel them by accident,
 - cache repeated public-opinion and document summaries,
 - use smaller models for labels and deduplication, larger models only when the

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import logging
@@ -511,7 +511,7 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(payload["status"], "ok")
                 self.assertEqual(payload["first_action"], "quick_ack")
                 self.assertTrue(payload["ack"]["should_send"])
-                self.assertIn("马上", payload["ack"]["text"])
+                self.assertIn("\u9a6c\u4e0a", payload["ack"]["text"])
                 self.assertEqual(payload["route"]["route"], "image_generate")
                 self.assertEqual(payload["context_budget"]["max_recent_messages"], 4)
                 self.assertIsNotNone(payload["job"])
@@ -519,6 +519,74 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(payload["job"]["tool_name"], "image_generation")
                 self.assertEqual(payload["ack"]["next_job_status_after_send"], "acknowledged")
                 self.assertNotIn("hidden phrase", json.dumps(payload))
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                for handler in list(logger.handlers):
+                    logger.removeHandler(handler)
+                    handler.close()
+                logging.shutdown()
+
+    def test_job_event_endpoint_advances_worker_lifecycle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config = make_config(base)
+            logger = configure_logging(config.log_dir)
+            server = build_server(config, logger)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                base_url = f"http://127.0.0.1:{server.server_port}"
+                create_body = json.dumps(
+                    {
+                        "route": "image_generate",
+                        "channel": "wechat",
+                        "target_id": "room-3",
+                        "input": "generate image avatar",
+                        "tool_name": "image_generation",
+                    }
+                ).encode("utf-8")
+                create_request = Request(
+                    base_url + "/jobs",
+                    data=create_body,
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urlopen(create_request, timeout=2) as response:
+                    created = json.loads(response.read().decode("utf-8"))
+                job_id = created["job"]["job_id"]
+
+                events = [
+                    ("ack_sent", "acknowledged"),
+                    ("worker_started", "running"),
+                    ("worker_completed", "completed"),
+                    ("final_delivered", "delivered"),
+                ]
+                for event, expected_status in events:
+                    body = {"job_id": job_id, "event": event}
+                    if event == "worker_completed":
+                        body["result_pointer"] = "asset://image/result-2"
+                    event_request = Request(
+                        base_url + "/jobs/event",
+                        data=json.dumps(body).encode("utf-8"),
+                        method="POST",
+                        headers={"Content-Type": "application/json"},
+                    )
+                    with urlopen(event_request, timeout=2) as response:
+                        payload = json.loads(response.read().decode("utf-8"))
+                    self.assertEqual(payload["status"], "ok")
+                    self.assertEqual(payload["job"]["status"], expected_status)
+
+                with urlopen(base_url + "/jobs?limit=5", timeout=2) as response:
+                    jobs = json.loads(response.read().decode("utf-8"))
+                self.assertIn("worker_completed", jobs["allowed_events"])
+                self.assertEqual(jobs["jobs"][-1]["status"], "delivered")
+                self.assertEqual(
+                    jobs["jobs"][-1]["result_pointer"],
+                    "asset://image/result-2",
+                )
             finally:
                 server.shutdown()
                 server.server_close()
@@ -576,7 +644,7 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(follow_up["status"], "ok")
                 self.assertEqual(follow_up["first_action"], "append_to_active_job")
                 self.assertTrue(follow_up["ack"]["should_send"])
-                self.assertIn("没丢", follow_up["ack"]["text"])
+                self.assertIn("\u6ca1\u4e22", follow_up["ack"]["text"])
                 self.assertIsNone(follow_up["job"])
                 self.assertEqual(
                     follow_up["active_job"]["job_id"],
@@ -642,3 +710,4 @@ class RuntimeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

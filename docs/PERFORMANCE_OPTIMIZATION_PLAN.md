@@ -193,6 +193,8 @@ The repository runtime exposes:
 - `GET /jobs` with slow-job metadata only,
 - `POST /jobs` to create image/search/company slow jobs after quick ack,
 - `POST /jobs/transition` to move jobs through the safe state machine,
+- `POST /jobs/event` to let connectors report lifecycle events without knowing
+  the internal status transition table,
 - environment variables for latency targets:
   - `HERMES_SOCIAL_QUICK_ACK_DELAY_MS`,
   - `HERMES_SOCIAL_FAST_REPLY_TARGET_MS`,
@@ -276,6 +278,18 @@ Async job creation shape:
 The job store keeps only metadata, input preview length, status, timestamps, and
 result pointers. It must not store raw message bodies, screenshots, API
 responses, credentials, or private chat logs.
+
+Connector job events:
+
+| Event | Resulting status |
+| --- | --- |
+| ack_sent | acknowledged |
+| worker_started | running |
+| worker_completed | completed |
+| worker_failed | failed |
+| final_delivered | delivered |
+| failure_delivered | failure_delivered |
+| cancel_requested | cancelled |
 
 ## 7. Implementation Order
 

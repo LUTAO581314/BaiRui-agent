@@ -207,6 +207,10 @@ class HermesHandler(BaseHTTPRequestHandler):
             self._handle_transition_job()
             return
 
+        if parsed_url.path == "/jobs/event":
+            self._handle_job_event()
+            return
+
         if parsed_url.path == "/social/turn":
             self._handle_social_turn()
             return
@@ -253,6 +257,21 @@ class HermesHandler(BaseHTTPRequestHandler):
             job = self.server.jobs.transition(
                 job_id=payload.get("job_id", ""),
                 status=payload.get("status", ""),
+                result_pointer=payload.get("result_pointer", ""),
+                error_message=payload.get("error_message", ""),
+            )
+        except ValueError as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
+
+        self._send_json(HTTPStatus.OK, {"status": "ok", "job": job.__dict__})
+
+    def _handle_job_event(self) -> None:
+        try:
+            payload = self._read_json_body()
+            job = self.server.jobs.apply_event(
+                job_id=payload.get("job_id", ""),
+                event=payload.get("event", ""),
                 result_pointer=payload.get("result_pointer", ""),
                 error_message=payload.get("error_message", ""),
             )
