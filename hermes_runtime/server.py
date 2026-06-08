@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -14,17 +13,15 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .async_jobs import AsyncJobStore, jobs_payload
+from .capabilities import capability_matrix
 from .config import RuntimeConfig, load_config
 from .context_budget import context_payload
 from .latency import LatencyRecorder, latency_payload
 from .logging_utils import configure_logging
 from .performance import performance_payload
 from .routing import route_payload
+from .server_time import utc_now
 from .social_turn import plan_social_turn
-
-
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def readiness(config: RuntimeConfig) -> dict[str, Any]:
@@ -172,6 +169,10 @@ class HermesHandler(BaseHTTPRequestHandler):
 
         if path == "/performance":
             self._send_json(HTTPStatus.OK, performance_payload(self.server.config))
+            return
+
+        if path == "/capabilities":
+            self._send_json(HTTPStatus.OK, capability_matrix(self.server.config))
             return
 
         if path == "/context":

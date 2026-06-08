@@ -1,6 +1,8 @@
-# Hermes Personal Agent System
+# MOXI Agent System
 
-This repository is the planning and deployment home for a personal and company agent system built around Hermes, Obsidian, BaiLongma, MiroFish, Feishu, WeChat, and API-first intelligence adapters.
+This repository is the planning, control-plane, and deployment home for a
+personal and company agent system built around Hermes, Obsidian, BaiLongma,
+MiroFish, Feishu, WeChat, QQ, and API-first intelligence adapters.
 
 The goal is not to install one chatbot. The goal is to build a layered AI operating system for both personal work and company management:
 
@@ -36,8 +38,11 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 ## Documents
 
 - [White-label Public AI Brief](public-ai-brief/README.md) - use this folder when asking external AI for technical-path advice without exposing the private runtime stack.
+- [Quickstart](QUICKSTART.md) - run the minimal MOXI control plane and verify `/health`, `/ready`, and `/capabilities`.
 - [Optimized Technical Path](docs/OPTIMIZED_TECHNICAL_PATH.md) - the current internal engineering path, module boundaries, performance plan, and copy/credit strategy.
 - [Performance Optimization Plan](docs/PERFORMANCE_OPTIMIZATION_PLAN.md) - the surface-first and bottom-layer plan for sub-5-second social responsiveness, async slow jobs, latency telemetry, and model routing.
+- [Capability Matrix](docs/CAPABILITY_MATRIX.md) - secret-safe readiness contract for frontend settings panels and dashboards.
+- [Hermes Frontend Adapter Plan](docs/HERMES_FRONTEND_ADAPTER_PLAN.md) - how MOXI connects to Hermes native logic without rewriting it in the frontend.
 - [Connector Integration Runbook](docs/CONNECTOR_INTEGRATION_RUNBOOK.md) - how WeChat, Feishu, and web-chat bridges call `/social/turn` and `/jobs/event`.
 - [Upstream Dependency Strategy](docs/UPSTREAM_DEPENDENCY_STRATEGY.md) - how BaiLongma and other upstream runtimes are managed without copying full source trees into this repository.
 - [QQ Connector Plan](docs/QQ_CONNECTOR.md)
@@ -80,6 +85,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 12 Server Runtime Auth Fix Chinese Report](reports/phase-12-server-runtime-auth-fix.zh-CN.md)
 - [Phase 13 QQ Connector And Social Settings UI Chinese Report](reports/phase-13-qq-and-social-settings-ui.zh-CN.md)
 - [Phase 14 Repository CI And Upstream Strategy Chinese Report](reports/phase-14-repo-ci-and-upstream-strategy.zh-CN.md)
+- [Phase 15 Frontend Adapter And Capability Matrix Chinese Report](reports/phase-15-frontend-adapter-and-capability-matrix.zh-CN.md)
 
 ## Repository Automation
 
@@ -133,6 +139,7 @@ Health checks:
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8787/health
 Invoke-RestMethod http://127.0.0.1:8787/ready
+Invoke-RestMethod http://127.0.0.1:8787/capabilities
 Invoke-RestMethod http://127.0.0.1:8787/performance
 Invoke-RestMethod "http://127.0.0.1:8787/route?message=generate%20image%20avatar"
 Invoke-RestMethod "http://127.0.0.1:8787/context?message=generate%20image%20avatar"

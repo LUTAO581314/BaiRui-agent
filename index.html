@@ -576,6 +576,7 @@
       <nav class="nav" aria-label="Primary navigation">
         <a href="#copy">Copy Pack</a>
         <a href="#dependency">Dependencies</a>
+        <a href="#capabilities">Capabilities</a>
         <a href="#roadmap">Roadmap</a>
         <a href="#modules">Modules</a>
         <a href="https://github.com/LUTAO581314/hermes-">GitHub</a>
@@ -650,6 +651,10 @@
         <div class="metric">
           <b>Overlay</b>
           <span>Upstream runtimes stay external; MOXI owns patches, deployment rules, and integration contracts.</span>
+        </div>
+        <div class="metric">
+          <b>Matrix</b>
+          <span>Frontend panels can read `/capabilities` instead of guessing which adapter is broken.</span>
         </div>
       </section>
 
@@ -754,6 +759,23 @@ Please produce feasibility, risks, missing modules, optimized roadmap, memory go
           <article class="module"><h3>CI Boundary</h3><p>GitHub Actions checks this repository. Heavy Electron smoke tests stay in the BaiLongma checkout or future dedicated fork CI.</p></article>
           <article class="module"><h3>Secret Boundary</h3><p>Server .env, API keys, QR sessions, chat ids, media files, and logs stay outside Git and are validated by hygiene checks.</p></article>
           <article class="module"><h3>Credit Boundary</h3><p>External copies must keep the MOXI technical path source line while preserving upstream licenses for copied source.</p></article>
+        </div>
+      </section>
+
+      <section class="section" id="capabilities">
+        <div class="section-head">
+          <div>
+            <h2>Capability Matrix</h2>
+          </div>
+          <p>The frontend adapter does not rewrite Hermes logic. It reads secret-safe readiness state, shows progress, and routes normalized channel turns into the runtime contract.</p>
+        </div>
+        <div class="module-grid">
+          <article class="module"><h3>Runtime Core</h3><p>`/health`, `/ready`, `/social/turn`, `/jobs/event`, `/latency`, and `/capabilities` form the control-plane contract.</p></article>
+          <article class="module"><h3>Personal Channels</h3><p>WeChat, QQ, web chat, voice, stickers, and browser TTS remain warm personal surfaces with strict action limits.</p></article>
+          <article class="module"><h3>Company Plane</h3><p>Feishu owns company identity, group context, read-only data, and approval-gated writes.</p></article>
+          <article class="module"><h3>Hermes Logic</h3><p>Hermes keeps native agent reasoning and tool execution. MOXI adapts surfaces and visibility around it.</p></article>
+          <article class="module"><h3>UI States</h3><p>Ready, partial, missing config, disabled, and planned states should render as compact status chips.</p></article>
+          <article class="module"><h3>Next Patch</h3><p>The BaiLongma settings patch should consume `/capabilities` and expose QQ plus connector diagnostics.</p></article>
         </div>
       </section>
 

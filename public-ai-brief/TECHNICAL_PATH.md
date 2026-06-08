@@ -70,6 +70,7 @@ without hiding the source credit.
 | Sticker bridge | Prepared-sticker metadata, provider IDs, generated-sticker review, channel upload instructions | Do not bundle third-party or generated sticker files |
 | Company workflow | Tasks, docs, calendar, tables, approvals, reports | Read first, write only after approval |
 | Safety and audit | Permission levels, approval gates, logs, secret handling | High-risk actions are disabled by default |
+| Capability matrix | Secret-safe readiness state for frontend and connector dashboards | UI reads capability state instead of guessing from raw config |
 
 ## 3.1 Repository And Upstream Boundary
 
@@ -91,6 +92,10 @@ main MOXI repository
   -> applies focused overlays or patches
   -> keeps real secrets, logs, media, and sessions out of Git
 ```
+
+Hermes keeps its own native agent logic. MOXI should connect to that logic
+through runtime contracts and frontend adapters instead of duplicating it in
+every chat surface.
 
 ## 4. Optimized Implementation Sequence
 

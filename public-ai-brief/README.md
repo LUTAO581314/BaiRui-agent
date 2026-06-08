@@ -15,6 +15,7 @@ Use this folder when asking another AI to:
 - propose missing modules,
 - review sticker/media bridge boundaries,
 - review upstream runtime and overlay boundaries,
+- review frontend adapter and capability-matrix boundaries,
 - draft engineering tasks.
 
 Do not provide the internal repository root to external AI unless the reviewer

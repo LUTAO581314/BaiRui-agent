@@ -276,6 +276,64 @@ class RuntimeTests(unittest.TestCase):
                     handler.close()
                 logging.shutdown()
 
+    def test_capabilities_endpoint_exposes_frontend_health_matrix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config = make_config(
+                base,
+                obsidian_vault_dir=base / "obsidian-vault",
+                ai_api_key_configured=True,
+                ai_fast_model="5.4-mini",
+                ai_summary_model="5.4",
+                trendradar_base_url="http://127.0.0.1:3333",
+                wechat_mode="planned",
+                qq_mode="official_bot",
+                qq_bot_app_id_configured=True,
+                qq_bot_token_configured=True,
+                qq_bot_secret_configured=True,
+                qq_webhook_token_configured=True,
+                sticker_bridge_enabled=True,
+            )
+            config.obsidian_vault_dir.mkdir(parents=True)
+            logger = configure_logging(config.log_dir)
+            server = build_server(config, logger)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                url = f"http://127.0.0.1:{server.server_port}/capabilities"
+                with urlopen(url, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+
+                self.assertEqual(payload["status"], "ok")
+                self.assertEqual(payload["service"], "test-hermes")
+                self.assertEqual(payload["capabilities"]["runtime"]["state"], "ready")
+                self.assertEqual(
+                    payload["capabilities"]["model_gateway"]["state"], "ready"
+                )
+                self.assertEqual(
+                    payload["capabilities"]["search_intelligence"]["state"], "ready"
+                )
+                self.assertEqual(
+                    payload["capabilities"]["memory_governance"]["state"], "ready"
+                )
+                self.assertEqual(payload["capabilities"]["qq"]["state"], "ready")
+                self.assertEqual(payload["capabilities"]["wechat"]["state"], "missing_config")
+                self.assertEqual(payload["summary"]["ready"], 8)
+                self.assertIn("frontend_contract", payload)
+                serialized = json.dumps(payload).lower()
+                self.assertNotIn("api_key", serialized)
+                self.assertNotIn("secret_configured", serialized)
+                self.assertNotIn("configured-value", serialized)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                for handler in list(logger.handlers):
+                    logger.removeHandler(handler)
+                    handler.close()
+                logging.shutdown()
+
     def test_route_endpoint_classifies_fast_slow_and_risk_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
