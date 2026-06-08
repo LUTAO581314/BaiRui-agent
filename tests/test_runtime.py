@@ -641,6 +641,24 @@ class RuntimeTests(unittest.TestCase):
                     handler.close()
                 logging.shutdown()
 
+    def test_connector_client_supports_server_basic_auth_from_env(self) -> None:
+        env = {
+            "HERMES_RUNTIME_BASE_URL": "https://example.invalid/runtime",
+            "HERMES_RUNTIME_TIMEOUT_SECONDS": "7",
+            "HERMES_RUNTIME_BASIC_USER": "runtime-user",
+            "HERMES_RUNTIME_BASIC_PASSWORD": "credential-value",
+        }
+
+        with patch.dict("os.environ", env, clear=True):
+            client = HermesConnectorClient.from_env()
+
+        self.assertEqual(client.base_url, "https://example.invalid/runtime/")
+        self.assertEqual(client.timeout_seconds, 7)
+        self.assertEqual(
+            client._headers()["Authorization"],
+            "Basic cnVudGltZS11c2VyOmNyZWRlbnRpYWwtdmFsdWU=",
+        )
+
     def test_social_turn_appends_follow_up_to_active_job(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

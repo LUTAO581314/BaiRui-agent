@@ -17,6 +17,22 @@ from hermes_runtime.connector_client import HermesConnectorClient
 client = HermesConnectorClient("http://127.0.0.1:8787", timeout_seconds=5)
 ```
 
+For a connector that must call a protected server URL instead of localhost, use
+environment variables and keep credentials outside Git:
+
+```bash
+export HERMES_RUNTIME_BASE_URL="https://your-domain.example"
+export HERMES_RUNTIME_BASIC_USER="runtime-user"
+export HERMES_RUNTIME_BASIC_PASSWORD="<set-outside-git>"
+```
+
+```python
+client = HermesConnectorClient.from_env()
+```
+
+If the server is protected by Nginx Basic Auth and these variables are missing,
+the connector will receive `401 Unauthorized`.
+
 The client wraps:
 
 - `POST /social/turn`
@@ -93,10 +109,20 @@ if job:
 ## 4. Node.js Connector Equivalent
 
 ```js
+const runtimeBaseUrl = process.env.HERMES_RUNTIME_BASE_URL ?? "http://127.0.0.1:8787";
+const basicUser = process.env.HERMES_RUNTIME_BASIC_USER ?? "";
+const basicPassword = process.env.HERMES_RUNTIME_BASIC_PASSWORD ?? "";
+
 async function postJson(path, body) {
-  const response = await fetch(`http://127.0.0.1:8787${path}`, {
+  const headers = { "content-type": "application/json" };
+  if (basicUser || basicPassword) {
+    const token = Buffer.from(`${basicUser}:${basicPassword}`).toString("base64");
+    headers.authorization = `Basic ${token}`;
+  }
+
+  const response = await fetch(`${runtimeBaseUrl}${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers,
     body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error(`runtime ${response.status}`);

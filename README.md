@@ -74,6 +74,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 09 Active Job Follow-Up Chinese Report](reports/phase-09-active-job-follow-up.zh-CN.md)
 - [Phase 10 Worker Lifecycle Events Chinese Report](reports/phase-10-worker-lifecycle-events.zh-CN.md)
 - [Phase 11 Connector Client And Runbook Chinese Report](reports/phase-11-connector-client-runbook.zh-CN.md)
+- [Phase 12 Server Runtime Auth Fix Chinese Report](reports/phase-12-server-runtime-auth-fix.zh-CN.md)
 
 ## Public Copy And Attribution
 
@@ -115,6 +116,10 @@ Connector quick-ack plan:
 Invoke-RestMethod http://127.0.0.1:8787/social/turn -Method POST -ContentType "application/json" -Body '{"channel":"wechat","target_id":"user-1","message":"generate image avatar"}'
 Invoke-RestMethod http://127.0.0.1:8787/jobs/event -Method POST -ContentType "application/json" -Body '{"job_id":"<job-id>","event":"worker_started"}'
 ```
+
+When a connector calls a protected server URL instead of localhost, configure
+`HERMES_RUNTIME_BASE_URL`, `HERMES_RUNTIME_BASIC_USER`, and
+`HERMES_RUNTIME_BASIC_PASSWORD` outside Git.
 
 ## Recommended Current Milestone
 

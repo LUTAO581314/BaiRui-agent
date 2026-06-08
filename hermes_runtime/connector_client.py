@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import os
 from typing import Any
 from urllib.error import URLError
 from urllib.parse import urljoin
@@ -22,9 +24,27 @@ class HermesConnectorClient:
     out of durable job records.
     """
 
-    def __init__(self, base_url: str, timeout_seconds: float = 5.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        timeout_seconds: float = 5.0,
+        *,
+        basic_username: str = "",
+        basic_password: str = "",
+    ) -> None:
         self.base_url = _normalize_base_url(base_url)
         self.timeout_seconds = timeout_seconds
+        self.basic_username = str(basic_username or "")
+        self.basic_password = str(basic_password or "")
+
+    @classmethod
+    def from_env(cls) -> "HermesConnectorClient":
+        return cls(
+            os.getenv("HERMES_RUNTIME_BASE_URL", "http://127.0.0.1:8787"),
+            timeout_seconds=float(os.getenv("HERMES_RUNTIME_TIMEOUT_SECONDS", "5")),
+            basic_username=os.getenv("HERMES_RUNTIME_BASIC_USER", ""),
+            basic_password=os.getenv("HERMES_RUNTIME_BASIC_PASSWORD", ""),
+        )
 
     def plan_social_turn(
         self,
@@ -63,7 +83,7 @@ class HermesConnectorClient:
             urljoin(self.base_url, path.lstrip("/")),
             data=json.dumps(body).encode("utf-8"),
             method="POST",
-            headers={"Content-Type": "application/json"},
+            headers=self._headers(),
         )
         try:
             with urlopen(request, timeout=self.timeout_seconds) as response:
@@ -75,6 +95,15 @@ class HermesConnectorClient:
         if payload.get("status") != "ok":
             raise ConnectorClientError(str(payload.get("error", "runtime error")))
         return payload
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.basic_username or self.basic_password:
+            token = f"{self.basic_username}:{self.basic_password}".encode("utf-8")
+            headers["Authorization"] = (
+                "Basic " + base64.b64encode(token).decode("ascii")
+            )
+        return headers
 
 
 def _normalize_base_url(base_url: str) -> str:
