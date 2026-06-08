@@ -261,6 +261,9 @@ The second optimization is actual runtime latency:
   messages, screenshots, API responses, or secrets,
 - expose connector lifecycle events such as acknowledgement sent, worker
   started, worker completed, and final delivered,
+- implement those lifecycle events in the UI/runtime adapter itself, so an
+  upstream chat loop can report native worker start, completion, failure, and
+  final visible delivery without copying the whole upstream source tree,
 - provide a small connector client or HTTP runbook so WeChat, Feishu, and web
   chat bridges do not duplicate the runtime state machine,
 - add QQ as a first-class social connector after the runtime contract is stable,

@@ -167,6 +167,11 @@ Connectors should prefer `POST /jobs/event` for normal lifecycle updates:
 `ack_sent`, `worker_started`, `worker_completed`, `worker_failed`,
 `final_delivered`, `failure_delivered`, and `cancel_requested`.
 
+The BaiLongma overlay now implements this contract inside the native turn loop:
+`runTurn` reports worker start/completion/failure, and `send_message` reports
+final delivery with a metadata-only conversation pointer. This is the reference
+pattern for future WeChat, QQ, and Feishu bridge layers.
+
 Python connectors can use `hermes_runtime.connector_client.HermesConnectorClient`
 directly. Node.js connectors should mirror the same HTTP contract. The canonical
 integration guide is `docs/CONNECTOR_INTEGRATION_RUNBOOK.md`.

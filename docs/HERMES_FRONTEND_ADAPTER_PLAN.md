@@ -91,7 +91,9 @@ BaiLongma / Brain UI
 7. Add runtime connector test buttons.
 8. Add richer progress events to chat UI. Done in Phase 19.
 9. Add company/persona permission badges. Done in Phase 20.
-10. Add GitHub Pages deployment for the public technical path.
+10. Connect BaiLongma native worker lifecycle events to Hermes `/jobs/event`.
+    Done in Phase 21.
+11. Add GitHub Pages deployment for the public technical path.
 
 ## Phase 16 Patch
 
@@ -184,3 +186,24 @@ badges to chat bubbles:
 The Hermes runtime route classifier also gained Chinese keywords for image,
 search, public-opinion, company, memory, and high-risk routes. This keeps the
 Chinese production path aligned with the UI boundary labels.
+
+## Phase 21 Tool Lifecycle Events
+
+The BaiLongma overlay patch
+`patches/bailongma/phase-21-tool-lifecycle-events.patch` closes the runtime
+feedback loop between BaiLongma and Hermes:
+
+- `runTurn` reports `worker_started` when a queued Hermes job begins native
+  processing.
+- normal completion reports `worker_completed` unless the message delivery
+  path has already completed the job.
+- non-abort failures report `worker_failed` with a short sanitized error.
+- `send_message` reports `worker_completed` and `final_delivered` after the
+  final message is written to the conversation log and visible to the user.
+- `moxi_progress` SSE events mirror these lifecycle states so Brain UI can show
+  progress without guessing.
+
+Server verification used a Feishu-style `/message` request. The returned Hermes
+job advanced to `delivered` with a metadata-only `conversation:<id>` result
+pointer. No raw message bodies, secrets, platform tokens, or media bytes are
+stored in the public job record.

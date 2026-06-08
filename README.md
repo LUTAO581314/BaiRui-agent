@@ -91,6 +91,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 18 Server Social Turn Bridge Chinese Report](reports/phase-18-server-social-turn-bridge.zh-CN.md)
 - [Phase 19 Progress Aware Chat UI Chinese Report](reports/phase-19-progress-aware-chat-ui.zh-CN.md)
 - [Phase 20 Channel Plane Badges Chinese Report](reports/phase-20-channel-plane-badges.zh-CN.md)
+- [Phase 21 Tool Lifecycle Events Chinese Report](reports/phase-21-tool-lifecycle-events.zh-CN.md)
 
 ## Repository Automation
 
@@ -125,6 +126,9 @@ not vendor full upstream applications by default.
   compact route-aware progress strip while slow work is running.
 - Brain UI chat bubbles now show channel-plane badges so web/personal/company,
   runtime progress, and owner-confirmation surfaces are visibly separated.
+- The server BaiLongma native turn loop now reports Hermes job lifecycle events
+  through `/jobs/event`, including worker start, completion, failure, and final
+  message delivery.
 - External runtime install notes live under [external](external/README.md).
 - If a full BaiLongma fork becomes necessary, keep this repository as the
   canonical technical-path source and preserve the upstream MIT license.

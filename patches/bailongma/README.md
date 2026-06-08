@@ -44,11 +44,14 @@ checkout. It is intentionally an overlay, not a full copy of upstream source.
 - [phase-20-channel-plane-badges.patch](phase-20-channel-plane-badges.patch)
   adds route-aware and channel-aware badges to Brain UI chat bubbles so personal,
   web, company, runtime, and approval surfaces are visibly separated.
+- [phase-21-tool-lifecycle-events.patch](phase-21-tool-lifecycle-events.patch)
+  connects the native BaiLongma turn loop and `send_message` delivery path back
+  to Hermes `/jobs/event`, reporting `worker_started`, `worker_completed`,
+  `worker_failed`, and `final_delivered` while keeping secrets out of Git.
 
 Future patch files should be named by phase and purpose:
 
 ```text
-phase-21-tool-lifecycle-events.patch
 phase-22-follow-up-job-merge.patch
 ```
 
