@@ -39,6 +39,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Optimized Technical Path](docs/OPTIMIZED_TECHNICAL_PATH.md) - the current internal engineering path, module boundaries, performance plan, and copy/credit strategy.
 - [Performance Optimization Plan](docs/PERFORMANCE_OPTIMIZATION_PLAN.md) - the surface-first and bottom-layer plan for sub-5-second social responsiveness, async slow jobs, latency telemetry, and model routing.
 - [Connector Integration Runbook](docs/CONNECTOR_INTEGRATION_RUNBOOK.md) - how WeChat, Feishu, and web-chat bridges call `/social/turn` and `/jobs/event`.
+- [Upstream Dependency Strategy](docs/UPSTREAM_DEPENDENCY_STRATEGY.md) - how BaiLongma and other upstream runtimes are managed without copying full source trees into this repository.
 - [QQ Connector Plan](docs/QQ_CONNECTOR.md)
 - [Social Settings UI Optimization](docs/SOCIAL_SETTINGS_UI_OPTIMIZATION.md)
 - [Technical Path Chinese Summary](docs/TECHNICAL_PATH_SUMMARY.zh-CN.md)
@@ -78,6 +79,32 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 11 Connector Client And Runbook Chinese Report](reports/phase-11-connector-client-runbook.zh-CN.md)
 - [Phase 12 Server Runtime Auth Fix Chinese Report](reports/phase-12-server-runtime-auth-fix.zh-CN.md)
 - [Phase 13 QQ Connector And Social Settings UI Chinese Report](reports/phase-13-qq-and-social-settings-ui.zh-CN.md)
+- [Phase 14 Repository CI And Upstream Strategy Chinese Report](reports/phase-14-repo-ci-and-upstream-strategy.zh-CN.md)
+
+## Repository Automation
+
+GitHub Actions runs on push, pull request, and manual dispatch:
+
+- `python -m unittest discover -s tests`
+- `python -m compileall hermes_runtime tests`
+- `./scripts/check-repo-hygiene.ps1`
+
+The hygiene check blocks tracked runtime data paths and obvious committed API
+keys or private key material. Real `.env` files, connector sessions, chat logs,
+QR-code state, generated media, and Obsidian working vault data must stay out of
+Git.
+
+## Upstream Runtime Dependencies
+
+This repository is the MOXI control plane and technical-path source. It does
+not vendor full upstream applications by default.
+
+- BaiLongma stays in a separate upstream checkout or fork.
+- MOXI-specific BaiLongma changes live as overlays under
+  [patches/bailongma](patches/bailongma/README.md).
+- External runtime install notes live under [external](external/README.md).
+- If a full BaiLongma fork becomes necessary, keep this repository as the
+  canonical technical-path source and preserve the upstream MIT license.
 
 ## Public Copy And Attribution
 

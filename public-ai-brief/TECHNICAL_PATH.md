@@ -50,6 +50,12 @@ Heavy or specialized work should be API-first or external-runtime-first:
 - future video understanding,
 - high-volume public-opinion analysis.
 
+The repository itself is the technical-path and control-plane source. Large
+upstream projects should be installed as external runtimes or separate forks,
+then shaped by documented overlays and patches. This keeps the main repository
+small, auditable, and easy for classmates or external AI reviewers to copy
+without hiding the source credit.
+
 ## 3. Module Boundaries
 
 | Module | Responsibility | First-version rule |
@@ -64,6 +70,27 @@ Heavy or specialized work should be API-first or external-runtime-first:
 | Sticker bridge | Prepared-sticker metadata, provider IDs, generated-sticker review, channel upload instructions | Do not bundle third-party or generated sticker files |
 | Company workflow | Tasks, docs, calendar, tables, approvals, reports | Read first, write only after approval |
 | Safety and audit | Permission levels, approval gates, logs, secret handling | High-risk actions are disabled by default |
+
+## 3.1 Repository And Upstream Boundary
+
+| Area | Owned by this repository | External or forked runtime |
+| --- | --- | --- |
+| Technical path | Yes | No |
+| Runtime contracts | Yes | Adapter-specific implementation |
+| CI and hygiene checks | Yes | Separate runtime CI when needed |
+| Secrets and sessions | Never committed | Server-only configuration |
+| BaiLongma-style UI changes | Overlay docs and patches | Upstream checkout or dedicated fork |
+| Attribution | Source line required | Preserve upstream license |
+
+The preferred dependency model is:
+
+```text
+main MOXI repository
+  -> documents architecture, reports, CI, and integration contracts
+  -> installs upstream runtimes under an external directory
+  -> applies focused overlays or patches
+  -> keeps real secrets, logs, media, and sessions out of Git
+```
 
 ## 4. Optimized Implementation Sequence
 
