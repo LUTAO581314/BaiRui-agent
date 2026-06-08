@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .config import RuntimeConfig, load_config
+from .latency import LatencyRecorder, latency_payload
 from .logging_utils import configure_logging
 from .performance import performance_payload
 from .routing import route_payload
@@ -153,12 +154,44 @@ class HermesHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.OK, performance_payload(self.server.config))
             return
 
+        if path == "/latency":
+            limit = int(query.get("limit", ["50"])[0] or "50")
+            self._send_json(HTTPStatus.OK, latency_payload(self.server.latency, limit))
+            return
+
         if path == "/route":
             message = query.get("message", [""])[0]
-            self._send_json(HTTPStatus.OK, route_payload(message, self.server.config))
+            trace = self.server.latency.trace(route="route_diagnostic")
+            trace.mark("intake_ms")
+            payload = route_payload(message, self.server.config)
+            trace.route = payload["route"]["route"]
+            trace.mark("context_ms")
+            self._send_json(HTTPStatus.OK, payload)
+            trace.mark("final_send_ms")
+            trace.finish()
             return
 
         self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found", "path": path})
+
+    def do_POST(self) -> None:
+        parsed_url = urlparse(self.path)
+        if parsed_url.path != "/latency/turn":
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found", "path": parsed_url.path})
+            return
+
+        try:
+            payload = self._read_json_body()
+            record = self.server.latency.add_external(
+                route=payload.get("route", "unknown"),
+                status=payload.get("status", "ok"),
+                stages=payload.get("stages", {}),
+                turn_id=payload.get("turn_id"),
+            )
+        except ValueError as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
+
+        self._send_json(HTTPStatus.OK, {"status": "ok", "record": record.__dict__})
 
     def log_message(self, format: str, *args: Any) -> None:
         self.server.logger.info("%s %s", self.address_string(), format % args)
@@ -171,10 +204,26 @@ class HermesHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _read_json_body(self) -> dict[str, Any]:
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0:
+            return {}
+        if length > 64 * 1024:
+            raise ValueError("request body too large")
+        raw = self.rfile.read(length)
+        try:
+            payload = json.loads(raw.decode("utf-8") or "{}")
+        except json.JSONDecodeError as error:
+            raise ValueError("invalid json") from error
+        if not isinstance(payload, dict):
+            raise ValueError("json body must be an object")
+        return payload
+
 
 class HermesServer(ThreadingHTTPServer):
     config: RuntimeConfig
     logger: logging.Logger
+    latency: LatencyRecorder
 
 
 def build_server(config: RuntimeConfig, logger: logging.Logger) -> HermesServer:
@@ -185,6 +234,7 @@ def build_server(config: RuntimeConfig, logger: logging.Logger) -> HermesServer:
     server = HermesServer((config.host, config.port), HermesHandler)
     server.config = config
     server.logger = logger
+    server.latency = LatencyRecorder()
     return server
 
 

@@ -180,6 +180,9 @@ The repository runtime exposes:
 - `/health` with performance profile,
 - `/performance` with latency budgets and model slots,
 - `/route?message=...` with safe rule-first route diagnosis,
+- `/latency` with recent safe latency records,
+- `POST /latency/turn` for external runtimes to report stage timing without
+  storing message bodies,
 - environment variables for latency targets:
   - `HERMES_SOCIAL_QUICK_ACK_DELAY_MS`,
   - `HERMES_SOCIAL_FAST_REPLY_TARGET_MS`,
@@ -189,6 +192,28 @@ The repository runtime exposes:
 
 This is intentionally safe: performance endpoints expose no API keys, secrets,
 server addresses, chat logs, or private runtime names.
+
+External latency report shape:
+
+```json
+{
+  "turn_id": "optional-stable-id",
+  "route": "image_generate",
+  "status": "completed",
+  "stages": {
+    "intake_ms": 10,
+    "quick_ack_ms": 900,
+    "context_ms": 1200,
+    "first_token_ms": 2500,
+    "tool_ms": 42000,
+    "final_send_ms": 300,
+    "total_ms": 43000
+  }
+}
+```
+
+Only whitelisted numeric stage fields are stored. Message text, API responses,
+keys, screenshots, and raw tool output must not be stored in latency telemetry.
 
 ## 7. Implementation Order
 

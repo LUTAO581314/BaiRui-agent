@@ -109,6 +109,13 @@ GET /performance
 - tool 耗时，
 - final send 耗时。
 
+当前进展：
+
+- 已新增 `/latency` 端点，用于查看最近安全耗时记录。
+- 已新增 `POST /latency/turn`，允许外部运行时上报阶段耗时。
+- 已新增阶段白名单，只接受 `intake_ms`、`quick_ack_ms`、`context_ms`、`first_token_ms`、`tool_ms`、`final_send_ms`、`total_ms`。
+- 上报数据不会保存消息正文、API 响应、截图、密钥或原始工具输出。
+
 ### P2：意图路由
 
 增加规则优先的路由：
@@ -122,6 +129,12 @@ GET /performance
 - company_task
 - memory_task
 - high_risk
+
+当前进展：
+
+- 已新增 `/route?message=...` 安全诊断端点。
+- 已支持 `casual_chat`、`quick_question`、`image_read`、`image_generate`、`search`、`public_opinion`、`company_task`、`memory_task`、`high_risk`。
+- 路由结果包含模型槽位、工具组、记忆深度、是否 quick ack、是否异步、是否需要确认和延迟预算。
 
 ### P3：上下文瘦身
 

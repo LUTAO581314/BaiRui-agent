@@ -8,7 +8,7 @@ import threading
 import time
 import unittest
 from unittest.mock import patch
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from hermes_runtime.config import RuntimeConfig, load_config
 from hermes_runtime.logging_utils import configure_logging
@@ -288,6 +288,68 @@ class RuntimeTests(unittest.TestCase):
                     risk = json.loads(response.read().decode("utf-8"))
                 self.assertEqual(risk["route"]["route"], "high_risk")
                 self.assertTrue(risk["route"]["approval_required"])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                for handler in list(logger.handlers):
+                    logger.removeHandler(handler)
+                    handler.close()
+                logging.shutdown()
+
+    def test_latency_endpoints_record_route_and_external_turns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config = make_config(base)
+            logger = configure_logging(config.log_dir)
+            server = build_server(config, logger)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                base_url = f"http://127.0.0.1:{server.server_port}"
+
+                with urlopen(
+                    base_url + "/route?message=generate%20image%20avatar",
+                    timeout=2,
+                ) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(payload["route"]["route"], "image_generate")
+
+                external_body = json.dumps(
+                    {
+                        "turn_id": "test-turn",
+                        "route": "image_generate",
+                        "status": "completed",
+                        "stages": {
+                            "intake_ms": 10,
+                            "quick_ack_ms": 900,
+                            "tool_ms": 42000,
+                            "total_ms": 43000,
+                            "message": "must be ignored",
+                        },
+                    }
+                ).encode("utf-8")
+                request = Request(
+                    base_url + "/latency/turn",
+                    data=external_body,
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urlopen(request, timeout=2) as response:
+                    created = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(created["status"], "ok")
+                self.assertEqual(created["record"]["route"], "image_generate")
+                self.assertNotIn("message", created["record"]["stages"])
+
+                with urlopen(base_url + "/latency?limit=10", timeout=2) as response:
+                    latency = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(latency["status"], "ok")
+                self.assertIn("quick_ack_ms", latency["allowed_stages"])
+                routes = [item["route"] for item in latency["records"]]
+                self.assertIn("image_generate", routes)
+                self.assertNotIn("api_key", json.dumps(latency).lower())
+                self.assertNotIn("secret", json.dumps(latency).lower())
             finally:
                 server.shutdown()
                 server.server_close()
