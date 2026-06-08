@@ -88,6 +88,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 15 Frontend Adapter And Capability Matrix Chinese Report](reports/phase-15-frontend-adapter-and-capability-matrix.zh-CN.md)
 - [Phase 16 BaiLongma Capability Matrix Chinese Report](reports/phase-16-bailongma-capability-matrix.zh-CN.md)
 - [Phase 17 Frontend Contract Chinese Report](reports/phase-17-frontend-contract.zh-CN.md)
+- [Phase 18 Server Social Turn Bridge Chinese Report](reports/phase-18-server-social-turn-bridge.zh-CN.md)
 
 ## Repository Automation
 
@@ -115,6 +116,9 @@ not vendor full upstream applications by default.
 - The runtime now exposes `/frontend/contract` so BaiLongma can render progress
   states, route UI labels, and personal/company permission badges from the
   Hermes adapter contract instead of hard-coding them.
+- The server BaiLongma overlay now proxies `/frontend/contract` and calls
+  Hermes `/social/turn` before `/message` enters the native BaiLongma queue,
+  so slow routes can show a natural quick ACK and report `ack_sent`.
 - External runtime install notes live under [external](external/README.md).
 - If a full BaiLongma fork becomes necessary, keep this repository as the
   canonical technical-path source and preserve the upstream MIT license.

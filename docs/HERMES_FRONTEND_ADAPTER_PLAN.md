@@ -86,10 +86,12 @@ BaiLongma / Brain UI
 2. Render capability cards in the public website and Brain UI settings. Done in Phase 16.
 3. Export the first BaiLongma patch for settings UI and QQ entry. Done in Phase 16.
 4. Add runtime frontend contract endpoint. Done in Phase 17.
-5. Add runtime connector test buttons.
-6. Add progress events to chat UI.
-7. Add company/persona permission badges.
-8. Add GitHub Pages deployment for the public technical path.
+5. Configure the server runtime bridge and proxy `/frontend/contract` through BaiLongma. Done in Phase 18.
+6. Add first `/message` to `/social/turn` progress bridge. Done in Phase 18.
+7. Add runtime connector test buttons.
+8. Add richer progress events to chat UI.
+9. Add company/persona permission badges.
+10. Add GitHub Pages deployment for the public technical path.
 
 ## Phase 16 Patch
 
@@ -125,3 +127,22 @@ future MOXI frontend. It exposes:
 
 This keeps Hermes as the backend logic owner while giving BaiLongma a stable
 adapter surface for progress UI, permission badges, and slow-task behavior.
+
+## Phase 18 Server Bridge
+
+The server now runs the MOXI/Hermes runtime on `127.0.0.1:8787`, and BaiLongma
+is configured with `HERMES_RUNTIME_BASE_URL=http://127.0.0.1:8787`.
+
+The BaiLongma overlay patch
+`patches/bailongma/phase-18-social-turn-progress-bridge.patch` adds:
+
+- shared Hermes runtime JSON helpers,
+- `GET /frontend/contract` proxy on the BaiLongma service,
+- `/message` preflight planning through Hermes `/social/turn`,
+- natural quick ACK emission through the existing SSE `message` event,
+- `ack_sent` lifecycle reporting to Hermes `/jobs/event`,
+- response metadata showing `first_action`, `route`, `ack_sent`, and `job_id`.
+
+This is deliberately a surface-first bridge. The final answer still comes from
+BaiLongma's native agent loop, while Hermes owns the route plan, progress
+metadata, and job lifecycle.

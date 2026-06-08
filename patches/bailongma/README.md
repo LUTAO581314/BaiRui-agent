@@ -33,13 +33,16 @@ checkout. It is intentionally an overlay, not a full copy of upstream source.
   adds a Brain UI capability matrix panel, a secret-safe `/capabilities`
   endpoint that can bridge Hermes backend readiness, and QQ official bot
   settings fields.
+- [phase-18-social-turn-progress-bridge.patch](phase-18-social-turn-progress-bridge.patch)
+  proxies `/frontend/contract` through BaiLongma and lets `/message` call
+  Hermes `/social/turn` before queueing the native BaiLongma agent turn. Slow
+  routes emit a natural progress ACK and report `ack_sent` to `/jobs/event`.
 
 Future patch files should be named by phase and purpose:
 
 ```text
-phase-17-hermes-social-turn-bridge.patch
-phase-18-progress-aware-chat-ui.patch
-phase-19-company-personal-permission-badges.patch
+phase-19-progress-aware-chat-ui.patch
+phase-20-company-personal-permission-badges.patch
 ```
 
 The server checkout may still contain local runtime-specific changes. Patch
