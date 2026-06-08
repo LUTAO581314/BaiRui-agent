@@ -196,15 +196,31 @@ Exit criteria:
 Performance should be designed into the route, not patched only at the model
 layer.
 
-- Fast ACK for platform callbacks.
-- Async queue for slow work.
-- Typing or "thinking" indicators for long tasks.
-- Task locks for multimodal jobs so a follow-up text message does not cancel an
-  image-reading turn.
-- Priority levels for image, voice, company alerts, and ordinary chat.
-- Cache repeated public-opinion and document summaries.
-- Log per-stage latency: intake, download, model call, tool call, reply send.
-- Use smaller models for labels and deduplication, larger models only when the
+### 5.1 Surface Layer
+
+The first optimization is human-visible responsiveness:
+
+- send a short natural acknowledgement within 1-2 seconds for slow-looking
+  social tasks,
+- keep ordinary social replies short and conversational,
+- show or send "thinking / looking / generating" state before image, search, or
+  company workflows,
+- never treat an acknowledgement as the final answer.
+
+### 5.2 Bottom Layer
+
+The second optimization is actual runtime latency:
+
+- expose safe performance budgets through a runtime endpoint,
+- log per-stage latency: intake, quick acknowledgement, context build, first
+  token, tool call, final send,
+- use a rule-first intent router before loading heavy context,
+- gate tool schemas by route,
+- move image generation, image reading, search expansion, and company workflows
+  into async jobs,
+- lock slow multimodal jobs so follow-up text does not cancel them by accident,
+- cache repeated public-opinion and document summaries,
+- use smaller models for labels and deduplication, larger models only when the
   final answer needs judgment.
 
 ## 6. Permission Levels

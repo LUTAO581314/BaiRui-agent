@@ -69,6 +69,11 @@ class RuntimeConfig:
     sticker_image_generation_model: str
     sticker_generation_review_required: bool
     sticker_runtime_cache_enabled: bool
+    social_quick_ack_delay_ms: int
+    social_fast_reply_target_ms: int
+    slow_task_threshold_ms: int
+    async_task_timeout_seconds: int
+    latency_telemetry_enabled: bool
 
 
 def load_config() -> RuntimeConfig:
@@ -153,5 +158,20 @@ def load_config() -> RuntimeConfig:
         ),
         sticker_runtime_cache_enabled=_as_bool(
             os.getenv("HERMES_STICKER_RUNTIME_CACHE_ENABLED"), False
+        ),
+        social_quick_ack_delay_ms=_as_int(
+            os.getenv("HERMES_SOCIAL_QUICK_ACK_DELAY_MS"), 1200
+        ),
+        social_fast_reply_target_ms=_as_int(
+            os.getenv("HERMES_SOCIAL_FAST_REPLY_TARGET_MS"), 5000
+        ),
+        slow_task_threshold_ms=_as_int(
+            os.getenv("HERMES_SLOW_TASK_THRESHOLD_MS"), 5000
+        ),
+        async_task_timeout_seconds=_as_int(
+            os.getenv("HERMES_ASYNC_TASK_TIMEOUT_SECONDS"), 180
+        ),
+        latency_telemetry_enabled=_as_bool(
+            os.getenv("HERMES_LATENCY_TELEMETRY_ENABLED"), True
         ),
     )

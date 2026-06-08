@@ -62,6 +62,11 @@ def make_config(base: Path, **overrides: object) -> RuntimeConfig:
         "sticker_image_generation_model": "",
         "sticker_generation_review_required": True,
         "sticker_runtime_cache_enabled": False,
+        "social_quick_ack_delay_ms": 1200,
+        "social_fast_reply_target_ms": 5000,
+        "slow_task_threshold_ms": 5000,
+        "async_task_timeout_seconds": 180,
+        "latency_telemetry_enabled": True,
     }
     values.update(overrides)
     return RuntimeConfig(**values)
@@ -92,6 +97,11 @@ class RuntimeTests(unittest.TestCase):
                 "HERMES_STICKER_IMAGE_GENERATION_MODEL": "image2",
                 "HERMES_STICKER_GENERATION_REVIEW_REQUIRED": "true",
                 "HERMES_STICKER_RUNTIME_CACHE_ENABLED": "false",
+                "HERMES_SOCIAL_QUICK_ACK_DELAY_MS": "900",
+                "HERMES_SOCIAL_FAST_REPLY_TARGET_MS": "4500",
+                "HERMES_SLOW_TASK_THRESHOLD_MS": "5000",
+                "HERMES_ASYNC_TASK_TIMEOUT_SECONDS": "240",
+                "HERMES_LATENCY_TELEMETRY_ENABLED": "true",
             }
 
             with patch.dict("os.environ", env, clear=True):
@@ -116,6 +126,11 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(config.sticker_image_generation_model, "image2")
             self.assertTrue(config.sticker_generation_review_required)
             self.assertFalse(config.sticker_runtime_cache_enabled)
+            self.assertEqual(config.social_quick_ack_delay_ms, 900)
+            self.assertEqual(config.social_fast_reply_target_ms, 4500)
+            self.assertEqual(config.slow_task_threshold_ms, 5000)
+            self.assertEqual(config.async_task_timeout_seconds, 240)
+            self.assertTrue(config.latency_telemetry_enabled)
 
     def test_readiness_is_ready_after_directories_exist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -179,6 +194,50 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(payload["stickers"]["image_generation_model"], "")
                 self.assertTrue(payload["stickers"]["generation_review_required"])
                 self.assertFalse(payload["stickers"]["runtime_cache_enabled"])
+                self.assertEqual(payload["performance"]["quick_ack_delay_ms"], 1200)
+                self.assertEqual(payload["performance"]["fast_reply_target_ms"], 5000)
+                self.assertEqual(payload["performance"]["slow_task_threshold_ms"], 5000)
+                self.assertEqual(
+                    payload["performance"]["async_task_timeout_seconds"], 180
+                )
+                self.assertTrue(payload["performance"]["latency_telemetry_enabled"])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                for handler in list(logger.handlers):
+                    logger.removeHandler(handler)
+                    handler.close()
+                logging.shutdown()
+
+    def test_performance_endpoint_exposes_safe_latency_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config = make_config(
+                base,
+                ai_fast_model="5.4-mini",
+                ai_reasoning_model="5.5",
+                ai_vision_model="gpt-5.5-vision",
+            )
+            logger = configure_logging(config.log_dir)
+            server = build_server(config, logger)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                url = f"http://127.0.0.1:{server.server_port}/performance"
+                with urlopen(url, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+
+                self.assertEqual(payload["status"], "ok")
+                self.assertEqual(payload["profile"]["quick_ack_delay_ms"], 1200)
+                self.assertEqual(payload["profile"]["fast_reply_target_ms"], 5000)
+                self.assertIn("slow_task", payload["latency_budgets"])
+                self.assertEqual(payload["routing_slots"]["fast"], "5.4-mini")
+                self.assertEqual(payload["routing_slots"]["reasoning"], "5.5")
+                self.assertEqual(payload["routing_slots"]["vision"], "gpt-5.5-vision")
+                self.assertNotIn("api_key", json.dumps(payload).lower())
+                self.assertNotIn("secret", json.dumps(payload).lower())
             finally:
                 server.shutdown()
                 server.server_close()

@@ -37,6 +37,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 
 - [White-label Public AI Brief](public-ai-brief/README.md) - use this folder when asking external AI for technical-path advice without exposing the private runtime stack.
 - [Optimized Technical Path](docs/OPTIMIZED_TECHNICAL_PATH.md) - the current internal engineering path, module boundaries, performance plan, and copy/credit strategy.
+- [Performance Optimization Plan](docs/PERFORMANCE_OPTIMIZATION_PLAN.md) - the surface-first and bottom-layer plan for sub-5-second social responsiveness, async slow jobs, latency telemetry, and model routing.
 - [Technical Path Chinese Summary](docs/TECHNICAL_PATH_SUMMARY.zh-CN.md)
 - [Sustainable Iteration Blueprint](docs/SUSTAINABLE_ITERATION_BLUEPRINT.md)
 - [Master Plan](docs/MASTER_PLAN.md)
@@ -66,6 +67,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 03 Feishu Company Management Chinese Report](reports/phase-03-feishu-company-management.zh-CN.md)
 - [Phase 04 Optimized Technical Path Chinese Report](reports/phase-04-optimized-technical-path.zh-CN.md)
 - [Phase 05 Sticker Bridge Chinese Report](reports/phase-05-sticker-bridge.zh-CN.md)
+- [Phase 06 Social Performance Optimization Chinese Report](reports/phase-06-social-performance-optimization.zh-CN.md)
 
 ## Public Copy And Attribution
 
@@ -94,6 +96,7 @@ Health checks:
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8787/health
 Invoke-RestMethod http://127.0.0.1:8787/ready
+Invoke-RestMethod http://127.0.0.1:8787/performance
 ```
 
 ## Recommended Current Milestone

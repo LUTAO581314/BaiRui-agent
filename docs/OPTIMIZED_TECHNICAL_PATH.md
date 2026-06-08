@@ -1,273 +1,302 @@
-# 优化技术路径
+# Optimized Technical Path
 
-## 1. 结论
+Technical path source: https://github.com/LUTAO581314/hermes-
 
-当前路线应从“把所有能力接进来”优化为“一个稳定编排核心，多个受控能力面”：
+## 1. Core Conclusion
 
-```text
-交互入口
-  -> 渠道策略
-  -> 编排核心
-  -> 模型网关
-  -> 工具运行时
-  -> 记忆治理
-  -> 报告/通知/可视化
-```
-
-轻量服务器只承担编排、队列、路由、健康检查、日志、静态界面和少量本地轻服务。推理、读图、正式语音、搜索扩展、舆情分析和未来视频理解优先走 API 或外部项目运行时。
-
-这条路线更适合持续迭代，也更适合让同学复制：他们不需要知道我们的私有运行栈，只需要知道模块边界、实现顺序和验收标准。
-
-## 2. 当前架构优化点
-
-### 2.1 从“聊天机器人”升级为“编排系统”
-
-聊天入口只是表层，真正核心应该是统一任务编排：
-
-- 所有入口都先转成标准任务。
-- 所有慢任务都进队列。
-- 所有工具调用都返回结构化证据。
-- 所有结果都经过渠道策略决定如何回复。
-- 所有长期记忆都经过记忆治理。
-
-这样微信、飞书、网页、CLI 不会各写一套逻辑，也不会出现“一个入口打断另一个入口”的混乱。
-
-### 2.2 从“单模型”升级为“模型插槽”
-
-模型不应该写死在每个功能里，而是分成插槽：
-
-| 插槽 | 用途 | 推荐策略 |
-| --- | --- | --- |
-| fast | 分类、路由、去重、标签、短抽取 | 便宜、低延迟 |
-| summary | 摘要、舆情 digest、日报周报草稿 | 平衡质量和成本 |
-| reasoning | 最终判断、战略建议、高风险报告 | 只用于关键结果 |
-| vision | 图片、OCR、截图、图表 | 走具备视觉能力的模型 |
-| asr | 语音转文字 | 本地轻服务或 API |
-| tts | 语音输出 | 浏览器兜底，正式场景用供应商 |
-
-### 2.3 从“记得越多越好”升级为“记得更少但更准”
-
-记忆分四层：
+The system should not be optimized as "one chatbot with many plugins". It should
+be optimized as a latency-aware agent operating system:
 
 ```text
-原始对话/运行日志
-  -> 工作记忆
-  -> 做梦整理和人工审核
-  -> Obsidian 长期记忆
-  -> 可重建索引/图谱
+interaction surface
+  -> channel policy
+  -> quick acknowledgement
+  -> orchestration queue
+  -> model routing
+  -> tool runtime
+  -> final result delivery
+  -> memory review and report write-back
 ```
 
-长期记忆只收这些内容：
+The lightweight VPS should run orchestration, queues, route selection, health
+checks, logs, dashboards, and small local services. Heavy reasoning, image
+generation, image understanding, formal TTS, search expansion, and future video
+understanding should stay API-first or external-runtime-first.
 
-- 稳定偏好。
-- 明确指令。
-- 项目事实。
-- 关键决策。
-- 反复出现的行为模式。
-- 经过来源支撑的研究结论。
-- 阶段报告和复盘。
+The optimization order is:
 
-测试句、问候、临时情绪、健康检查、二维码状态、随机 API 输出不进入长期记忆。
+1. Fix the surface experience first so social channels feel alive.
+2. Instrument the bottom layer so latency is measurable.
+3. Slim context and tools for normal chat.
+4. Move slow work to async jobs.
+5. Add model routing so small models handle high-volume work and strong models
+   handle final judgment.
 
-### 2.4 从“看起来有面板”升级为“可追溯工作台”
+## 2. Human-Visible Performance Targets
 
-热点、舆情、记忆图、语音、图片面板都要有真实用途：
+| Target | Budget | Rule |
+| --- | ---: | --- |
+| Social quick acknowledgement | 1-2 seconds | Send a short natural message before slow work. |
+| Simple social reply | <= 5 seconds | Do not load heavy tools or long memory. |
+| Slow task acknowledgement | <= 5 seconds | If the result cannot finish quickly, acknowledge and continue in background. |
+| Image generation | async | Send "wait while I take/make it", then send the generated image. |
+| Image reading | async when needed | Send "I am looking at it", then send analysis. |
+| Search / public opinion | async when needed | Send "I will check", then send source-backed results. |
+| Final result | required | Acknowledgements do not count as final delivery. |
 
-- 热点标题必须能点开来源或搜索 fallback。
-- 舆情 feed 必须显示来源、更新时间和抓取状态。
-- 记忆图只展示可解释关系，不伪装成长期记忆源。
-- 图片任务要显示处理中状态，避免用户以为没有反应。
-- 语音按钮和对话按钮职责分离：一个听写，一个实时对话。
+## 3. Surface-First Optimization
 
-## 3. 推荐模块边界
+This layer fixes the feeling of silence before deeper performance work is done.
 
-| 模块 | 责任 | 不应该做什么 |
-| --- | --- | --- |
-| Interaction Surface | Web UI、微信、飞书、CLI 的输入输出 | 不直接决定高风险动作 |
-| Channel Policy | 区分个人、公司、管理员、高风险任务 | 不执行工具 |
-| Orchestrator | 队列、优先级、重试、取消、锁定、调度 | 不保存永久记忆 |
-| Model Gateway | 统一模型插槽、成本和延迟记录 | 不充当爬虫 |
-| Tool Runtime | 搜索、读图、ASR、TTS、飞书、文档、服务器检查 | 不越权写数据 |
-| Memory Governor | 入库规则、做梦整理、审核、遗忘、合并 | 不把原始日志全存长期 |
-| Intelligence Layer | 舆情、搜索、趋势、报告 | 不把热榜当事实 |
-| Company Workflow | 身份、群、文档、表格、任务、日程、审批 | 不绕过主人确认 |
-| Safety/Audit | 权限级别、审计日志、密钥治理、回滚 | 不只写在文档里 |
+### 3.1 Quick Acknowledgement
 
-## 4. 优化后的阶段路径
+Social channels should not wait silently for a long model or tool call. The
+runtime should send short, human-like acknowledgements:
 
-### P0：仓库和运行时可复制
+- Image reading: "我看一下这张图，等我一下哦～"
+- Image generation: "等我拍一下，马上给你～"
+- Search: "我查一下，别急～"
+- Complex thinking: "我想想哦，马上回你～"
 
-目标：别人拿到仓库后能理解系统，并能搭一个最小运行时。
+Rules:
 
-交付：
+- Do not send an acknowledgement for tiny messages such as "ok" or "好".
+- Deduplicate acknowledgements by channel and sender.
+- An acknowledgement is progress, not the final answer.
+- The final answer must still be delivered after the tool or model result.
 
-- README 入口清晰。
-- `.env.example` 不含密钥。
-- 安装、启动、停止、更新脚本可用。
-- 健康检查和就绪检查可用。
-- 本地测试可运行。
+### 3.2 Social Tone
 
-验收：
+WeChat and Feishu replies should read like real chat messages:
 
-- `python -m hermes_runtime` 可启动。
-- `/health` 和 `/ready` 正常。
-- 密钥扫描不出现真实凭证。
+- 1-3 short sentences by default.
+- No report headings for ordinary chat.
+- No repeated summaries.
+- No process narration unless the user is waiting on a slow task.
+- Use richer structure only for company reports, plans, audits, or documents.
 
-### P1：核心 Agent 闭环
+### 3.3 Visible Work State
 
-目标：网页聊天、模型调用、工具调用、读图、语音输入、工作记忆能稳定闭环。
+The web UI can show thinking indicators. Social channels usually cannot, so the
+runtime should simulate presence through short messages and later final results.
 
-交付：
+## 4. Bottom-Layer Optimization
 
-- 标准消息格式。
-- 异步队列。
-- 工具调用协议。
-- 模型插槽。
-- 图片理解链路。
-- 本地或 API ASR。
-- 浏览器 TTS 兜底。
-- 处理中状态。
+This layer makes the system actually faster.
 
-验收：
+### 4.1 Latency Telemetry
 
-- 文本消息能回复。
-- 图片能被读取并解释。
-- 语音能转成文字。
-- 慢任务不会被普通追问误打断。
-- 日志能看出每一步耗时。
+Every inbound turn should record:
 
-### P2：记忆治理和 Obsidian 写回
+- intake time,
+- quick acknowledgement time,
+- context build time,
+- first model token time,
+- tool start and end time,
+- final send time,
+- total user-visible latency.
 
-目标：防止长期记忆变成垃圾场。
+The minimal runtime exposes safe performance budgets through `/performance`.
+Secrets and API keys must never appear in performance payloads.
 
-交付：
+### 4.2 Intent Router
 
-- 工作记忆入库规则。
-- Obsidian `00-Inbox/needs-review`。
-- 做梦整理脚本。
-- 遗忘、合并、晋升、归档建议。
-- 阶段报告写回流程。
+Before the heavy model call, classify the message into one of these route types:
 
-验收：
+| Route | Fast path |
+| --- | --- |
+| casual_chat | small context, no heavy tools |
+| quick_question | short context, answer directly |
+| image_read | quick ack, image tool, final result |
+| image_generate | quick ack, async image job, final image |
+| search | quick ack, search runtime, source-backed result |
+| company_task | Feishu identity, permission gate, async workflow |
+| memory_update | working memory first, durable memory only after review |
+| high_risk | stop at confirmation boundary |
 
-- 测试垃圾不会进入长期记忆。
-- 至少一条有效记忆能通过审核进入 Obsidian。
-- 至少一次做梦整理能给出去重和清理建议。
+### 4.3 Context Slimming
 
-### P3：舆情和搜索智能
+Normal social messages should not carry the full brain:
 
-目标：热点面板不是装饰，而是可点击、可分析、可写报告的情报入口。
+- Keep only identity, channel, latest conversation window, and critical memory.
+- Load tool schemas only when the intent router says they are needed.
+- Skip memory consolidation on the live reply path.
+- Move dream consolidation to background or phase-end cleanup.
 
-交付：
+### 4.4 Async Slow Jobs
 
-- 热榜和 feed 展示。
-- 原文链接或搜索 fallback。
-- 点击分析某一条。
-- 来源扩展。
-- 5.4 mini 去重和打标签。
-- 5.4 总结。
-- 5.5 最终判断。
-- 报告写入待审核。
+Slow tasks should be represented as jobs:
 
-验收：
+```text
+received -> acknowledged -> running -> completed | failed -> delivered
+```
 
-- 至少一条热点能点开。
-- 至少一条外部 feed 能展示。
-- 至少一条舆情能生成带来源的报告。
+Slow-job examples:
 
-### P4：飞书公司管理
+- image generation,
+- image analysis,
+- search expansion,
+- public-opinion report,
+- Feishu document/table read,
+- company workflow update,
+- long reasoning report.
 
-目标：让沫汐能在飞书里可靠识别人、群、项目和公司资料，先读后写。
+The user should receive an acknowledgement quickly, then the final result when
+the job completes. A follow-up text message should not cancel an in-progress
+image or search job unless the user explicitly says to cancel it.
 
-交付：
+### 4.5 Model Routing
 
-- 单聊和群聊身份分离。
-- 群 @ 回复留在当前群。
-- 事件幂等。
-- 快速 ACK + 异步处理。
-- 通讯录、部门、角色、群/项目映射。
-- 文档和多维表格只读查询。
-- 经营简报。
-- 操作确认卡片。
+Use model slots instead of hard-coding one model everywhere:
 
-验收：
+| Slot | Use |
+| --- | --- |
+| fast | acknowledgement drafts, intent classification, deduplication, labels |
+| summary | public-opinion digest, daily/weekly summaries, source synthesis |
+| reasoning | strategy, final judgment, company decisions, owner-facing reports |
+| vision | image understanding, OCR, screenshots, charts |
+| image_generation | original image/sticker generation after review |
 
-- 真实群 @ 能回到群里。
-- 能知道是谁在说话。
-- 能用来源链接回答公司文档问题。
-- 创建任务、写表格、改日程前必须确认。
+High-volume workflows should use the fast or summary slots first. The reasoning
+slot should be reserved for final judgment and complex planning.
 
-### P5：微信个人陪伴
+## 5. Channel-Specific Rules
 
-目标：微信只做个人陪伴、提醒、快照和轻量入口，不承担公司审批。
+### WeChat
 
-交付：
+WeChat is personal and companion-like:
 
-- 文字对话。
-- 图片读取。
-- 后续语音消息 ASR。
-- 个人提醒。
-- 重要信息摘要。
-- 长期记忆候选进入审核。
+- good for lightweight chat, reminders, quick capture, images, and personal
+  summaries,
+- not the primary channel for company approvals or employee management,
+- should always feel responsive.
 
-验收：
+### Feishu
 
-- 图片和文字组合能被理解。
-- 普通追问不会取消上一轮图片处理。
-- 个人记忆候选不会直接污染长期记忆。
+Feishu is the company management surface:
 
-### P6：高风险能力冻结和单独设计
+- identify who is speaking,
+- keep group replies in the group,
+- deduplicate repeated webhook events,
+- answer document/table questions with source links,
+- require owner confirmation before sensitive writes.
 
-默认冻结：
+### Web UI
 
-- 自动交易。
-- 资金移动。
-- 审批批准/拒绝。
-- HR 和法务动作。
-- 对外承诺。
-- 删除或批量移动文件。
-- 大范围公司群监听。
+The web UI should show:
 
-这些能力只能在单独的风险设计、权限设计、回滚设计和主人确认后开放。
+- thinking state,
+- tool running state,
+- image/media panels,
+- trend/public-opinion panels,
+- memory graph and review state.
 
-## 5. 性能优化路线
+## 6. Memory Performance Rule
 
-当前最重要的性能优化不是“换更大模型”，而是任务工程：
+Memory must not slow down ordinary replies.
 
-1. 平台回调快速返回 ACK。
-2. 慢任务进入异步队列。
-3. 图片、语音、公司告警设置优先级。
-4. 多模态任务加锁，避免普通追问打断。
-5. UI 显示“处理中/正在读图/正在搜索”。
-6. 分段记录耗时：入口、下载、工具、模型、发送。
-7. 相同 URL、热点、文档摘要做缓存。
-8. 高容量任务用小模型先筛，最终结论才用强模型。
+Live path:
 
-## 6. 对外复制策略
+- use small working-memory snippets,
+- avoid heavy consolidation,
+- do not write noisy memories immediately.
 
-对同学和外部 AI 只给 `public-ai-brief/`：
+Background path:
 
-- 不给服务器地址。
-- 不给域名。
-- 不给密钥。
-- 不给内部数据库。
-- 不给私人聊天。
-- 不给私有运行栈名。
+- dream consolidation,
+- merge duplicate memories,
+- downgrade weak memories,
+- promote durable candidates to Obsidian review,
+- write Chinese phase reports after each implementation stage.
 
-但必须保留仓库署名：
+## 7. Implementation Milestones
+
+### P0: Surface Stabilization
+
+Deliver:
+
+- quick acknowledgement,
+- slow-tool progress text,
+- final-result guarantee,
+- social tone rule,
+- acknowledgement deduplication.
+
+Exit criteria:
+
+- complex social messages receive visible feedback in 1-2 seconds,
+- image generation and image reading send progress before the final result,
+- acknowledgements do not suppress final answers.
+
+### P1: Performance Instrumentation
+
+Deliver:
+
+- `/performance` endpoint,
+- latency budgets in config,
+- per-stage latency logs,
+- route classification logs.
+
+Exit criteria:
+
+- slow turns can be diagnosed by stage,
+- performance payload contains no secrets,
+- deployment can report current budgets.
+
+### P2: Fast Path Router
+
+Deliver:
+
+- rule-first intent classification,
+- reduced context for ordinary social chat,
+- tool schema gating,
+- fast-model route for simple tasks.
+
+Exit criteria:
+
+- simple chat does not load heavy tool sets,
+- common replies target <= 5 seconds,
+- slow tasks move to async flow.
+
+### P3: Async Job Runtime
+
+Deliver:
+
+- job states,
+- background workers,
+- result callback delivery,
+- cancellation and lock policy,
+- retry and timeout rules.
+
+Exit criteria:
+
+- image/search/company jobs survive follow-up messages,
+- final results are delivered after completion,
+- failures are explained with a next action.
+
+### P4: Model Routing And Cost Control
+
+Deliver:
+
+- fast / summary / reasoning / vision / image slots,
+- route-specific model choice,
+- cost and latency telemetry,
+- cache for repeated source summaries.
+
+Exit criteria:
+
+- high-volume intelligence uses cheaper models first,
+- strong model is reserved for judgment,
+- costs and latency are visible.
+
+## 8. Copy And Credit Rule
+
+Classmates and external AI reviewers can copy the public technical path, but the
+source line must stay:
 
 ```text
 Technical path source: https://github.com/LUTAO581314/hermes-
 ```
 
-公开材料里应该强调：这是一个可复制的技术路径，不是泄露内部部署细节。
-
-## 7. 下一步建议
-
-优先级如下：
-
-1. 先把公开技术路径和批量复制包完善。
-2. 再做网站页面，把技术路径可视化并加复制按钮。
-3. 再把 GitHub README 的入口放清楚。
-4. 然后继续补服务器端真实功能：舆情点击分析、记忆做梦动作化、飞书只读文档/表格。
-5. 最后才开放更重的 TTS、视频和高风险自动化。
+Public materials should describe the architecture and build order without
+exposing private deployment names, server IPs, API keys, chat logs, or internal
+operator details.

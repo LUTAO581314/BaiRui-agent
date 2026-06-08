@@ -14,6 +14,7 @@ from typing import Any
 
 from .config import RuntimeConfig, load_config
 from .logging_utils import configure_logging
+from .performance import performance_payload
 
 
 def utc_now() -> str:
@@ -118,6 +119,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                             self.server.config.sticker_runtime_cache_enabled
                         ),
                     },
+                    "performance": performance_payload(self.server.config)["profile"],
                     "created_at": utc_now(),
                 },
             )
@@ -138,6 +140,10 @@ class HermesHandler(BaseHTTPRequestHandler):
                     "created_at": utc_now(),
                 },
             )
+            return
+
+        if self.path == "/performance":
+            self._send_json(HTTPStatus.OK, performance_payload(self.server.config))
             return
 
         self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found", "path": self.path})
