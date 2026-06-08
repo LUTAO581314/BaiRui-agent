@@ -90,6 +90,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 17 Frontend Contract Chinese Report](reports/phase-17-frontend-contract.zh-CN.md)
 - [Phase 18 Server Social Turn Bridge Chinese Report](reports/phase-18-server-social-turn-bridge.zh-CN.md)
 - [Phase 19 Progress Aware Chat UI Chinese Report](reports/phase-19-progress-aware-chat-ui.zh-CN.md)
+- [Phase 20 Channel Plane Badges Chinese Report](reports/phase-20-channel-plane-badges.zh-CN.md)
 
 ## Repository Automation
 
@@ -122,6 +123,8 @@ not vendor full upstream applications by default.
   so slow routes can show a natural quick ACK and report `ack_sent`.
 - The Brain UI overlay now consumes `moxi_progress` SSE events and renders a
   compact route-aware progress strip while slow work is running.
+- Brain UI chat bubbles now show channel-plane badges so web/personal/company,
+  runtime progress, and owner-confirmation surfaces are visibly separated.
 - External runtime install notes live under [external](external/README.md).
 - If a full BaiLongma fork becomes necessary, keep this repository as the
   canonical technical-path source and preserve the upstream MIT license.

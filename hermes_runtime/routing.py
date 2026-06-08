@@ -34,27 +34,40 @@ class RoutePolicy:
 
 IMAGE_READ_RE = re.compile(
     r"(\[image attachments\]|analyze_image|ocr|screenshot|read image|image recognition|"
-    r"look at (this )?(image|picture|photo)|image|picture|photo)",
+    r"look at (this )?(image|picture|photo)|image|picture|photo|"
+    r"图片|照片|截图|看图|识别图片|图片识别|读图)",
     re.I,
 )
 IMAGE_GENERATE_RE = re.compile(
     r"(generate image|image generation|create image|draw|paint|sticker|avatar|"
-    r"gpt-image|image2)",
+    r"gpt-image|image2|生成图片|画图|画一张|生图|表情包|头像)",
     re.I,
 )
-SEARCH_RE = re.compile(r"(search|browse|look up|fetch|http://|https://|source|latest)", re.I)
+SEARCH_RE = re.compile(
+    r"(search|browse|look up|fetch|http://|https://|source|latest|"
+    r"搜索|搜一下|查一下|查资料|找资料|最新|来源)",
+    re.I,
+)
 PUBLIC_OPINION_RE = re.compile(
-    r"(trend|trending|hot list|hotspot|public opinion|sentiment|news|feed)", re.I
+    r"(trend|trending|hot list|hotspot|public opinion|sentiment|news|feed|"
+    r"热点|热搜|舆情|趋势|新闻|资讯)",
+    re.I,
 )
 COMPANY_RE = re.compile(
     r"(feishu|lark|company|project|task|approval|calendar|doc|table|department|"
-    r"employee|meeting|crm|sales|receivable)",
+    r"employee|meeting|crm|sales|receivable|"
+    r"飞书|公司|项目|任务|审批|日程|文档|表格|部门|员工|会议|销售|回款)",
     re.I,
 )
-MEMORY_RE = re.compile(r"(memory|remember|forget|obsidian|dream|consolidat)", re.I)
+MEMORY_RE = re.compile(
+    r"(memory|remember|forget|obsidian|dream|consolidat|"
+    r"记忆|记住|忘记|做梦|整理记忆|长期记忆)",
+    re.I,
+)
 HIGH_RISK_RE = re.compile(
     r"(trade|trading|buy stock|sell stock|money movement|wire transfer|delete all|"
-    r"approve expense|hr action|legal promise|destructive)",
+    r"approve expense|hr action|legal promise|destructive|"
+    r"交易|炒股|买股票|卖股票|转账|付款|打款|删除全部|审批付款|人事|法务|法律承诺)",
     re.I,
 )
 

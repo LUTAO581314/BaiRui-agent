@@ -41,11 +41,15 @@ checkout. It is intentionally an overlay, not a full copy of upstream source.
   adds a lightweight Brain UI progress strip that consumes `moxi_progress`
   events, shows route-aware status text, and clears when the final message is
   delivered.
+- [phase-20-channel-plane-badges.patch](phase-20-channel-plane-badges.patch)
+  adds route-aware and channel-aware badges to Brain UI chat bubbles so personal,
+  web, company, runtime, and approval surfaces are visibly separated.
 
 Future patch files should be named by phase and purpose:
 
 ```text
-phase-20-company-personal-permission-badges.patch
+phase-21-tool-lifecycle-events.patch
+phase-22-follow-up-job-merge.patch
 ```
 
 The server checkout may still contain local runtime-specific changes. Patch

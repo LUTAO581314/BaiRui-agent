@@ -418,6 +418,24 @@ class RuntimeTests(unittest.TestCase):
                     risk = json.loads(response.read().decode("utf-8"))
                 self.assertEqual(risk["route"]["route"], "high_risk")
                 self.assertTrue(risk["route"]["approval_required"])
+
+                with urlopen(
+                    route_url
+                    + "?message=%E5%B8%AE%E6%88%91%E7%9C%8B%E4%B8%80%E4%B8%8B%E9%A3%9E%E4%B9%A6%E9%A1%B9%E7%9B%AE%E4%BB%BB%E5%8A%A1",
+                    timeout=2,
+                ) as response:
+                    company = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(company["route"]["route"], "company_task")
+                self.assertTrue(company["route"]["approval_required"])
+
+                with urlopen(
+                    route_url
+                    + "?message=%E7%94%9F%E6%88%90%E4%B8%80%E5%BC%A0%E5%8F%AF%E7%88%B1%E8%A1%A8%E6%83%85%E5%8C%85",
+                    timeout=2,
+                ) as response:
+                    image_cn = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(image_cn["route"]["route"], "image_generate")
+                self.assertTrue(image_cn["route"]["quick_ack"])
             finally:
                 server.shutdown()
                 server.server_close()

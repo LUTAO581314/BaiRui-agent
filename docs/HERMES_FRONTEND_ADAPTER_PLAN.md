@@ -90,7 +90,7 @@ BaiLongma / Brain UI
 6. Add first `/message` to `/social/turn` progress bridge. Done in Phase 18.
 7. Add runtime connector test buttons.
 8. Add richer progress events to chat UI. Done in Phase 19.
-9. Add company/persona permission badges.
+9. Add company/persona permission badges. Done in Phase 20.
 10. Add GitHub Pages deployment for the public technical path.
 
 ## Phase 16 Patch
@@ -167,3 +167,20 @@ The server source cleanup for this phase archived 98 historical `.bak*` and
 temporary files out of `/home/hermes/external/BaiLongma/src` into
 `/home/hermes/backups/`, leaving the active source tree clean for future patch
 exports.
+
+## Phase 20 Channel Plane Badges
+
+The BaiLongma overlay patch
+`patches/bailongma/phase-20-channel-plane-badges.patch` adds visible plane
+badges to chat bubbles:
+
+- WeChat and QQ map to personal companionship,
+- web chat maps to web companionship,
+- Feishu, Lark, and WeCom map to the company plane,
+- `company_task` routes override the fallback plane to company,
+- `high_risk` routes override the fallback plane to owner confirmation,
+- `moxi_progress` ACK bubbles can show runtime/progress context.
+
+The Hermes runtime route classifier also gained Chinese keywords for image,
+search, public-opinion, company, memory, and high-risk routes. This keeps the
+Chinese production path aligned with the UI boundary labels.
