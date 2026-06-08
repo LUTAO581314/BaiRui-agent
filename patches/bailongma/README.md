@@ -37,11 +37,14 @@ checkout. It is intentionally an overlay, not a full copy of upstream source.
   proxies `/frontend/contract` through BaiLongma and lets `/message` call
   Hermes `/social/turn` before queueing the native BaiLongma agent turn. Slow
   routes emit a natural progress ACK and report `ack_sent` to `/jobs/event`.
+- [phase-19-progress-aware-chat-ui.patch](phase-19-progress-aware-chat-ui.patch)
+  adds a lightweight Brain UI progress strip that consumes `moxi_progress`
+  events, shows route-aware status text, and clears when the final message is
+  delivered.
 
 Future patch files should be named by phase and purpose:
 
 ```text
-phase-19-progress-aware-chat-ui.patch
 phase-20-company-personal-permission-badges.patch
 ```
 

@@ -89,7 +89,7 @@ BaiLongma / Brain UI
 5. Configure the server runtime bridge and proxy `/frontend/contract` through BaiLongma. Done in Phase 18.
 6. Add first `/message` to `/social/turn` progress bridge. Done in Phase 18.
 7. Add runtime connector test buttons.
-8. Add richer progress events to chat UI.
+8. Add richer progress events to chat UI. Done in Phase 19.
 9. Add company/persona permission badges.
 10. Add GitHub Pages deployment for the public technical path.
 
@@ -146,3 +146,24 @@ The BaiLongma overlay patch
 This is deliberately a surface-first bridge. The final answer still comes from
 BaiLongma's native agent loop, while Hermes owns the route plan, progress
 metadata, and job lifecycle.
+
+## Phase 19 Progress UI
+
+The BaiLongma overlay patch
+`patches/bailongma/phase-19-progress-aware-chat-ui.patch` adds a compact
+progress strip inside Brain UI chat history. It:
+
+- consumes `moxi_progress` SSE events,
+- maps Hermes routes to user-visible status text,
+- shows the active route as a small chip,
+- opens the chat surface when progress starts,
+- clears progress after final `message` delivery or terminal lifecycle events.
+
+Before this phase, users could see the quick ACK bubble but not a persistent
+"what is happening now" state. After this phase, slow work has both a natural
+ACK and a visible progress strip.
+
+The server source cleanup for this phase archived 98 historical `.bak*` and
+temporary files out of `/home/hermes/external/BaiLongma/src` into
+`/home/hermes/backups/`, leaving the active source tree clean for future patch
+exports.
