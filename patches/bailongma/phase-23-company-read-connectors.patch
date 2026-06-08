@@ -1,0 +1,283 @@
+diff -ruN /dev/null src/social/feishu-openapi.js
+--- /dev/null	2026-06-04 08:13:42.237356473 +0000
++++ src/social/feishu-openapi.js	2026-06-08 18:43:28.933036041 +0000
+@@ -0,0 +1,150 @@
++import { requestJson } from './http.js'
++import { env } from './utils.js'
++
++let tenantToken = null
++let tenantTokenExpiresAt = 0
++let tenantTokenRefreshing = null
++
++function cleanText(value, max = 500) {
++  return String(value ?? '').trim().slice(0, max)
++}
++
++function cleanId(value, max = 160) {
++  return cleanText(value, max).replace(/[^A-Za-z0-9_\-:.]/g, '')
++}
++
++function cleanUser(user = {}) {
++  return {
++    union_id: cleanId(user.union_id || ''),
++    user_id: cleanId(user.user_id || ''),
++    open_id: cleanId(user.open_id || ''),
++    name: cleanText(user.name || user.en_name || ''),
++    department_ids: Array.isArray(user.department_ids) ? user.department_ids.map(id => cleanId(id)).filter(Boolean).slice(0, 20) : [],
++    email_present: Boolean(user.email),
++    mobile_present: Boolean(user.mobile),
++    status: user.status || null,
++  }
++}
++
++function cleanRecord(record = {}) {
++  const fields = record.fields && typeof record.fields === 'object' ? record.fields : {}
++  const safeFields = {}
++  for (const [key, value] of Object.entries(fields).slice(0, 30)) {
++    if (typeof value === 'string') safeFields[key] = cleanText(value, 500)
++    else if (typeof value === 'number' || typeof value === 'boolean') safeFields[key] = value
++    else if (Array.isArray(value)) safeFields[key] = value.slice(0, 8).map(item => typeof item === 'object' ? '[object]' : cleanText(item, 120))
++    else if (value && typeof value === 'object') safeFields[key] = '[object]'
++    else safeFields[key] = value ?? null
++  }
++  return {
++    record_id: cleanId(record.record_id || ''),
++    created_time: record.created_time || null,
++    last_modified_time: record.last_modified_time || null,
++    fields: safeFields,
++  }
++}
++
++export async function getFeishuTenantToken() {
++  const appId = env('FEISHU_APP_ID')
++  const appSecret = env('FEISHU_APP_SECRET')
++  if (!appId || !appSecret) throw new Error('FEISHU_APP_ID/FEISHU_APP_SECRET not configured')
++  if (tenantToken && Date.now() < tenantTokenExpiresAt) return tenantToken
++  if (tenantTokenRefreshing) return tenantTokenRefreshing
++  tenantTokenRefreshing = (async () => {
++    try {
++      const res = await requestJson('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
++        method: 'POST',
++        body: { app_id: appId, app_secret: appSecret },
++        timeoutMs: 10000,
++      })
++      if (!res.ok || res.data?.code !== 0) throw new Error(`Feishu token failed: ${res.text}`)
++      tenantToken = res.data.tenant_access_token
++      tenantTokenExpiresAt = Date.now() + Math.max(60, Number(res.data.expire || 7200) - 120) * 1000
++      return tenantToken
++    } finally {
++      tenantTokenRefreshing = null
++    }
++  })()
++  return tenantTokenRefreshing
++}
++
++async function feishuGet(pathname, query = {}) {
++  const token = await getFeishuTenantToken()
++  const url = new URL(`https://open.feishu.cn/open-apis${pathname}`)
++  for (const [key, value] of Object.entries(query || {})) {
++    if (value !== undefined && value !== null && String(value).trim() !== '') url.searchParams.set(key, String(value))
++  }
++  const res = await requestJson(url.toString(), {
++    headers: { Authorization: `Bearer ${token}` },
++    timeoutMs: 12000,
++  })
++  if (!res.ok || res.data?.code !== 0) {
++    const code = res.data?.code ?? res.status
++    const msg = res.data?.msg || res.text || 'request failed'
++    throw new Error(`Feishu OpenAPI read failed (${code}): ${msg}`)
++  }
++  return res.data?.data || {}
++}
++
++export function getFeishuReadiness() {
++  return {
++    ok: true,
++    configured: Boolean(env('FEISHU_APP_ID') && env('FEISHU_APP_SECRET')),
++    read_only: true,
++    tools: {
++      user_lookup: { state: 'ready_if_permission_granted', permission: 'contact:user:readonly or equivalent contact read scope' },
++      bitable_records: { state: env('FEISHU_BITABLE_APP_TOKEN') && env('FEISHU_BITABLE_TABLE_ID') ? 'configured' : 'missing_table_config', env: ['FEISHU_BITABLE_APP_TOKEN', 'FEISHU_BITABLE_TABLE_ID'] },
++      drive_docs_search: { state: 'planned', reason: 'add after confirming Drive/Search scopes for the tenant' },
++    },
++    secret_policy: 'returns configuration booleans and metadata only; never returns app secrets or tenant tokens',
++  }
++}
++
++export async function lookupFeishuUser({ user_id, user_id_type = 'open_id' } = {}) {
++  const id = cleanId(user_id)
++  const type = ['open_id', 'user_id', 'union_id'].includes(user_id_type) ? user_id_type : 'open_id'
++  if (!id) return { ok: false, tool: 'feishu_lookup_user', error: 'user_id required' }
++  try {
++    const data = await feishuGet(`/contact/v3/users/${encodeURIComponent(id)}`, { user_id_type: type })
++    return {
++      ok: true,
++      tool: 'feishu_lookup_user',
++      user_id_type: type,
++      user: cleanUser(data.user || data),
++      source: 'feishu.contact.v3.users.get',
++      privacy: 'email/mobile are returned as presence booleans only',
++    }
++  } catch (err) {
++    return { ok: false, tool: 'feishu_lookup_user', error: cleanText(err.message, 300), permission_hint: 'Grant contact/user read permission and publish the Feishu app version.' }
++  }
++}
++
++export async function listFeishuBitableRecords({ app_token, table_id, view_id = '', page_size = 20, page_token = '', field_names = [] } = {}) {
++  const appToken = cleanId(app_token || env('FEISHU_BITABLE_APP_TOKEN'))
++  const tableId = cleanId(table_id || env('FEISHU_BITABLE_TABLE_ID'))
++  if (!appToken || !tableId) {
++    return { ok: false, tool: 'feishu_bitable_list_records', error: 'app_token/table_id required or FEISHU_BITABLE_APP_TOKEN/FEISHU_BITABLE_TABLE_ID must be configured' }
++  }
++  const safePageSize = Math.max(1, Math.min(Number(page_size || 20), 50))
++  const query = { page_size: safePageSize }
++  if (view_id) query.view_id = cleanId(view_id)
++  if (page_token) query.page_token = cleanId(page_token)
++  if (Array.isArray(field_names) && field_names.length) query.field_names = JSON.stringify(field_names.slice(0, 20).map(name => cleanText(name, 80)))
++  try {
++    const data = await feishuGet(`/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records`, query)
++    const items = Array.isArray(data.items) ? data.items : []
++    return {
++      ok: true,
++      tool: 'feishu_bitable_list_records',
++      app_token_configured: Boolean(appToken),
++      table_id: tableId,
++      has_more: Boolean(data.has_more),
++      page_token: cleanText(data.page_token || '', 200),
++      records: items.map(cleanRecord),
++      source: 'feishu.bitable.v1.records.list',
++      privacy: 'record fields are truncated and object attachments are summarized',
++    }
++  } catch (err) {
++    return { ok: false, tool: 'feishu_bitable_list_records', error: cleanText(err.message, 300), permission_hint: 'Grant Bitable read permission and ensure the app has access to this base/table.' }
++  }
++}
+
+diff -ruN /dev/null src/capabilities/schemas/company.js
+--- /dev/null	2026-06-04 08:13:42.237356473 +0000
++++ src/capabilities/schemas/company.js	2026-06-08 18:43:29.197039015 +0000
+@@ -0,0 +1,35 @@
++export const companySchemas = {
++  feishu_lookup_user: {
++    type: 'function',
++    function: {
++      name: 'feishu_lookup_user',
++      description: 'Read-only Feishu company identity lookup. Use for Feishu sender/profile questions. Never use it for writes or approvals. Returns sanitized identity metadata only.',
++      parameters: {
++        type: 'object',
++        properties: {
++          user_id: { type: 'string', description: 'Feishu user id value. Usually open_id from the current Feishu sender context.' },
++          user_id_type: { type: 'string', enum: ['open_id', 'user_id', 'union_id'], description: 'Identifier type. Default open_id.' },
++        },
++        required: ['user_id'],
++      },
++    },
++  },
++  feishu_bitable_list_records: {
++    type: 'function',
++    function: {
++      name: 'feishu_bitable_list_records',
++      description: 'Read-only Feishu Bitable record listing for company/project/task tables. Uses configured FEISHU_BITABLE_APP_TOKEN and FEISHU_BITABLE_TABLE_ID when app_token/table_id are omitted. Never writes records.',
++      parameters: {
++        type: 'object',
++        properties: {
++          app_token: { type: 'string', description: 'Optional Bitable app token. Prefer server env defaults unless the owner provided a specific token.' },
++          table_id: { type: 'string', description: 'Optional Bitable table id. Prefer server env defaults unless the owner provided a specific table.' },
++          view_id: { type: 'string', description: 'Optional Feishu Bitable view id.' },
++          page_size: { type: 'number', description: 'Records to return, default 20, max 50.' },
++          page_token: { type: 'string', description: 'Optional pagination token from a previous response.' },
++          field_names: { type: 'array', items: { type: 'string' }, description: 'Optional field names to include.' },
++        },
++      },
++    },
++  },
++}
+
+diff -ruN /home/hermes/backups/bailongma-phase23-20260608184328/src/capabilities/schemas.js src/capabilities/schemas.js
+--- /home/hermes/backups/bailongma-phase23-20260608184328/src/capabilities/schemas.js	2026-06-08 18:43:28.429030372 +0000
++++ src/capabilities/schemas.js	2026-06-08 18:43:29.789045690 +0000
+@@ -10,6 +10,7 @@
+ import { remindersSchemas } from './schemas/reminders.js'
+ import { agentsSchemas } from './schemas/agents.js'
+ import { systemSchemas } from './schemas/system.js'
++import { companySchemas } from './schemas/company.js'
+ 
+ // 所有工具的 schema 定义（按类别拆分到 ./schemas/*.js，此处合并）。
+ // 调用方按需用 getToolSchemas(toolNames) 取子集，合并顺序不影响输出顺序。
+@@ -25,6 +26,7 @@
+   ...remindersSchemas,
+   ...agentsSchemas,
+   ...systemSchemas,
++  ...companySchemas,
+ }
+ 
+ // 根据名称列表获取 schema 数组（含已安装工具）
+
+diff -ruN /home/hermes/backups/bailongma-phase23-20260608184328/src/capabilities/executor.js src/capabilities/executor.js
+--- /home/hermes/backups/bailongma-phase23-20260608184328/src/capabilities/executor.js	2026-06-08 18:43:28.425030326 +0000
++++ src/capabilities/executor.js	2026-06-08 18:43:30.981059151 +0000
+@@ -30,6 +30,7 @@
+ import { config, setSecurity } from '../config.js'
+ import { reportHermesJobEvent } from '../moxi-runtime-bridge.js'
+ import { lookupReplyTarget, normalizeChannel, suggestProactiveChannel } from '../identity.js'
++import { lookupFeishuUser, listFeishuBitableRecords } from '../social/feishu-openapi.js'
+ 
+ function getCurrentTurnDeliveryOverride(channelPref, context = {}) {
+   const currentExternalId = String(context.currentExternalPartyId || '').trim()
+@@ -103,6 +104,10 @@
+         return await execFetchUrl(args, context)
+       case 'browser_read':
+         return await execBrowserRead(args, context)
++      case 'feishu_lookup_user':
++        return toolJson(await lookupFeishuUser(args))
++      case 'feishu_bitable_list_records':
++        return toolJson(await listFeishuBitableRecords(args))
+       case 'search_memory':
+         return await execSearchMemory(args)
+       case 'probe_memory':
+
+diff -ruN /home/hermes/backups/bailongma-phase23-20260608184328/src/capabilities/tool-policy.js src/capabilities/tool-policy.js
+--- /home/hermes/backups/bailongma-phase23-20260608184328/src/capabilities/tool-policy.js	2026-06-08 18:43:28.429030372 +0000
++++ src/capabilities/tool-policy.js	2026-06-08 18:43:31.577065898 +0000
+@@ -36,6 +36,8 @@
+   uninstall_tool: 'medium',
+   list_tools: 'low',
+   find_tool: 'low',
++  feishu_lookup_user: 'low',
++  feishu_bitable_list_records: 'low',
+   complete_startup_self_check: 'low',
+   delete_file: 'high',
+   exec_command: 'high',
+
+diff -ruN /home/hermes/backups/bailongma-phase23-20260608184328/src/memory/tool-router.js src/memory/tool-router.js
+--- /home/hermes/backups/bailongma-phase23-20260608184328/src/memory/tool-router.js	2026-06-08 18:43:28.429030372 +0000
++++ src/memory/tool-router.js	2026-06-08 18:43:32.345074608 +0000
+@@ -62,6 +62,7 @@
+ ]
+ const PERSON_CARD_TOOLS = ['person_card_mode']
+ const FOCUS_BANNER_TOOLS = ['focus_banner']
++const COMPANY_READ_TOOLS = ['feishu_lookup_user', 'feishu_bitable_list_records']
+ const ADMIN_TOOLS       = [
+   'install_tool', 'uninstall_tool', 'list_tools',
+   'set_security', 'connect_wechat',
+@@ -143,6 +144,11 @@
+   'focus mode', 'banner', 'do not disturb', 'dnd', 'immersive',
+ ]
+ 
++const COMPANY_READ_TRIGGERS = [
++  '飞书', 'feishu', 'lark', '通讯录', 'bitable', '多维表格', '云文档', '公司数据', '项目表', '任务表', '部门', '员工', '负责人',
++  'company data', 'company table', 'project table', 'task table', 'contact lookup', 'feishu user',
++]
++
+ const ADMIN_TRIGGERS = [
+   '装一下', '安装', '装个', '卸载', '装好', '装上', '工具市场', '插件',
+   '安全', '沙箱', '权限', '微信', '绑定', '连接', '配对',
+@@ -205,6 +211,7 @@
+   { triggers: HOTSPOT_TRIGGERS,      tools: HOTSPOT_TOOLS },
+   { triggers: PERSON_CARD_TRIGGERS,  tools: PERSON_CARD_TOOLS },
+   { triggers: FOCUS_BANNER_TRIGGERS, tools: FOCUS_BANNER_TOOLS },
++  { triggers: COMPANY_READ_TRIGGERS, tools: COMPANY_READ_TOOLS },
+   { triggers: ADMIN_TRIGGERS,        tools: ADMIN_TOOLS },
+   { triggers: TTS_TRIGGERS,          tools: [MM_GEN_TOOLS.tts] },
+   { triggers: LYRICS_TRIGGERS,       tools: [MM_GEN_TOOLS.lyrics] },
+

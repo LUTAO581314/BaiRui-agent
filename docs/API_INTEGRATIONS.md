@@ -100,8 +100,8 @@ Known gaps:
 | Sticker bridge | Metadata-only provider bridge first; Stipop/GIPHY/image generation later | Do not commit sticker files; Feishu sends by uploaded `image_key`, WeChat by runtime bridge/media id |
 | Speech transcription | Local Whisper tiny first, cloud ASR later if needed | Current transition solution is local Whisper on the VPS |
 | Feishu chat and identity | Official Feishu event callback first | Webhook path must bypass site Basic Auth; encrypted events are supported; each Feishu sender is separated by open_id |
-| Feishu files and docs | Read-only Feishu Drive/Docs/Search APIs first | Add only after permissions, tenant installation, and audit rules are explicit |
-| Feishu company data | Bitable read-only first, write actions later | Projects, customers, tasks, receivables, risks, reports, approval queue, and audit log become the first operating tables |
+| Feishu files and docs | Read-only Feishu Drive/Docs/Search APIs first | Drive/docs search remains planned until tenant scopes are confirmed |
+| Feishu company data | Bitable read-only first, write actions later | Phase 23 adds read-only user lookup and Bitable record-list tools; real data requires app permissions and configured app/table ids |
 | Feishu tasks/calendar/approval | Confirmation-gated tools | Read first; create/update/approve only after cards, policy gates, and audit logs exist |
 | Video understanding | Deferred | Do not expose in the current core phase |
 | Financial data | Market data API | Research-only until a separate trading safety design exists |

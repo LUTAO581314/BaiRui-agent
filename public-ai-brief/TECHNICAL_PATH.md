@@ -188,6 +188,8 @@ Add company management only after identity, routing, and read-only data work.
 - Add event idempotency and fast acknowledgement.
 - Build company identity mapping: users, departments, roles, groups, projects.
 - Add read-only document search and table record search.
+- Start company tools as read-only adapters: user/profile lookup and table
+  record listing before any create/update/approval action.
 - Add daily briefings and exception alerts.
 - Add confirmation cards before task, calendar, table, approval, or document
   writes.

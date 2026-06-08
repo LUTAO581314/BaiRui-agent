@@ -95,7 +95,8 @@ BaiLongma / Brain UI
     Done in Phase 21.
 11. Merge active-job follow-ups without interrupting the running native turn.
     Done in Phase 22.
-12. Add GitHub Pages deployment for the public technical path.
+12. Add read-only Feishu company data tools. Done in Phase 23.
+13. Add GitHub Pages deployment for the public technical path.
 
 ## Phase 16 Patch
 
@@ -226,3 +227,22 @@ Hermes `append_to_active_job` plans:
 This closes the user-experience bug where a user sends "make it softer" or
 "also check this" while a slow image, search, or company task is running, and
 the second message accidentally starts another full turn.
+
+## Phase 23 Feishu Read-Only Tools
+
+The BaiLongma overlay patch
+`patches/bailongma/phase-23-company-read-connectors.patch` adds the first
+company-data tool layer:
+
+- `src/social/feishu-openapi.js` wraps Feishu tenant token retrieval and
+  read-only OpenAPI calls.
+- `feishu_lookup_user` reads one Feishu user profile by `open_id`, `user_id`,
+  or `union_id`, returning sanitized identity metadata only.
+- `feishu_bitable_list_records` lists configured Bitable records, truncating
+  long fields and summarizing object attachments.
+- schemas, tool routing, and tool policy mark both tools as read-only/low risk.
+
+This is intentionally not a full company operator yet. It proves the safe tool
+shape first; Feishu app credentials, contact read scope, Bitable app/table
+configuration, and tenant publication must be verified before real company
+data can be returned.

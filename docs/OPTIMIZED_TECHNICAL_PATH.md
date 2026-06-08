@@ -177,6 +177,12 @@ At the `/message` boundary, BaiLongma also respects
 persists the user text as context, returns `queued:false`, and avoids pushing a
 new LLM turn that would interrupt the active slow job.
 
+For the Feishu company plane, the first tool layer is read-only:
+`feishu_lookup_user` for sender/company identity and
+`feishu_bitable_list_records` for structured project/task/customer tables.
+Both tools must return sanitized metadata, source labels, and permission hints
+instead of raw secrets, tokens, or uncontrolled writes.
+
 Python connectors can use `hermes_runtime.connector_client.HermesConnectorClient`
 directly. Node.js connectors should mirror the same HTTP contract. The canonical
 integration guide is `docs/CONNECTOR_INTEGRATION_RUNBOOK.md`.

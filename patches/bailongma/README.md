@@ -52,11 +52,15 @@ checkout. It is intentionally an overlay, not a full copy of upstream source.
   makes BaiLongma respect Hermes `append_to_active_job` plans at the `/message`
   boundary: follow-up text is persisted as context and acknowledged, but not
   queued as a new interrupting LLM turn.
+- [phase-23-company-read-connectors.patch](phase-23-company-read-connectors.patch)
+  adds read-only Feishu OpenAPI tools for company identity lookup and Bitable
+  record listing, including tool schemas, router triggers, low-risk policy, and
+  secret-safe result shaping.
 
 Future patch files should be named by phase and purpose:
 
 ```text
-phase-23-company-read-connectors.patch
+phase-24-feishu-readiness-ui.patch
 ```
 
 The server checkout may still contain local runtime-specific changes. Patch
