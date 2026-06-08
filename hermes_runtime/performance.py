@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Any
 
+from .routing import RouteType
+
 
 @dataclass(frozen=True)
 class PerformanceProfile:
@@ -42,7 +44,12 @@ def performance_payload(config: Any) -> dict[str, Any]:
         },
         "routing_slots": {
             "fast": config.ai_fast_model,
+            "summary": getattr(config, "ai_summary_model", ""),
             "reasoning": config.ai_reasoning_model,
             "vision": config.ai_vision_model,
+            "image_generation": config.sticker_image_generation_model,
+        },
+        "route_types": {
+            route.value: "enabled" for route in RouteType
         },
     }

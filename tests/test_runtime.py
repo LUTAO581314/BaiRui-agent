@@ -36,6 +36,7 @@ def make_config(base: Path, **overrides: object) -> RuntimeConfig:
         "ai_api_key_configured": False,
         "ai_default_model": "",
         "ai_fast_model": "",
+        "ai_summary_model": "",
         "ai_reasoning_model": "",
         "ai_vision_model": "",
         "ai_timeout_seconds": 60,
@@ -80,6 +81,7 @@ class RuntimeTests(unittest.TestCase):
                 "HERMES_DATA_DIR": str(base / "data"),
                 "HERMES_LOG_DIR": str(base / "logs"),
                 "HERMES_OBSIDIAN_VAULT_DIR": str(base / "obsidian-vault"),
+                "HERMES_AI_SUMMARY_MODEL": "5.4",
                 "HERMES_WECHAT_MODE": "planned",
                 "HERMES_WECHAT_CHANNEL": "wecom_customer_service",
                 "HERMES_WECHAT_PERSONA_MODE": "companion",
@@ -108,6 +110,7 @@ class RuntimeTests(unittest.TestCase):
                 config = load_config()
 
             self.assertEqual(config.wechat_mode, "planned")
+            self.assertEqual(config.ai_summary_model, "5.4")
             self.assertEqual(config.wechat_channel, "wecom_customer_service")
             self.assertEqual(config.wechat_persona_mode, "companion")
             self.assertTrue(config.wechat_proactive_chat)
@@ -216,6 +219,7 @@ class RuntimeTests(unittest.TestCase):
             config = make_config(
                 base,
                 ai_fast_model="5.4-mini",
+                ai_summary_model="5.4",
                 ai_reasoning_model="5.5",
                 ai_vision_model="gpt-5.5-vision",
             )
@@ -234,10 +238,56 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(payload["profile"]["fast_reply_target_ms"], 5000)
                 self.assertIn("slow_task", payload["latency_budgets"])
                 self.assertEqual(payload["routing_slots"]["fast"], "5.4-mini")
+                self.assertEqual(payload["routing_slots"]["summary"], "5.4")
                 self.assertEqual(payload["routing_slots"]["reasoning"], "5.5")
                 self.assertEqual(payload["routing_slots"]["vision"], "gpt-5.5-vision")
+                self.assertEqual(payload["route_types"]["image_generate"], "enabled")
                 self.assertNotIn("api_key", json.dumps(payload).lower())
                 self.assertNotIn("secret", json.dumps(payload).lower())
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                for handler in list(logger.handlers):
+                    logger.removeHandler(handler)
+                    handler.close()
+                logging.shutdown()
+
+    def test_route_endpoint_classifies_fast_slow_and_risk_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config = make_config(base)
+            logger = configure_logging(config.log_dir)
+            server = build_server(config, logger)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                route_url = f"http://127.0.0.1:{server.server_port}/route"
+
+                with urlopen(route_url + "?message=ok", timeout=2) as response:
+                    casual = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(casual["route"]["route"], "casual_chat")
+                self.assertFalse(casual["route"]["quick_ack"])
+                self.assertFalse(casual["route"]["async_required"])
+
+                with urlopen(
+                    route_url + "?message=generate%20image%20avatar",
+                    timeout=2,
+                ) as response:
+                    image = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(image["route"]["route"], "image_generate")
+                self.assertEqual(image["route"]["model_slot"], "image_generation")
+                self.assertTrue(image["route"]["quick_ack"])
+                self.assertTrue(image["route"]["async_required"])
+
+                with urlopen(
+                    route_url + "?message=approve%20expense%20payment",
+                    timeout=2,
+                ) as response:
+                    risk = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(risk["route"]["route"], "high_risk")
+                self.assertTrue(risk["route"]["approval_required"])
             finally:
                 server.shutdown()
                 server.server_close()

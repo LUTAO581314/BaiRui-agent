@@ -43,6 +43,7 @@ class RuntimeConfig:
     ai_api_key_configured: bool
     ai_default_model: str
     ai_fast_model: str
+    ai_summary_model: str
     ai_reasoning_model: str
     ai_vision_model: str
     ai_timeout_seconds: int
@@ -103,6 +104,7 @@ def load_config() -> RuntimeConfig:
         ai_api_key_configured=bool(os.getenv("HERMES_AI_API_KEY", "")),
         ai_default_model=os.getenv("HERMES_AI_DEFAULT_MODEL", ""),
         ai_fast_model=os.getenv("HERMES_AI_FAST_MODEL", ""),
+        ai_summary_model=os.getenv("HERMES_AI_SUMMARY_MODEL", ""),
         ai_reasoning_model=os.getenv("HERMES_AI_REASONING_MODEL", ""),
         ai_vision_model=os.getenv("HERMES_AI_VISION_MODEL", ""),
         ai_timeout_seconds=_as_int(os.getenv("HERMES_AI_TIMEOUT_SECONDS"), 60),

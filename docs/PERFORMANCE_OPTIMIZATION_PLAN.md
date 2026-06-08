@@ -20,11 +20,11 @@ The fix has two layers:
 | Scenario | First response | Final result |
 | --- | --- | --- |
 | Simple chat | direct answer within 5 seconds | same message |
-| Complex question | "我想想哦，马上回你～" | concise answer after reasoning |
-| Image reading | "我看一下这张图，等我一下哦～" | image analysis |
-| Image generation | "等我拍一下，马上给你～" | generated image URL or upload |
-| Search / public opinion | "我查一下，别急～" | source-backed result |
-| Feishu company task | "我看一下上下文，马上处理～" | answer, draft, or confirmation card |
+| Complex question | short "thinking" acknowledgement | concise answer after reasoning |
+| Image reading | short "looking at the image" acknowledgement | image analysis |
+| Image generation | short "generating image" acknowledgement | generated image URL or upload |
+| Search / public opinion | short "checking sources" acknowledgement | source-backed result |
+| Feishu company task | short "checking company context" acknowledgement | answer, draft, or confirmation card |
 
 ## 3. Surface Layer Tasks
 
@@ -158,7 +158,7 @@ Follow-up messages should not automatically cancel slow jobs.
 Rules:
 
 - Ordinary follow-up messages add context.
-- "不用了", "取消", or explicit cancellation stops the job.
+- Explicit cancellation stops the job.
 - Image reading and image generation jobs are locked until completed or
   cancelled.
 - Company writes require confirmation even if the job completes successfully.
@@ -179,6 +179,7 @@ The repository runtime exposes:
 
 - `/health` with performance profile,
 - `/performance` with latency budgets and model slots,
+- `/route?message=...` with safe rule-first route diagnosis,
 - environment variables for latency targets:
   - `HERMES_SOCIAL_QUICK_ACK_DELAY_MS`,
   - `HERMES_SOCIAL_FAST_REPLY_TARGET_MS`,

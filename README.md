@@ -97,6 +97,7 @@ Health checks:
 Invoke-RestMethod http://127.0.0.1:8787/health
 Invoke-RestMethod http://127.0.0.1:8787/ready
 Invoke-RestMethod http://127.0.0.1:8787/performance
+Invoke-RestMethod "http://127.0.0.1:8787/route?message=generate%20image%20avatar"
 ```
 
 ## Recommended Current Milestone

@@ -11,10 +11,12 @@ import logging
 import signal
 import threading
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from .config import RuntimeConfig, load_config
 from .logging_utils import configure_logging
 from .performance import performance_payload
+from .routing import route_payload
 
 
 def utc_now() -> str:
@@ -39,7 +41,11 @@ class HermesHandler(BaseHTTPRequestHandler):
     server_version = "HermesRuntime/0.1"
 
     def do_GET(self) -> None:
-        if self.path == "/health":
+        parsed_url = urlparse(self.path)
+        path = parsed_url.path
+        query = parse_qs(parsed_url.query)
+
+        if path == "/health":
             self._send_json(
                 HTTPStatus.OK,
                 {
@@ -57,6 +63,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                         "api_key_configured": self.server.config.ai_api_key_configured,
                         "default_model": self.server.config.ai_default_model,
                         "fast_model": self.server.config.ai_fast_model,
+                        "summary_model": self.server.config.ai_summary_model,
                         "reasoning_model": self.server.config.ai_reasoning_model,
                         "vision_model": self.server.config.ai_vision_model,
                     },
@@ -125,13 +132,13 @@ class HermesHandler(BaseHTTPRequestHandler):
             )
             return
 
-        if self.path == "/ready":
+        if path == "/ready":
             payload = readiness(self.server.config)
             status = HTTPStatus.OK if payload["status"] == "ready" else HTTPStatus.SERVICE_UNAVAILABLE
             self._send_json(status, payload)
             return
 
-        if self.path == "/version":
+        if path == "/version":
             self._send_json(
                 HTTPStatus.OK,
                 {
@@ -142,11 +149,16 @@ class HermesHandler(BaseHTTPRequestHandler):
             )
             return
 
-        if self.path == "/performance":
+        if path == "/performance":
             self._send_json(HTTPStatus.OK, performance_payload(self.server.config))
             return
 
-        self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found", "path": self.path})
+        if path == "/route":
+            message = query.get("message", [""])[0]
+            self._send_json(HTTPStatus.OK, route_payload(message, self.server.config))
+            return
+
+        self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found", "path": path})
 
     def log_message(self, format: str, *args: Any) -> None:
         self.server.logger.info("%s %s", self.address_string(), format % args)
