@@ -528,6 +528,74 @@ class RuntimeTests(unittest.TestCase):
                     handler.close()
                 logging.shutdown()
 
+    def test_social_turn_appends_follow_up_to_active_job(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config = make_config(base)
+            logger = configure_logging(config.log_dir)
+            server = build_server(config, logger)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                base_url = f"http://127.0.0.1:{server.server_port}"
+                first_body = json.dumps(
+                    {
+                        "channel": "wechat",
+                        "target_id": "room-2",
+                        "message": "generate image avatar",
+                    }
+                ).encode("utf-8")
+                first_request = Request(
+                    base_url + "/social/turn",
+                    data=first_body,
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urlopen(first_request, timeout=2) as response:
+                    first = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(first["first_action"], "quick_ack")
+                self.assertIsNotNone(first["job"])
+
+                follow_up_body = json.dumps(
+                    {
+                        "channel": "wechat",
+                        "target_id": "room-2",
+                        "message": "make it softer with hidden phrase",
+                    }
+                ).encode("utf-8")
+                follow_up_request = Request(
+                    base_url + "/social/turn",
+                    data=follow_up_body,
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urlopen(follow_up_request, timeout=2) as response:
+                    follow_up = json.loads(response.read().decode("utf-8"))
+
+                self.assertEqual(follow_up["status"], "ok")
+                self.assertEqual(follow_up["first_action"], "append_to_active_job")
+                self.assertTrue(follow_up["ack"]["should_send"])
+                self.assertIn("没丢", follow_up["ack"]["text"])
+                self.assertIsNone(follow_up["job"])
+                self.assertEqual(
+                    follow_up["active_job"]["job_id"],
+                    first["job"]["job_id"],
+                )
+                self.assertEqual(
+                    follow_up["context_budget"]["memory_depth"],
+                    "follow_up_delta",
+                )
+                self.assertNotIn("hidden phrase", json.dumps(follow_up))
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                for handler in list(logger.handlers):
+                    logger.removeHandler(handler)
+                    handler.close()
+                logging.shutdown()
+
     def test_social_turn_keeps_tiny_chat_on_direct_reply_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

@@ -70,6 +70,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 06 Social Performance Optimization Chinese Report](reports/phase-06-social-performance-optimization.zh-CN.md)
 - [Phase 07 Context Slimming And Async Jobs Chinese Report](reports/phase-07-context-slimming-async-jobs.zh-CN.md)
 - [Phase 08 Social Turn Planner Chinese Report](reports/phase-08-social-turn-planner.zh-CN.md)
+- [Phase 09 Active Job Follow-Up Chinese Report](reports/phase-09-active-job-follow-up.zh-CN.md)
 
 ## Public Copy And Attribution
 

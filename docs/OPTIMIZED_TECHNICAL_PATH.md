@@ -131,6 +131,11 @@ For real social connectors, the preferred entry is `POST /social/turn`. It
 returns the first visible action, acknowledgement text, route, context budget,
 and optional slow-job metadata in one safe payload.
 
+When the same channel and target already have an unfinished slow job,
+`POST /social/turn` returns `append_to_active_job` instead of creating another
+job. This keeps follow-up messages from cancelling or duplicating image,
+search, public-opinion, and company workflows.
+
 ### 4.4 Async Slow Jobs
 
 Slow tasks should be represented as jobs:

@@ -157,11 +157,15 @@ Follow-up messages should not automatically cancel slow jobs.
 
 Rules:
 
-- Ordinary follow-up messages add context.
+- Ordinary follow-up messages add context through `append_to_active_job`.
 - Explicit cancellation stops the job.
 - Image reading and image generation jobs are locked until completed or
   cancelled.
 - Company writes require confirmation even if the job completes successfully.
+- `POST /social/turn` must check active jobs for the same channel and target
+  before creating a new slow job.
+- Follow-up payloads store only preview length and active job metadata, never
+  the follow-up message body.
 
 ## 5. Model Routing
 
@@ -248,6 +252,8 @@ Social turn planner shape:
 The planner returns:
 
 - `first_action`: `direct_reply` or `quick_ack`,
+- `append_to_active_job` when the same channel and target already have an
+  unfinished slow job,
 - natural acknowledgement text when slow work is likely,
 - route policy,
 - context budget,

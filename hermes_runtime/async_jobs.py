@@ -36,6 +36,12 @@ ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
     JobStatus.CANCELLED: set(),
 }
 
+ACTIVE_STATUSES = {
+    JobStatus.QUEUED.value,
+    JobStatus.ACKNOWLEDGED.value,
+    JobStatus.RUNNING.value,
+}
+
 
 @dataclass
 class AsyncJob:
@@ -132,6 +138,19 @@ class AsyncJobStore:
     def get(self, job_id: str) -> AsyncJob | None:
         with self._lock:
             return self._jobs.get(str(job_id or ""))
+
+    def active_for_target(self, channel: str, target_id: str) -> AsyncJob | None:
+        clean_channel = _clean_token(channel, "unknown")
+        clean_target_id = _clean_token(target_id, "unknown")
+        with self._lock:
+            for job in reversed(list(self._jobs.values())):
+                if (
+                    job.channel == clean_channel
+                    and job.target_id == clean_target_id
+                    and job.status in ACTIVE_STATUSES
+                ):
+                    return job
+        return None
 
 
 def jobs_payload(store: AsyncJobStore, limit: int = 50) -> dict[str, Any]:

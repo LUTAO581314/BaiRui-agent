@@ -221,6 +221,8 @@ The second optimization is actual runtime latency:
 - expose a connector first-action planner that returns direct-reply vs
   quick-ack, natural acknowledgement copy, route, context budget, and optional
   slow-job metadata,
+- detect unfinished slow jobs for the same channel and target so follow-up
+  messages append context instead of cancelling or duplicating work,
 - move image generation, image reading, search expansion, and company workflows
   into async jobs,
 - expose safe slow-job metadata and state transitions without storing raw
