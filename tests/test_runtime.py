@@ -6,6 +6,7 @@ from pathlib import Path
 
 from src.hermes.capabilities import collect_capabilities
 from src.hermes.config import load_settings
+from src.hermes.db import database_status
 from src.hermes.license import load_license
 from src.hermes.model_gateway import build_chat_payload, complete_chat
 from src.hermes.storage import create_job, list_audit_events, list_jobs, write_obsidian_report
@@ -69,6 +70,10 @@ class RuntimeFoundationTests(unittest.TestCase):
         payload = build_chat_payload(settings, "hello", "be brief")
         self.assertEqual(payload["messages"][0]["role"], "system")
         self.assertEqual(payload["messages"][1]["role"], "user")
+
+    def test_database_status_without_url_is_missing_config(self):
+        settings = load_settings()
+        self.assertEqual(database_status(settings).status, "missing_config")
 
 
 if __name__ == "__main__":

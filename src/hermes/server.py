@@ -7,6 +7,7 @@ from typing import Any
 from . import __version__
 from .capabilities import collect_capabilities
 from .config import ensure_runtime_dirs, load_settings
+from .db import database_status, run_migrations
 from .license import load_license
 from .model_gateway import complete_chat
 from .storage import create_audit_event, create_job, list_audit_events, list_jobs, write_obsidian_report
@@ -41,11 +42,12 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/ready":
             license_state = load_license(settings.license_file)
+            db_state = database_status(settings)
             self._send(
                 {
                     "status": "partial",
                     "service": "hermes",
-                    "database": "configured" if settings.has_database else "missing_config",
+                    "database": db_state.__dict__,
                     "license": license_state.status,
                     "platform": "configured" if settings.platform_base_url else "missing_config",
                     "server_id": "configured" if settings.server_id else "missing_config",
@@ -113,6 +115,20 @@ class HermesHandler(BaseHTTPRequestHandler):
             )
             status = 200 if result.status == "completed" else 503
             self._send({"service": "hermes", "chat": result.__dict__}, status=status)
+            return
+
+        if self.path == "/admin/migrate":
+            result = run_migrations(settings)
+            create_audit_event(
+                settings.data_dir,
+                "database.migration",
+                resource_type="database",
+                resource_ref="postgresql",
+                risk_level="medium",
+                payload=result.__dict__,
+            )
+            status = 200 if result.status == "ready" else 503
+            self._send({"service": "hermes", "database": result.__dict__}, status=status)
             return
 
         self._send({"error": "not_found", "path": self.path}, status=404)

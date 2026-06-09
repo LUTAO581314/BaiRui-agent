@@ -8,6 +8,8 @@ $required = @(
     "src/hermes/server.py",
     "src/hermes/storage.py",
     "src/hermes/model_gateway.py",
+    "src/hermes/db.py",
+    "requirements.txt",
     "tests/test_runtime.py",
     "Dockerfile",
     "docker-compose.production.yml",

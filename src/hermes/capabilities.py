@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from .config import Settings
+from .db import database_status
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ def _vendor_capability(name: str, path: Path, purpose: str, license_name: str) -
 
 def collect_capabilities(settings: Settings) -> list[dict[str, str]]:
     vendor = settings.vendor_dir
+    db_status = database_status(settings)
     caps = [
         Capability("health_api", "ready", "HTTP health endpoint is available"),
         Capability("readiness_api", "ready", "HTTP readiness endpoint is available"),
@@ -31,7 +33,7 @@ def collect_capabilities(settings: Settings) -> list[dict[str, str]]:
         Capability("audit_api", "ready", "File-backed P0 audit event listing is available"),
         Capability("obsidian_report_write", "ready", "Markdown report write endpoint is available"),
         Capability("model_gateway", "ready" if settings.has_model_gateway else "missing_config", "OpenAI-compatible model gateway" if settings.has_model_gateway else "BAIRUI_MODEL_* environment is incomplete"),
-        Capability("postgresql", "partial" if settings.has_database else "missing_config", "database URL configured" if settings.has_database else "HERMES_DATABASE_URL is empty"),
+        Capability("postgresql", db_status.status, db_status.detail),
         Capability("obsidian_vault", "partial" if settings.obsidian_vault_dir.exists() else "missing_config", str(settings.obsidian_vault_dir)),
         _vendor_capability("everos_memory", vendor / "everos", "memory extraction and retrieval", "Apache-2.0"),
         _vendor_capability("trendradar_intelligence", vendor / "trendradar", "trend and public-opinion intelligence", "GPLv3"),
