@@ -57,6 +57,7 @@ The old explanatory documents have been removed. Phase summaries remain under
 - [Commercial Interaction Model](docs/14-commercial-interaction-model.md)
 - [GitHub Repository Cleanup Policy](docs/15-github-repository-cleanup.md)
 - [Commercial Delivery Development Plan](docs/16-commercial-delivery-development-plan.md)
+- [Three-Pillar Commercial Project Plan](docs/17-three-pillar-commercial-project-plan.md)
 
 ## Engineering Rule
 
