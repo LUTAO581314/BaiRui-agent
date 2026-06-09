@@ -1,0 +1,51 @@
+diff --git a/src/ui/brain-ui/app.js b/src/ui/brain-ui/app.js
+--- a/src/ui/brain-ui/app.js
++++ b/src/ui/brain-ui/app.js
+@@
++function resolveBrainApiBase() {
++  const configured = String(window.__BRAIN_API_BASE__ || '').trim()
++  if (configured && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i.test(configured)) {
++    return configured.replace(/\/+$/, '')
++  }
++  // Browser-side code must use the public same-origin backend. A literal
++  // 127.0.0.1 points at the user's computer, not the VPS.
++  return ''
++}
++
++const API = resolveBrainApiBase()
++
++function apiUrl(pathname) {
++  const path = String(pathname || '')
++  return `${API}${path.startsWith('/') ? path : `/${path}`}`
++}
++
+@@
+-fetch(`${API}/settings/voice`)
++fetch(apiUrl('/settings/voice'))
+@@
+-fetch(`${API}/settings/social`)
++fetch(apiUrl('/settings/social'))
+@@
+-fetch(`${API}/capabilities`)
++fetch(apiUrl('/capabilities'))
++
+diff --git a/src/ui/brain-ui/events.js b/src/ui/brain-ui/events.js
+--- a/src/ui/brain-ui/events.js
++++ b/src/ui/brain-ui/events.js
+@@
+-const events = new EventSource(`${API}/events`)
++const events = new EventSource(apiUrl('/events'))
+
+diff --git a/nginx/bairui.chat.conf b/nginx/bairui.chat.conf
+--- a/nginx/bairui.chat.conf
++++ b/nginx/bairui.chat.conf
+@@
++location /events {
++  proxy_pass http://127.0.0.1:3721/events;
++  proxy_http_version 1.1;
++  proxy_set_header Connection '';
++  proxy_buffering off;
++  proxy_cache off;
++  proxy_read_timeout 1h;
++  add_header X-Accel-Buffering no;
++}

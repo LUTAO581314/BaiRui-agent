@@ -98,6 +98,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 24 Social Media Compatibility Chinese Report](reports/phase-24-social-media-compat.zh-CN.md)
 - [Phase 25 WeChat Media Send Plan Chinese Report](reports/phase-25-wechat-media-send-plan.zh-CN.md)
 - [Phase 26 WeChat Media Probe Chinese Report](reports/phase-26-wechat-media-probe.zh-CN.md)
+- [Phase 27 Brain UI Routing Fix Chinese Report](reports/phase-27-brain-ui-routing-fix.zh-CN.md)
 
 ## Repository Automation
 
@@ -151,6 +152,8 @@ not vendor full upstream applications by default.
 - `scripts/probe-bailongma-wechat-media.sh` is the read-only server probe for
   discovering whether the active BaiLongma/ClawBot checkout exposes a real
   outbound image/file send function.
+- `scripts/probe-bailongma-frontend-routing.sh` is the read-only server probe
+  for Brain UI browser-side API base and `/events` SSE reverse-proxy issues.
 - External runtime install notes live under [external](external/README.md).
 - If a full BaiLongma fork becomes necessary, keep this repository as the
   canonical technical-path source and preserve the upstream MIT license.

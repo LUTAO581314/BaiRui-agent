@@ -65,11 +65,15 @@ checkout. It is intentionally an overlay, not a full copy of upstream source.
   documents the next BaiLongma-side step for real WeChat image delivery: call
   Hermes `/media/plan-send` after image generation, then either send the local
   image file, upload-and-send, or text-fallback according to the runtime plan.
+- [phase-27-frontend-same-origin-routing.patch](phase-27-frontend-same-origin-routing.patch)
+  documents the Brain UI browser-side routing fix: use same-origin API paths
+  instead of `127.0.0.1:3721`, and configure `/events` as an SSE-friendly Nginx
+  reverse-proxy location.
 
 Future patch files should be named by phase and purpose:
 
 ```text
-phase-26-feishu-readiness-ui.patch
+phase-28-feishu-readiness-ui.patch
 ```
 
 The server checkout may still contain local runtime-specific changes. Patch
