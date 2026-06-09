@@ -41,7 +41,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             )
             return
         if self.path == "/ready":
-            license_state = load_license(settings.license_file)
+            license_state = load_license(settings.license_file, settings.license_secret)
             db_state = database_status(settings)
             self._send(
                 {
@@ -61,7 +61,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             self._send({"service": "hermes", "capabilities": collect_capabilities(settings)})
             return
         if self.path == "/license":
-            self._send({"service": "hermes", "license": load_license(settings.license_file).__dict__})
+            self._send({"service": "hermes", "license": load_license(settings.license_file, settings.license_secret).__dict__})
             return
         if self.path == "/jobs":
             self._send({"service": "hermes", "jobs": list_jobs(settings.data_dir)})

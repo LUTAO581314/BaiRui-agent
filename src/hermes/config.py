@@ -25,6 +25,7 @@ class Settings:
     log_dir: Path
     obsidian_vault_dir: Path
     license_file: Path
+    license_secret: str
     platform_base_url: str
     server_id: str
     vendor_dir: Path
@@ -57,6 +58,7 @@ def load_settings() -> Settings:
         log_dir=Path(os.getenv("HERMES_LOG_DIR", "./logs/hermes")),
         obsidian_vault_dir=Path(os.getenv("HERMES_OBSIDIAN_VAULT_DIR", "./obsidian-vault")),
         license_file=Path(os.getenv("MOXI_LICENSE_FILE", "./license/moxi-license.json")),
+        license_secret=os.getenv("BAIRUI_LICENSE_SECRET", ""),
         platform_base_url=os.getenv("MOXI_PLATFORM_BASE_URL", ""),
         server_id=os.getenv("MOXI_SERVER_ID", ""),
         vendor_dir=root / "vendor" / "runtimes",

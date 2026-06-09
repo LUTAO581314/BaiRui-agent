@@ -7,7 +7,7 @@ from pathlib import Path
 from src.hermes.capabilities import collect_capabilities
 from src.hermes.config import load_settings
 from src.hermes.db import database_status
-from src.hermes.license import load_license
+from src.hermes.license import load_license, sign_license_payload
 from src.hermes.model_gateway import build_chat_payload, complete_chat
 from src.hermes.storage import create_job, list_audit_events, list_jobs, write_obsidian_report
 
@@ -30,8 +30,25 @@ class RuntimeFoundationTests(unittest.TestCase):
             path = Path(tmp) / "license.json"
             path.write_text(json.dumps({"license_id": "lic_1", "organization_id": "org_1", "plan": "starter"}), encoding="utf-8")
             state = load_license(path)
-            self.assertEqual(state.status, "partial")
+            self.assertEqual(state.status, "unsigned")
             self.assertEqual(state.license_id, "lic_1")
+
+    def test_signed_license_is_valid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "license.json"
+            payload = {"license_id": "lic_1", "organization_id": "org_1", "plan": "starter", "features": ["jobs"]}
+            payload["signature"] = sign_license_payload(payload, "secret")
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            state = load_license(path, "secret")
+            self.assertEqual(state.status, "valid")
+            self.assertEqual(state.features, ("jobs",))
+
+    def test_bad_license_signature_is_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "license.json"
+            payload = {"license_id": "lic_1", "organization_id": "org_1", "plan": "starter", "signature": "bad"}
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertEqual(load_license(path, "secret").status, "invalid")
 
     def test_capabilities_include_vendor_runtimes(self):
         settings = load_settings()
