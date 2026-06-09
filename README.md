@@ -106,6 +106,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 31 BaiLongma Runtime Config UI Chinese Report](reports/phase-31-bailongma-runtime-config-ui.zh-CN.md)
 - [Phase 32 QQ Personal Scan Panel Chinese Report](reports/phase-32-qq-personal-scan-panel.zh-CN.md)
 - [Phase 33 QQ Personal NapCat Bridge Chinese Report](reports/phase-33-qq-personal-napcat-bridge.zh-CN.md)
+- [Phase 34 QQ QR Expiry Hotfix Chinese Report](reports/phase-34-qq-qr-expiry-hotfix.zh-CN.md)
 
 ## Repository Automation
 

@@ -60,6 +60,10 @@ new file mode 100644
 +  return match ? match[1].trim() : ''
 +}
 +
++// Phase 34 hotfix: production bridge now iterates all QR matches and returns
++// the latest one, because NapCat appends new QR URLs after restart/re-login
++// and older URLs can expire quickly.
++
 +export async function getQQPersonalBridgeStatus() {
 +  const container = await inspectContainer()
 +  if (!container.exists) return { status: 'bridge_missing', bridge: 'qq-personal', provider: 'napcat', container }

@@ -56,6 +56,10 @@ The status endpoint may return `bridge_missing`, `stopped`, `starting`,
 `webui_ready`, `qr_ready`, or `connected`. QR URLs and WebUI tokens are runtime
 materials only and must not be committed or copied into public docs.
 
+When reading QR state from NapCat logs, the bridge must use the latest QR URL,
+not the first one in the log stream. NapCat appends new QR URLs after restart or
+re-login, and older URLs can expire quickly.
+
 ## 3. Runtime Target IDs
 
 Use stable target ids:
