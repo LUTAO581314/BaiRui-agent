@@ -86,11 +86,15 @@ checkout. It is intentionally an overlay, not a full copy of upstream source.
   records the deployed BaiLongma runtime-config settings UI: schema proxy
   endpoints, `运行配置` tab, dynamic field rendering, changed-field save, and
   schema form styling.
+- [phase-32-qq-personal-scan-panel.patch](phase-32-qq-personal-scan-panel.patch)
+  splits QQ into official bot credentials and a planned personal scan bridge
+  panel. The personal path reports `bridge_missing` until NapCat or Lagrange is
+  installed.
 
 Future patch files should be named by phase and purpose:
 
 ```text
-phase-32-<purpose>.patch
+phase-33-<purpose>.patch
 ```
 
 The server checkout may still contain local runtime-specific changes. Patch

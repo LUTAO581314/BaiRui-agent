@@ -106,6 +106,7 @@ BaiLongma / Brain UI
 14. Add GitHub Pages deployment for the public technical path.
 15. Add secret-safe writable Hermes config schema. Done in Phase 30.
 16. Render Hermes writable config schema inside BaiLongma Brain UI. Done in Phase 31.
+17. Split QQ setup into official bot and personal scan bridge surfaces. Done in Phase 32.
 
 ## Phase 16 Patch
 
@@ -307,3 +308,17 @@ The server BaiLongma Brain UI now includes a `运行配置` settings tab. It:
 This makes the settings center schema-driven instead of a collection of
 hard-coded one-off forms. Existing model, media, and search pages remain
 available while their fields are gradually migrated into the Hermes schema.
+
+## Phase 32 QQ Personal Scan Panel
+
+QQ now has two visible setup paths in Brain UI:
+
+- `QQ 官方机器人`: App ID, Bot Token, Bot Secret, and Webhook Token for the
+  official bot route.
+- `QQ 个人扫码`: a separate scan-bridge panel for future NapCat or Lagrange
+  integration.
+
+The personal scan panel currently exposes planned endpoints and returns
+`bridge_missing` because the QQ personal bridge is not installed yet. This keeps
+the product boundary honest: the user sees that personal QQ should be QR-based,
+but the UI does not pretend QR login is available before the bridge exists.
