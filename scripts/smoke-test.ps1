@@ -1,14 +1,22 @@
 $ErrorActionPreference = "Stop"
 
-$port = if ($env:HERMES_PORT) { $env:HERMES_PORT } else { "8787" }
-$baseUrl = "http://127.0.0.1:$port"
+$required = @(
+    "README.md",
+    "docs/00-product-blueprint.md",
+    "docs/17-three-pillar-commercial-project-plan.md",
+    "Dockerfile",
+    "docker-compose.production.yml",
+    ".env.example"
+)
 
-$health = Invoke-RestMethod -Uri "$baseUrl/health" -TimeoutSec 5
-$ready = Invoke-RestMethod -Uri "$baseUrl/ready" -TimeoutSec 5
+foreach ($path in $required) {
+    if (-not (Test-Path -LiteralPath $path)) {
+        throw "Missing required skeleton file: $path"
+    }
+}
 
 [pscustomobject]@{
-    health = $health.status
-    ready = $ready.status
-    service = $health.service
-    safe_mode = $health.safe_mode
+    status = "ok"
+    mode = "skeleton"
+    message = "MOXI Hermes repository framework is present; runtime source is intentionally pending."
 }

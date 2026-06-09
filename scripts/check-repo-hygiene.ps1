@@ -23,8 +23,7 @@ $secretPattern = "sk-[A-Za-z0-9_-]{20,}|BEGIN (RSA|OPENSSH|PRIVATE) KEY|(passwor
 $allowList = @(
     ".env.example",
     "README.md",
-    "scripts/check-repo-hygiene.ps1",
-    "tests/test_runtime.py"
+    "scripts/check-repo-hygiene.ps1"
 )
 
 $files = git ls-files |

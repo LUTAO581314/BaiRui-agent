@@ -1,11 +1,29 @@
 # MOXI Industrial Agent OS
 
-This repository is the source-owned engineering home for MOXI Industrial Agent OS.
+This repository is the source-owned engineering framework for MOXI Industrial
+Agent OS.
 
-The product is not a simple integration of existing projects. The target is a
-commercial, industrial-grade agent operating system built from our own source
-code, with external projects used only as isolated runtimes, references, or
-replaceable adapters.
+The previous prototype source has been removed. The repository now keeps the
+commercial product plan, deployment environment baseline, and clean source
+skeleton from which Hermes will be rebuilt.
+
+## Current Repository State
+
+This repository intentionally contains:
+
+- current product and architecture documents under `docs/`;
+- historical phase summaries under `reports/`;
+- environment templates and deployment skeleton files;
+- `src/` as the rebuilt Hermes runtime source location;
+- `tests/` as the rebuilt test suite location.
+
+This repository intentionally does not contain:
+
+- old runtime implementation files;
+- old tests tied to removed implementation details;
+- external project patches;
+- copied frontend prototypes;
+- runtime data, logs, secrets, sessions, QR state, or generated media.
 
 ## Product Direction
 
@@ -15,7 +33,7 @@ research intelligence, simulation, and owner-approved execution.
 
 The system is built around these permanent boundaries:
 
-- Hermes is the single backend authority.
+- Hermes is the planned single backend authority.
 - MOXI / Brain UI is the primary frontend surface.
 - PostgreSQL is the production system database.
 - Obsidian is the owner-readable long-term memory and decision record.
@@ -26,7 +44,7 @@ The system is built around these permanent boundaries:
 - Feishu is the company operation surface.
 - WeChat and QQ are personal or social channels with strict risk boundaries.
 
-Production supports only two deployment modes:
+Production will support only two deployment modes:
 
 - Local production environment: a local workstation, mini server, NAS, or LAN
   machine. It is a real production deployment for the owner, but it does not
@@ -69,3 +87,5 @@ The repository must converge toward production ownership:
   must stay outside Git.
 - Every phase must include verification and a Chinese owner-facing report in
   `reports/`.
+- New runtime code must be rebuilt under `src/`.
+- New tests must be rebuilt under `tests/`.

@@ -9,25 +9,24 @@ permissions:
   contents: read
 
 jobs:
-  runtime:
-    name: Runtime and repository checks
+  skeleton:
+    name: Repository skeleton checks
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Run unit tests
-        run: python -m unittest discover -s tests
-
-      - name: Compile Python modules
-        run: python -m compileall hermes_runtime tests
-
       - name: Run repository hygiene checks
         shell: pwsh
         run: ./scripts/check-repo-hygiene.ps1
+
+      - name: Validate Docker Compose skeleton
+        run: |
+          cp .env.example .env
+          sed -i 's/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=ci-placeholder/' .env
+          docker compose -f docker-compose.production.yml config >/tmp/moxi-compose.yml
+
+      - name: Run skeleton smoke test
+        shell: pwsh
+        run: ./scripts/smoke-test.ps1

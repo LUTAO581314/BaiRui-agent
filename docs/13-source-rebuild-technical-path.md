@@ -21,7 +21,7 @@ The repository should converge toward this structure:
 
 ```text
 .
-  hermes_runtime/        # backend source
+  src/                   # rebuilt Hermes backend source
   frontend/              # MOXI / Brain UI source, when created
   migrations/            # PostgreSQL migrations
   deploy/                # Nginx, systemd, container templates
@@ -207,4 +207,3 @@ Commercial milestones must also include:
 - license review;
 - release note;
 - owner-facing Chinese report.
-
