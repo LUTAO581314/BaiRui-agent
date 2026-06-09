@@ -33,8 +33,8 @@ def hotspots_payload(config: RuntimeConfig, *, limit: int = 24) -> dict[str, Any
             }
         ],
         "migration": {
-            "from": "BaiLongma src/hotspots.js data shape",
-            "rule": "Keep the visual panel and normalized data shape; do not keep BaiLongma as a backend authority.",
+            "from": "legacy hotspot panel data shape",
+            "rule": "Keep useful visual concepts and normalized data; do not keep external frontend runtimes as backend authority.",
         },
     }
 

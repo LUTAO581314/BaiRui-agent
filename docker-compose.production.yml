@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: moxi-postgres
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-moxi}
+      POSTGRES_USER: ${POSTGRES_USER:-moxi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-moxi} -d ${POSTGRES_DB:-moxi}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  hermes-runtime:
+    build: .
+    container_name: moxi-hermes-runtime
+    env_file:
+      - .env
+    environment:
+      HERMES_HOST: 0.0.0.0
+      HERMES_DATA_DIR: /opt/hermes-system/data
+      HERMES_LOG_DIR: /opt/hermes-system/logs
+      HERMES_OBSIDIAN_VAULT_DIR: /opt/hermes-system/obsidian-vault
+      HERMES_DATABASE_URL: postgresql://${POSTGRES_USER:-moxi}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-moxi}
+    ports:
+      - "127.0.0.1:${HERMES_PORT:-8787}:8787"
+    volumes:
+      - ./data/hermes:/opt/hermes-system/data
+      - ./logs/hermes:/opt/hermes-system/logs
+      - ./obsidian-vault:/opt/hermes-system/obsidian-vault
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped

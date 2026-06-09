@@ -1,0 +1,131 @@
+# One-Click Deployment To Usable Stage
+
+## 1. Decision
+
+MOXI must support one-command deployment to a usable stage.
+
+The product is not commercially credible if it requires the owner or customer to
+manually assemble services from scattered notes. One-command deployment is a
+first-class product capability.
+
+## 2. What "Usable Stage" Means
+
+Usable stage means:
+
+- `.env` exists and contains generated local secrets when needed;
+- frontend build runs automatically when `frontend/package.json` or root
+  `package.json` exists, using npm, pnpm, yarn, or bun based on the lockfile;
+- PostgreSQL starts;
+- Hermes starts;
+- required runtime folders exist;
+- Obsidian vault folder exists;
+- `/health` returns `ok`;
+- `/ready` is reachable;
+- `/capabilities` is reachable;
+- the deploy script prints the local access URLs;
+- unsupported public callbacks are clearly disabled or marked unavailable.
+
+It does not mean every external integration is already configured. Feishu,
+WeChat, QQ, model keys, TrendRadar, EverOS, MiroFish, and domain callbacks still
+require credentials, DNS, or external service configuration.
+
+## 3. Commands
+
+### Windows / PowerShell
+
+Local production:
+
+```powershell
+.\scripts\deploy-usable.ps1 -Mode local
+```
+
+Domain server production preparation:
+
+```powershell
+.\scripts\deploy-usable.ps1 -Mode domain -Domain moxi.example.com
+```
+
+### Linux / macOS / Server Shell
+
+Local production:
+
+```bash
+bash scripts/deploy-usable.sh
+```
+
+Domain server production preparation:
+
+```bash
+MODE=domain DOMAIN=moxi.example.com bash scripts/deploy-usable.sh
+```
+
+## 4. Deployment Stack
+
+The one-command usable deployment starts:
+
+- optional frontend build when a frontend package exists;
+- PostgreSQL from `docker-compose.production.yml`;
+- Hermes runtime from the local source tree;
+- persistent directories under `data/`, `logs/`, and `obsidian-vault/`.
+
+The first deploy target is usable backend readiness. Nginx, HTTPS, DNS,
+platform callbacks, EverOS, TrendRadar, SearXNG, and MiroFish are added as
+follow-up deploy layers after the base stack is healthy.
+
+## 5. Why Other Projects Feel Easier
+
+Other projects feel one-click because they usually provide:
+
+- optional npm, pnpm, yarn, or bun install/build for frontend assets;
+- an installer script;
+- Docker Compose;
+- default environment generation;
+- automatic secret generation;
+- database container;
+- health polling;
+- final access URL printing;
+- clear failure messages.
+
+MOXI must provide the same experience, but with stricter production boundaries:
+
+- no committed secrets;
+- no accidental public exposure;
+- no fake readiness;
+- no high-risk platform action before owner approval;
+- no external runtime treated as product authority.
+
+## 6. Acceptance Checks
+
+After running a deployment command, verify:
+
+```text
+http://127.0.0.1:8787/health
+http://127.0.0.1:8787/ready
+http://127.0.0.1:8787/capabilities
+```
+
+The deploy command must fail loudly when Docker, Docker Compose, `.env.example`,
+or health checks are unavailable.
+
+## 7. Roadmap To Full One-Click Production
+
+Base one-command deployment:
+
+- optional frontend package-manager build;
+- PostgreSQL;
+- Hermes;
+- local folders;
+- health checks.
+
+Next deploy layers:
+
+- database migrations;
+- Nginx and HTTPS automation;
+- frontend static build deployment;
+- EverOS internal service;
+- TrendRadar runtime attachment;
+- MiroFish on-demand worker;
+- SearXNG optional metasearch;
+- Feishu callback verification;
+- backup and restore automation;
+- release rollback.

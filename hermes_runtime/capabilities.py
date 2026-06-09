@@ -262,8 +262,8 @@ def capability_matrix(config: RuntimeConfig) -> dict[str, Any]:
         ),
         "voice_input": _partial(
             "Voice input",
-            detail="Local or provider ASR is handled by the upstream interaction runtime.",
-            next_action="Expose ASR provider health from the BaiLongma/Hermes frontend adapter.",
+            detail="Local or provider ASR is handled by the MOXI interaction runtime.",
+            next_action="Expose ASR provider health from the MOXI frontend adapter.",
             plane="personal",
         ),
         "voice_output": _partial(

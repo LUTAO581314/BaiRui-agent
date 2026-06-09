@@ -1,248 +1,69 @@
-# MOXI Agent System
+# MOXI Industrial Agent OS
 
-This repository is the planning, control-plane, and deployment home for a
-personal and company agent system built around Hermes, Obsidian, MOXI / Brain UI,
-MiroFish, Feishu, WeChat, QQ, and API-first intelligence adapters.
+This repository is the source-owned engineering home for MOXI Industrial Agent OS.
 
-The goal is not to install one chatbot. The goal is to build a layered AI operating system for both personal work and company management:
+The product is not a simple integration of existing projects. The target is a
+commercial, industrial-grade agent operating system built from our own source
+code, with external projects used only as isolated runtimes, references, or
+replaceable adapters.
 
-- Obsidian stores durable human-readable memory.
-- Hermes runs backend automation, research, tools, and scheduled jobs.
-- Feishu is the primary company management console.
-- WeChat is the personal companionship and lightweight reminder channel.
-- MOXI / Brain UI provides the Chinese-facing frontend surface. BaiLongma is now treated as an upstream frontend-design source to migrate from, not the long-term backend authority.
-- MiroFish acts as a scenario simulation and report lab.
-- Feishu and WeChat deliver summaries, alerts, and human confirmation loops.
-- Financial workflows stay research-first and require explicit human approval before any real trading action.
-- Search uses external project runtimes such as TrendRadar or SearXNG; image recognition, speech, and video understanding remain API-first integrations. The lightweight VPS runs orchestration, not heavy local models.
+## Product Direction
 
-## Current Status
+MOXI Industrial Agent OS provides one controlled backend, one primary user
+experience, governed long-term memory, company workflow automation, trend and
+research intelligence, simulation, and owner-approved execution.
 
-Phase 0 planning and Phase 1 runtime foundation are complete. Phase 2 is now converging on the single-backend Hermes architecture:
+The system is built around these permanent boundaries:
 
-- Brain UI is running behind the protected `bairui.chat` domain while migration proceeds.
-- The public-facing Brain UI brand, browser title, agent profile name, and mark now show `MOXI`; BaiLongma remains an upstream source for UI migration, not the final backend name.
-- Hermes is installed on the VPS.
-- TrendRadar is enabled as an isolated Hermes MCP search/trend runtime.
-- The active model path uses the custom GPT-5.5-compatible gateway. New configuration should be owned by Hermes.
-- Local Whisper is configured and verified as the transitional voice-input ASR.
-- Cloud TTS still needs an approved provider key; the Brain UI now falls back to browser speech synthesis when cloud TTS is unavailable.
-- Image understanding is exposed through `analyze_image`.
-- A metadata-only sticker bridge is available for cute/kawaii/anime-style prepared stickers. It stores intent profiles, provider queries, and channel send instructions only. Sticker images, generated images, platform media IDs, and API keys stay out of Git; runtime image generation can be enabled as a reviewed provider path.
-- Social image/sticker sending now has a connector-neutral `outbound_media` compatibility envelope. WeChat and other bridges that cannot yet upload images must send the text fallback and log the reason instead of silently dropping the image reply.
-- Video understanding is intentionally frozen for this phase.
-- BaiLongma backend memory is being retired as an authority; Obsidian remains the durable memory source of truth.
-- Feishu callback, encrypted event handling, sender identity separation, event idempotency, fast ACK, and group-reply routing are implemented; real group retest by the owner is still required.
+- Hermes is the single backend authority.
+- MOXI / Brain UI is the primary frontend surface.
+- PostgreSQL is the production system database.
+- Obsidian is the owner-readable long-term memory and decision record.
+- EverOS is the automatic memory extraction and retrieval engine.
+- TrendRadar is the first external trend and public-opinion runtime.
+- SearXNG is an optional self-hosted metasearch supplement.
+- MiroFish is the scenario simulation and decision rehearsal lab.
+- Feishu is the company operation surface.
+- WeChat and QQ are personal or social channels with strict risk boundaries.
 
-Current priority: finish the stable core while continuing Feishu Phase 3 with owner retesting, company identity mapping, read-only company data, and owner-confirmed actions.
+Production supports only two deployment modes:
 
-## Documents
+- Local production environment: a local workstation, mini server, NAS, or LAN
+  machine. It is a real production deployment for the owner, but it does not
+  require a public domain or DNS record.
+- Domain server production environment: a server with a domain name, DNS
+  resolution, HTTPS, and Nginx routing. This mode is required when the product
+  must receive stable Feishu, WeChat, QQ, or public web callbacks.
 
-- [White-label Public AI Brief](public-ai-brief/README.md) - use this folder when asking external AI for technical-path advice without exposing the private runtime stack.
-- [Quickstart](QUICKSTART.md) - run the minimal MOXI control plane and verify `/health`, `/ready`, and `/capabilities`.
-- [Optimized Technical Path](docs/OPTIMIZED_TECHNICAL_PATH.md) - the current internal engineering path, module boundaries, performance plan, and copy/credit strategy.
-- [Performance Optimization Plan](docs/PERFORMANCE_OPTIMIZATION_PLAN.md) - the surface-first and bottom-layer plan for sub-5-second social responsiveness, async slow jobs, latency telemetry, and model routing.
-- [Capability Matrix](docs/CAPABILITY_MATRIX.md) - secret-safe readiness contract for frontend settings panels and dashboards.
-- [Hermes Frontend Adapter Plan](docs/HERMES_FRONTEND_ADAPTER_PLAN.md) - how MOXI connects to Hermes native logic without rewriting it in the frontend.
-- [Single Backend Hermes Architecture](docs/SINGLE_BACKEND_HERMES_ARCHITECTURE.md) - the migration path to Hermes as the only backend and MOXI / Brain UI as the only frontend.
-- [Hermes Config Schema](docs/HERMES_CONFIG_SCHEMA.md) - secret-safe writable settings schema for Brain UI and connector panels.
-- [Connector Integration Runbook](docs/CONNECTOR_INTEGRATION_RUNBOOK.md) - how WeChat, Feishu, and web-chat bridges call `/social/turn` and `/jobs/event`.
-- [Upstream Dependency Strategy](docs/UPSTREAM_DEPENDENCY_STRATEGY.md) - how BaiLongma and other upstream runtimes are managed without copying full source trees into this repository.
-- [QQ Connector Plan](docs/QQ_CONNECTOR.md)
-- [Social Settings UI Optimization](docs/SOCIAL_SETTINGS_UI_OPTIMIZATION.md)
-- [Technical Path Chinese Summary](docs/TECHNICAL_PATH_SUMMARY.zh-CN.md)
-- [Sustainable Iteration Blueprint](docs/SUSTAINABLE_ITERATION_BLUEPRINT.md)
-- [Master Plan](docs/MASTER_PLAN.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Optimized Architecture](docs/OPTIMIZED_ARCHITECTURE.md)
-- [Candidate Project Evaluation](docs/CANDIDATE_PROJECT_EVALUATION.md)
-- [Phase 01 Runtime Foundation](docs/PHASE_01_RUNTIME_FOUNDATION.md)
-- [Core MVP Runbook](docs/CORE_MVP_RUNBOOK.md)
-- [Feishu Company Management Plan](docs/FEISHU_COMPANY_MANAGEMENT.md)
-- [Search Runtime Strategy](docs/SEARCH_RUNTIME.md)
-- [AI Model Gateway](docs/AI_MODEL_GATEWAY.md)
-- [WeChat Companion Channel](docs/WECHAT_COMPANION.md)
-- [Memory Governance](docs/MEMORY_GOVERNANCE.md)
-- [Obsidian Write-Back Workflow](docs/OBSIDIAN_WRITEBACK_WORKFLOW.md)
-- [API Integrations](docs/API_INTEGRATIONS.md)
-- [Sticker Bridge](docs/STICKER_BRIDGE.md)
-- [Roadmap](docs/ROADMAP.md)
-- [Risk and Guardrails](docs/RISK_AND_GUARDRAILS.md)
-- [Chinese Report Policy](docs/CHINESE_REPORT_POLICY.md)
-- [Current Chinese Phase Report](reports/phase-00-architecture-plan.zh-CN.md)
-- [Memory Governance Chinese Report](reports/phase-00-memory-governance.zh-CN.md)
-- [Sustainable Iteration Chinese Report](reports/phase-00-sustainable-iteration.zh-CN.md)
-- [Candidate Projects Chinese Report](reports/phase-00-candidate-projects.zh-CN.md)
-- [Phase 01 Runtime Foundation Chinese Report](reports/phase-01-runtime-foundation.zh-CN.md)
-- [WeChat Companion Readiness Chinese Report](reports/phase-01-wechat-companion-readiness.zh-CN.md)
-- [Phase 02 Core Hermes and BaiLongma Chinese Report](reports/phase-02-core-hermes-bailongma.zh-CN.md)
-- [Phase 03 Feishu Company Management Chinese Report](reports/phase-03-feishu-company-management.zh-CN.md)
-- [Phase 04 Optimized Technical Path Chinese Report](reports/phase-04-optimized-technical-path.zh-CN.md)
-- [Phase 05 Sticker Bridge Chinese Report](reports/phase-05-sticker-bridge.zh-CN.md)
-- [Phase 06 Social Performance Optimization Chinese Report](reports/phase-06-social-performance-optimization.zh-CN.md)
-- [Phase 07 Context Slimming And Async Jobs Chinese Report](reports/phase-07-context-slimming-async-jobs.zh-CN.md)
-- [Phase 08 Social Turn Planner Chinese Report](reports/phase-08-social-turn-planner.zh-CN.md)
-- [Phase 09 Active Job Follow-Up Chinese Report](reports/phase-09-active-job-follow-up.zh-CN.md)
-- [Phase 10 Worker Lifecycle Events Chinese Report](reports/phase-10-worker-lifecycle-events.zh-CN.md)
-- [Phase 11 Connector Client And Runbook Chinese Report](reports/phase-11-connector-client-runbook.zh-CN.md)
-- [Phase 12 Server Runtime Auth Fix Chinese Report](reports/phase-12-server-runtime-auth-fix.zh-CN.md)
-- [Phase 13 QQ Connector And Social Settings UI Chinese Report](reports/phase-13-qq-and-social-settings-ui.zh-CN.md)
-- [Phase 14 Repository CI And Upstream Strategy Chinese Report](reports/phase-14-repo-ci-and-upstream-strategy.zh-CN.md)
-- [Phase 15 Frontend Adapter And Capability Matrix Chinese Report](reports/phase-15-frontend-adapter-and-capability-matrix.zh-CN.md)
-- [Phase 16 BaiLongma Capability Matrix Chinese Report](reports/phase-16-bailongma-capability-matrix.zh-CN.md)
-- [Phase 17 Frontend Contract Chinese Report](reports/phase-17-frontend-contract.zh-CN.md)
-- [Phase 18 Server Social Turn Bridge Chinese Report](reports/phase-18-server-social-turn-bridge.zh-CN.md)
-- [Phase 19 Progress Aware Chat UI Chinese Report](reports/phase-19-progress-aware-chat-ui.zh-CN.md)
-- [Phase 20 Channel Plane Badges Chinese Report](reports/phase-20-channel-plane-badges.zh-CN.md)
-- [Phase 21 Tool Lifecycle Events Chinese Report](reports/phase-21-tool-lifecycle-events.zh-CN.md)
-- [Phase 22 Follow-Up Job Merge Chinese Report](reports/phase-22-follow-up-job-merge.zh-CN.md)
-- [Phase 23 Feishu Read-Only Tools Chinese Report](reports/phase-23-feishu-read-only-tools.zh-CN.md)
-- [Phase 24 Social Media Compatibility Chinese Report](reports/phase-24-social-media-compat.zh-CN.md)
-- [Phase 25 WeChat Media Send Plan Chinese Report](reports/phase-25-wechat-media-send-plan.zh-CN.md)
-- [Phase 26 WeChat Media Probe Chinese Report](reports/phase-26-wechat-media-probe.zh-CN.md)
-- [Phase 27 Brain UI Routing Fix Chinese Report](reports/phase-27-brain-ui-routing-fix.zh-CN.md)
-- [Phase 28 Brain UI Settings State Cleanup Chinese Report](reports/phase-28-settings-tab-state-cleanup.zh-CN.md)
-- [Phase 29 Hermes Settings Control Center Chinese Report](reports/phase-29-settings-control-center.zh-CN.md)
-- [Phase 30 Hermes Config Schema Chinese Report](reports/phase-30-hermes-config-schema.zh-CN.md)
-- [Phase 31 BaiLongma Runtime Config UI Chinese Report](reports/phase-31-bailongma-runtime-config-ui.zh-CN.md)
-- [Phase 32 QQ Personal Scan Panel Chinese Report](reports/phase-32-qq-personal-scan-panel.zh-CN.md)
-- [Phase 33 QQ Personal NapCat Bridge Chinese Report](reports/phase-33-qq-personal-napcat-bridge.zh-CN.md)
-- [Phase 34 QQ QR Expiry Hotfix Chinese Report](reports/phase-34-qq-qr-expiry-hotfix.zh-CN.md)
-- [Phase 35 Channel Isolation And QQ Route Correction Chinese Report](reports/phase-35-channel-isolation-and-qq-route-correction.zh-CN.md)
-- [Phase 36 Single Backend Hermes Migration Chinese Report](reports/phase-36-single-backend-hermes-migration.zh-CN.md)
+## Documentation Map
 
-## Repository Automation
+The old explanatory documents have been removed. Phase summaries remain under
+`reports/`. The current product plan is now organized by functional domain:
 
-GitHub Actions runs on push, pull request, and manual dispatch:
+- [Product Blueprint](docs/00-product-blueprint.md)
+- [System Architecture](docs/01-system-architecture.md)
+- [Server Rebuild And Deployment](docs/02-server-rebuild-and-deployment.md)
+- [PostgreSQL Data Architecture](docs/03-postgresql-data-architecture.md)
+- [Hermes Backend Runtime](docs/04-hermes-backend-runtime.md)
+- [Memory: Obsidian And EverOS](docs/05-memory-obsidian-everos.md)
+- [Intelligence: Models, Search, And Crawling](docs/06-intelligence-model-search.md)
+- [Simulation: MiroFish](docs/07-simulation-mirofish.md)
+- [Connectors And Channels](docs/08-connectors-and-channels.md)
+- [Frontend: MOXI / Brain UI](docs/09-frontend-moxi-brain-ui.md)
+- [Security, Compliance, And Operations](docs/10-security-compliance-ops.md)
+- [Commercial Productization Roadmap](docs/11-commercial-roadmap.md)
+- [One-Click Deployment To Usable Stage](docs/12-one-click-deployment.md)
+- [Source Rebuild Technical Path](docs/13-source-rebuild-technical-path.md)
+- [Commercial Interaction Model](docs/14-commercial-interaction-model.md)
+- [GitHub Repository Cleanup Policy](docs/15-github-repository-cleanup.md)
 
-- `python -m unittest discover -s tests`
-- `python -m compileall hermes_runtime tests`
-- `./scripts/check-repo-hygiene.ps1`
+## Engineering Rule
 
-The hygiene check blocks tracked runtime data paths and obvious committed API
-keys or private key material. Real `.env` files, connector sessions, chat logs,
-QR-code state, generated media, and Obsidian working vault data must stay out of
-Git.
+The repository must converge toward production ownership:
 
-## Upstream Runtime Dependencies
-
-This repository is the MOXI control plane and technical-path source. It does
-not vendor full upstream applications by default.
-
-- BaiLongma stays in a separate upstream checkout or fork until migration is
-  complete.
-- MOXI-specific BaiLongma history lives as overlays under
-  [patches/bailongma](patches/bailongma/README.md), but new backend authority
-  belongs to Hermes.
-- Useful BaiLongma work to migrate: Brain UI layout, settings UX, progress
-  states, channel-plane badges, voice/image frontend controls, and hotspot
-  panel design.
-- Retired BaiLongma backend responsibilities: native model loop, durable memory
-  authority, settings authority, Feishu/QQ backend control, and NapCat as a
-  default QQ route.
-- Hermes now exposes `/frontend/contract`, `/config/schema`, `/config/update`,
-  `/social/turn`, `/jobs/event`, `/media/plan-send`, and `/hotspots` so the
-  final MOXI / Brain UI frontend can call the backend directly.
-- The runtime now exposes `outbound_media` for image/sticker social turns so
-  frontends and WeChat/Feishu/QQ adapters can either upload-and-send media or
-  fall back to text explicitly.
-- Connectors can call `/media/plan-send` after an image is generated. The
-  runtime returns `send_image_file`, `upload_then_send`, or `send_text_fallback`
-  so WeChat bridges do not treat image paths as final text replies.
-- `scripts/probe-bailongma-wechat-media.sh` is the read-only server probe for
-  discovering whether the active BaiLongma/ClawBot checkout exposes a real
-  outbound image/file send function.
-- `scripts/probe-bailongma-frontend-routing.sh` is the read-only server probe
-  for Brain UI browser-side API base and `/events` SSE reverse-proxy issues.
-- The Brain UI settings target acts as a Hermes control center: capability
-  matrix, frontend contract, performance budget, memory state, async jobs,
-  social channels, model, media, voice, search, security, appearance, and
-  update settings are separated by domain.
-- The runtime now exposes a secret-safe writable configuration schema through
-  `/config/schema` and `/config/update`, so Brain UI can save whitelisted
-  Hermes model, search, media, and performance settings without leaking secrets.
-- The final Brain UI should render Hermes `/config/schema` directly, call
-  `/config/update`, skip empty secret inputs, and refresh runtime state after
-  save.
-- QQ now has two clearly separated setup paths in Brain UI: official bot
-  credentials and a planned personal scan bridge panel. The personal scan panel
-  currently reports `bridge_missing` until NapCat or Lagrange is installed.
-- External runtime install notes live under [external](external/README.md).
-- If a full BaiLongma frontend fork becomes necessary, keep this repository as
-  the canonical technical-path source and preserve the upstream MIT license.
-
-## Public Copy And Attribution
-
-External reviewers and classmates should use the public brief instead of the
-internal architecture documents:
-
-- [Website Copy Workspace](index.html)
-- [Public Technical Path](public-ai-brief/TECHNICAL_PATH.md)
-- [Batch Copy Pack](public-ai-brief/COPY_PACK.md)
-- [Attribution Rules](public-ai-brief/ATTRIBUTION.md)
-
-Required source line for copied technical paths:
-
-```text
-Technical path source: https://github.com/LUTAO581314/hermes-
-```
-
-## Run The Minimal Runtime
-
-```powershell
-python -m hermes_runtime
-```
-
-Health checks:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8787/health
-Invoke-RestMethod http://127.0.0.1:8787/ready
-Invoke-RestMethod http://127.0.0.1:8787/capabilities
-Invoke-RestMethod http://127.0.0.1:8787/frontend/contract
-Invoke-RestMethod http://127.0.0.1:8787/config/schema
-Invoke-RestMethod http://127.0.0.1:8787/hotspots
-Invoke-RestMethod http://127.0.0.1:8787/performance
-Invoke-RestMethod "http://127.0.0.1:8787/route?message=generate%20image%20avatar"
-Invoke-RestMethod "http://127.0.0.1:8787/context?message=generate%20image%20avatar"
-Invoke-RestMethod http://127.0.0.1:8787/latency
-Invoke-RestMethod http://127.0.0.1:8787/jobs
-```
-
-Connector quick-ack plan:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8787/social/turn -Method POST -ContentType "application/json" -Body '{"channel":"wechat","target_id":"user-1","message":"generate image avatar"}'
-Invoke-RestMethod http://127.0.0.1:8787/jobs/event -Method POST -ContentType "application/json" -Body '{"job_id":"<job-id>","event":"worker_started"}'
-```
-
-When a connector calls a protected server URL instead of localhost, configure
-`HERMES_RUNTIME_BASE_URL`, `HERMES_RUNTIME_BASIC_USER`, and
-`HERMES_RUNTIME_BASIC_PASSWORD` outside Git.
-
-## Recommended Current Milestone
-
-Finish Phase 2 as a stable core:
-
-1. Verify Hermes, MOXI / Brain UI, TrendRadar, image, voice, and memory count with [Core MVP Runbook](docs/CORE_MVP_RUNBOOK.md).
-2. Keep video frozen until the owner reopens that scope.
-3. Route useful memory candidates through [Obsidian Write-Back Workflow](docs/OBSIDIAN_WRITEBACK_WORKFLOW.md).
-4. Run memory dream consolidation after noisy tests, then clean or merge only after review.
-5. Write every phase result into a Chinese report.
-6. Start Feishu company management from real-message verification, not from broad company write permissions.
-
-WeChat companionship can be used only as a personal surface. Feishu remains the planned company-management surface. MiroFish simulations and trading execution stay later-stage capabilities with separate safety gates.
-
-## Guiding Principle
-
-Memory must remain portable and readable. Automation must remain reversible and auditable. Any high-risk action must stop at a human confirmation boundary.
-
-Memory must be associative and governed. Time is metadata, not the main structure. The system should remember fewer, better, relationship-rich, source-backed, owner-correctable facts instead of storing every chat message, log, and API output as permanent memory.
-
-## Reporting Rule
-
-Every implementation phase must produce a Chinese report for the owner. Research notes and source materials may remain in English, but phase summaries, delivery status, decisions, risks, and next actions must be written in Chinese.
-
-## Iteration Rule
-
-Every phase follows the same loop: phase brief, scope lock, implementation, verification, Chinese report, memory dream consolidation, reviewed cleanup, risk review, and next-phase decision.
+- New durable behavior belongs in our source tree first.
+- External projects are isolated behind adapter contracts.
+- Platform credentials, sessions, QR state, generated media, and raw private logs
+  must stay outside Git.
+- Every phase must include verification and a Chinese owner-facing report in
+  `reports/`.

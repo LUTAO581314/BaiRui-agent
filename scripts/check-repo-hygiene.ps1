@@ -7,8 +7,7 @@ $forbiddenPaths = @(
     ".env",
     "data",
     "logs",
-    "obsidian-vault",
-    "public-ai-brief-export"
+    "obsidian-vault"
 )
 
 foreach ($path in $forbiddenPaths) {
@@ -23,9 +22,6 @@ foreach ($path in $forbiddenPaths) {
 $secretPattern = "sk-[A-Za-z0-9_-]{20,}|BEGIN (RSA|OPENSSH|PRIVATE) KEY|(password|secret|token|api[_-]?key)\s*[:=]\s*['`"][^'`"]{12,}['`"]"
 $allowList = @(
     ".env.example",
-    "docs/CONNECTOR_INTEGRATION_RUNBOOK.md",
-    "docs/CORE_MVP_RUNBOOK.md",
-    "docs/QQ_CONNECTOR.md",
     "README.md",
     "scripts/check-repo-hygiene.ps1",
     "tests/test_runtime.py"

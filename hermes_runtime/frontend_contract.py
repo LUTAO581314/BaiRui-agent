@@ -1,4 +1,4 @@
-"""Frontend adapter contract for BaiLongma / Brain UI overlays."""
+"""Frontend adapter contract for MOXI / Brain UI surfaces."""
 
 from __future__ import annotations
 

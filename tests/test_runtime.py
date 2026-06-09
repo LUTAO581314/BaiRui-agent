@@ -340,7 +340,7 @@ class RuntimeTests(unittest.TestCase):
                     handler.close()
                 logging.shutdown()
 
-    def test_frontend_contract_exposes_bailongma_adapter_contract(self) -> None:
+    def test_frontend_contract_exposes_moxi_adapter_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             config = make_config(base)
@@ -1242,7 +1242,7 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(payload["platforms"][0]["id"], "trendradar")
                 self.assertEqual(
                     payload["migration"]["from"],
-                    "BaiLongma src/hotspots.js data shape",
+                    "legacy hotspot panel data shape",
                 )
             finally:
                 server.shutdown()
