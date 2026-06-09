@@ -107,6 +107,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 32 QQ Personal Scan Panel Chinese Report](reports/phase-32-qq-personal-scan-panel.zh-CN.md)
 - [Phase 33 QQ Personal NapCat Bridge Chinese Report](reports/phase-33-qq-personal-napcat-bridge.zh-CN.md)
 - [Phase 34 QQ QR Expiry Hotfix Chinese Report](reports/phase-34-qq-qr-expiry-hotfix.zh-CN.md)
+- [Phase 35 Channel Isolation And QQ Route Correction Chinese Report](reports/phase-35-channel-isolation-and-qq-route-correction.zh-CN.md)
 
 ## Repository Automation
 

@@ -94,6 +94,10 @@ checkout. It is intentionally an overlay, not a full copy of upstream source.
   turns the QQ personal scan path into a real NapCat Docker bridge: BaiLongma
   can start/stop the local container, read status, surface QR-ready login state,
   and keep session material outside Git.
+- [phase-35-channel-isolation-guard.patch](phase-35-channel-isolation-guard.patch)
+  adds a hard delivery guard so web/API/voice turns normalized as `TUI` cannot
+  leak to WeChat, Feishu, or QQ presence targets unless a future explicit
+  cross-channel confirmation flow is used.
 
 Future patch files should be named by phase and purpose:
 

@@ -17,13 +17,15 @@ Feishu.
 
 ## 2. Recommended QQ Routes
 
-MOXI now keeps two QQ routes separate:
+MOXI keeps two QQ routes separate:
 
 - Official QQ bot: lower protocol risk, best for public or formal bot use.
 - Personal QQ scan bridge: NapCat-backed personal account route, useful for
   companionship and private chat surfaces, but with higher platform-risk.
 
-Use the official QQ bot route for stable public deployments.
+Use the official QQ bot route as the default route. Personal scan is an
+experimental route and must be clearly labeled as personal QQ login, not robot
+binding.
 
 Expected credentials:
 
@@ -38,7 +40,9 @@ It must never return the raw values.
 
 ### Personal QQ Scan Bridge
 
-The first implemented personal route uses NapCat in Docker:
+NapCat/Lagrange-style scan is personal QQ login. It is not the same thing as
+binding an official QQ robot. The implemented experimental route uses NapCat in
+Docker:
 
 - container name: `moxi-napcat`,
 - WebUI bound to `127.0.0.1:6099`,
