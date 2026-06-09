@@ -44,6 +44,8 @@ BaiLongma / Brain UI
   -> Hermes frontend adapter
        -> GET /capabilities
        -> GET /frontend/contract
+       -> GET /config/schema
+       -> POST /config/update
        -> POST /social/turn
        -> POST /jobs/event
        -> GET /latency
@@ -102,6 +104,7 @@ BaiLongma / Brain UI
 12. Add read-only Feishu company data tools. Done in Phase 23.
 13. Add social image/sticker compatibility through `outbound_media`. Done in Phase 24.
 14. Add GitHub Pages deployment for the public technical path.
+15. Add secret-safe writable Hermes config schema. Done in Phase 30.
 
 ## Phase 16 Patch
 
@@ -268,3 +271,23 @@ media sends:
 
 The companion BaiLongma overlay snippet is
 `patches/bailongma/phase-24-social-media-fallback.patch`.
+
+## Phase 30 Writable Config Schema
+
+Hermes runtime now exposes:
+
+- `GET /config/schema`,
+- `POST /config/update`.
+
+The schema lets Brain UI render and save whitelisted runtime settings for model
+slots, search, media/stickers/image generation, and social performance budgets.
+It deliberately excludes host, port, filesystem paths, safe mode, and other
+high-risk runtime switches from the first writable UI.
+
+Secret fields are write-only: the frontend receives only `configured: true` or
+`configured: false`, and empty secret updates keep the existing value. Unknown
+keys and invalid values are rejected before any env file write.
+
+The next BaiLongma overlay should render this schema in the settings panel,
+proxy `/config/schema` and `/config/update`, and keep native Hermes logic as the
+backend owner.

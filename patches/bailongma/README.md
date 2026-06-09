@@ -78,11 +78,15 @@ checkout. It is intentionally an overlay, not a full copy of upstream source.
   matrix, frontend contract, performance budget, memory status, async jobs,
   social channels, model, media, voice, search, security, appearance, and
   update domains, plus read-only `/performance` and `/jobs` Hermes proxies.
+- [phase-30-hermes-config-schema.patch](phase-30-hermes-config-schema.patch)
+  documents the next BaiLongma-side writable-settings overlay: proxy Hermes
+  `/config/schema` and `/config/update`, render schema groups dynamically, and
+  keep secret fields write-only.
 
 Future patch files should be named by phase and purpose:
 
 ```text
-phase-30-hermes-config-schema.patch
+phase-31-<purpose>.patch
 ```
 
 The server checkout may still contain local runtime-specific changes. Patch

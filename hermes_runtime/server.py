@@ -15,6 +15,11 @@ from urllib.parse import parse_qs, urlparse
 from .async_jobs import AsyncJobStore, jobs_payload
 from .capabilities import capability_matrix
 from .config import RuntimeConfig, load_config
+from .config_schema import (
+    ConfigValidationError,
+    apply_config_updates,
+    config_schema_payload,
+)
 from .context_budget import context_payload
 from .frontend_contract import frontend_contract
 from .latency import LatencyRecorder, latency_payload
@@ -181,6 +186,10 @@ class HermesHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.OK, frontend_contract(self.server.config))
             return
 
+        if path == "/config/schema":
+            self._send_json(HTTPStatus.OK, config_schema_payload(self.server.config))
+            return
+
         if path == "/context":
             message = query.get("message", [""])[0]
             trace = self.server.latency.trace(route="context_budget")
@@ -241,6 +250,10 @@ class HermesHandler(BaseHTTPRequestHandler):
 
         if parsed_url.path == "/media/plan-send":
             self._handle_media_plan_send()
+            return
+
+        if parsed_url.path == "/config/update":
+            self._handle_config_update()
             return
 
         self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found", "path": parsed_url.path})
@@ -334,6 +347,21 @@ class HermesHandler(BaseHTTPRequestHandler):
             payload = self._read_json_body()
             plan = plan_media_delivery(payload)
             self._send_json(HTTPStatus.OK, plan)
+        except ValueError as error:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+
+    def _handle_config_update(self) -> None:
+        try:
+            payload = self._read_json_body()
+            result = apply_config_updates(payload)
+            self.server.config = load_config()
+            result["schema"] = config_schema_payload(self.server.config)
+            self._send_json(HTTPStatus.OK, result)
+        except ConfigValidationError as error:
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_config_update", "detail": str(error)},
+            )
         except ValueError as error:
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
 

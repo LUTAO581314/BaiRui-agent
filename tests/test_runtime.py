@@ -8,6 +8,7 @@ import threading
 import time
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from hermes_runtime.connector_client import HermesConnectorClient
@@ -386,6 +387,179 @@ class RuntimeTests(unittest.TestCase):
                 serialized = json.dumps(payload).lower()
                 self.assertNotIn("api_key_configured", serialized)
                 self.assertNotIn("password-value", serialized)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                for handler in list(logger.handlers):
+                    logger.removeHandler(handler)
+                    handler.close()
+                logging.shutdown()
+
+    def test_config_schema_endpoint_exposes_writable_safe_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config = make_config(
+                base,
+                ai_api_key_configured=True,
+                sticker_api_key_configured=True,
+                ai_fast_model="5.4-mini",
+            )
+            logger = configure_logging(config.log_dir)
+            server = build_server(config, logger)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                url = f"http://127.0.0.1:{server.server_port}/config/schema"
+                with urlopen(url, timeout=2) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+
+                self.assertEqual(payload["status"], "ok")
+                self.assertEqual(payload["mode"], "safe_whitelist")
+                groups = {group["id"]: group for group in payload["groups"]}
+                self.assertIn("model", groups)
+                self.assertIn("search", groups)
+                self.assertIn("media", groups)
+                self.assertIn("performance", groups)
+
+                model_fields = {
+                    field["key"]: field for field in groups["model"]["fields"]
+                }
+                self.assertEqual(
+                    model_fields["HERMES_AI_FAST_MODEL"]["value"],
+                    "5.4-mini",
+                )
+                self.assertTrue(model_fields["HERMES_AI_API_KEY"]["configured"])
+                self.assertNotIn("value", model_fields["HERMES_AI_API_KEY"])
+                self.assertFalse(payload["guardrails"]["secret_values_returned"])
+
+                serialized = json.dumps(payload)
+                self.assertNotIn("configured-value", serialized)
+                self.assertNotIn("sk-", serialized)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                for handler in list(logger.handlers):
+                    logger.removeHandler(handler)
+                    handler.close()
+                logging.shutdown()
+
+    def test_config_update_writes_whitelisted_values_and_refreshes_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            env_path = base / ".env.hermes-runtime"
+            env_path.write_text(
+                "# existing runtime config\nHERMES_AI_PROVIDER=supermoxi\n",
+                encoding="utf-8",
+            )
+            config = make_config(base)
+            logger = configure_logging(config.log_dir)
+            server = build_server(config, logger)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            env = {
+                "HERMES_CONFIG_ENV_PATH": str(env_path),
+                "HERMES_DATA_DIR": str(base / "data"),
+                "HERMES_LOG_DIR": str(base / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(base / "obsidian-vault"),
+            }
+
+            try:
+                body = json.dumps(
+                    {
+                        "updates": {
+                            "HERMES_AI_FAST_MODEL": "5.4-mini",
+                            "HERMES_AI_SUMMARY_MODEL": "5.4",
+                            "HERMES_AI_API_KEY": "configured-value",
+                            "HERMES_SEARCH_MODE": "searxng",
+                            "HERMES_SEARXNG_BASE_URL": "http://127.0.0.1:8080",
+                            "HERMES_STICKER_IMAGE_GENERATION_ENABLED": True,
+                            "HERMES_SOCIAL_FAST_REPLY_TARGET_MS": 4500,
+                        }
+                    }
+                ).encode("utf-8")
+                request = Request(
+                    f"http://127.0.0.1:{server.server_port}/config/update",
+                    data=body,
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with patch.dict("os.environ", env, clear=False):
+                    with urlopen(request, timeout=2) as response:
+                        payload = json.loads(response.read().decode("utf-8"))
+
+                self.assertEqual(payload["status"], "ok")
+                self.assertIn("HERMES_AI_FAST_MODEL", payload["changed_keys"])
+                self.assertIn("HERMES_AI_API_KEY", payload["changed_keys"])
+                self.assertTrue(server.config.ai_api_key_configured)
+                self.assertEqual(server.config.ai_fast_model, "5.4-mini")
+                self.assertEqual(server.config.ai_summary_model, "5.4")
+                self.assertEqual(server.config.search_mode, "searxng")
+                self.assertTrue(server.config.sticker_image_generation_enabled)
+                self.assertEqual(server.config.social_fast_reply_target_ms, 4500)
+
+                env_text = env_path.read_text(encoding="utf-8")
+                self.assertIn("HERMES_AI_FAST_MODEL=5.4-mini", env_text)
+                self.assertIn("HERMES_AI_API_KEY=configured-value", env_text)
+                self.assertNotIn("configured-value", json.dumps(payload))
+                self.assertNotIn("HERMES_HOST", env_text)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                for handler in list(logger.handlers):
+                    logger.removeHandler(handler)
+                    handler.close()
+                logging.shutdown()
+
+    def test_config_update_rejects_unknown_or_invalid_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            env_path = base / ".env.hermes-runtime"
+            config = make_config(base)
+            logger = configure_logging(config.log_dir)
+            server = build_server(config, logger)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            def post_update(updates: dict[str, object]) -> dict[str, object]:
+                body = json.dumps({"updates": updates}).encode("utf-8")
+                request = Request(
+                    f"http://127.0.0.1:{server.server_port}/config/update",
+                    data=body,
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with patch.dict(
+                    "os.environ",
+                    {"HERMES_CONFIG_ENV_PATH": str(env_path)},
+                    clear=False,
+                ):
+                    try:
+                        with urlopen(request, timeout=2) as response:
+                            return json.loads(response.read().decode("utf-8"))
+                    except HTTPError as error:
+                        try:
+                            return json.loads(error.read().decode("utf-8"))
+                        finally:
+                            error.close()
+
+            try:
+                unknown = post_update({"HERMES_HOST": "0.0.0.0"})
+                self.assertEqual(unknown["error"], "invalid_config_update")
+                self.assertIn("not writable", unknown["detail"])
+
+                invalid_option = post_update({"HERMES_SEARCH_MODE": "internet"})
+                self.assertEqual(invalid_option["error"], "invalid_config_update")
+                self.assertIn("must be one of", invalid_option["detail"])
+
+                invalid_int = post_update({"HERMES_AI_TIMEOUT_SECONDS": 99999})
+                self.assertEqual(invalid_int["error"], "invalid_config_update")
+                self.assertIn("must be <=", invalid_int["detail"])
+                self.assertFalse(env_path.exists())
             finally:
                 server.shutdown()
                 server.server_close()

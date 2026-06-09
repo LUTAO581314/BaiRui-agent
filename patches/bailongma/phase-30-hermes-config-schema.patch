@@ -1,0 +1,34 @@
+diff --git a/docs/moxi-phase-30-hermes-config-schema.md b/docs/moxi-phase-30-hermes-config-schema.md
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/docs/moxi-phase-30-hermes-config-schema.md
+@@ -0,0 +1,25 @@
++# MOXI Phase 30 Hermes Config Schema Overlay
++
++Technical path source: https://github.com/LUTAO581314/hermes-
++
++This overlay note documents the BaiLongma-side work required after Hermes
++runtime Phase 30.
++
++BaiLongma should proxy these Hermes runtime endpoints:
++
++- `GET /config/schema`
++- `POST /config/update`
++
++Brain UI settings should render the returned schema dynamically instead of
++hard-coding model, search, media, and performance fields.
++
++Required UI behavior:
++
++- Group fields by schema group.
++- Render text, url, int, bool, select, and secret field types.
++- For secret fields, show configured state only.
++- Empty secret inputs must keep the existing secret.
++- POST only changed fields to `/config/update`.
++- Refresh `/config/schema`, `/health`, `/capabilities`, and `/performance`
++  after save.
++- Show validation errors returned by Hermes instead of silently failing.
++
++Do not store raw API keys in localStorage, browser events, chat logs, or public
++job records.

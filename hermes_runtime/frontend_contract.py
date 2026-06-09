@@ -36,6 +36,32 @@ def frontend_contract(config: Any) -> dict[str, Any]:
                 "path": "/performance",
                 "purpose": "Render visible latency budgets and routing thresholds.",
             },
+            "config_schema": {
+                "method": "GET",
+                "path": "/config/schema",
+                "purpose": "Render the secret-safe writable Hermes settings schema.",
+                "response_keys": [
+                    "groups",
+                    "guardrails",
+                    "schema_version",
+                ],
+            },
+            "config_update": {
+                "method": "POST",
+                "path": "/config/update",
+                "purpose": "Persist whitelisted Hermes settings into the runtime env file.",
+                "request": {
+                    "updates": {
+                        "HERMES_AI_FAST_MODEL": "5.4-mini",
+                        "HERMES_SOCIAL_FAST_REPLY_TARGET_MS": 5000,
+                    }
+                },
+                "guardrails": [
+                    "reject unknown keys",
+                    "never return secret values",
+                    "empty secret values keep the existing secret",
+                ],
+            },
             "social_turn": {
                 "method": "POST",
                 "path": "/social/turn",

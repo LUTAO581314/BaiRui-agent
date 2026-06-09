@@ -770,11 +770,11 @@ Please produce feasibility, risks, missing modules, optimized roadmap, memory go
           <p>The frontend adapter does not rewrite Hermes logic. It reads secret-safe readiness state, shows progress, and routes normalized channel turns into the runtime contract.</p>
         </div>
         <div class="module-grid">
-          <article class="module"><h3>Runtime Core</h3><p>`/health`, `/ready`, `/frontend/contract`, `/social/turn`, `/jobs/event`, `/latency`, and `/capabilities` form the control-plane contract.</p></article>
+          <article class="module"><h3>Runtime Core</h3><p>`/health`, `/ready`, `/frontend/contract`, `/config/schema`, `/config/update`, `/social/turn`, `/jobs/event`, `/latency`, and `/capabilities` form the control-plane contract.</p></article>
           <article class="module"><h3>Personal Channels</h3><p>WeChat, QQ, web chat, voice, stickers, and browser TTS remain warm personal surfaces with strict action limits.</p></article>
           <article class="module"><h3>Company Plane</h3><p>Feishu owns company identity, group context, read-only data, approval-gated writes, and visible company-plane chat badges.</p></article>
           <article class="module"><h3>Hermes Logic</h3><p>Hermes keeps native agent reasoning and tool execution. MOXI adapts surfaces and visibility around it.</p></article>
-          <article class="module"><h3>Settings Control</h3><p>Brain UI settings now operate as a Hermes control center with overview, capability matrix, frontend contract, performance budget, memory status, async jobs, social channels, model, media, voice, search, security, appearance, and update domains.</p></article>
+          <article class="module"><h3>Settings Control</h3><p>Brain UI settings now operate as a Hermes control center with overview, capability matrix, frontend contract, writable config schema, performance budget, memory status, async jobs, social channels, model, media, voice, search, security, appearance, and update domains.</p></article>
           <article class="module"><h3>Progress UI</h3><p>BaiLongma now preflights `/message` through Hermes `/social/turn`, emits `moxi_progress`, reports native worker lifecycle events, merges active-job follow-ups, and shows route-aware progress plus plane badges while slow work runs.</p></article>
         </div>
       </section>

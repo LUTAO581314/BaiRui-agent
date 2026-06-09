@@ -44,6 +44,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Performance Optimization Plan](docs/PERFORMANCE_OPTIMIZATION_PLAN.md) - the surface-first and bottom-layer plan for sub-5-second social responsiveness, async slow jobs, latency telemetry, and model routing.
 - [Capability Matrix](docs/CAPABILITY_MATRIX.md) - secret-safe readiness contract for frontend settings panels and dashboards.
 - [Hermes Frontend Adapter Plan](docs/HERMES_FRONTEND_ADAPTER_PLAN.md) - how MOXI connects to Hermes native logic without rewriting it in the frontend.
+- [Hermes Config Schema](docs/HERMES_CONFIG_SCHEMA.md) - secret-safe writable settings schema for Brain UI and connector panels.
 - [Connector Integration Runbook](docs/CONNECTOR_INTEGRATION_RUNBOOK.md) - how WeChat, Feishu, and web-chat bridges call `/social/turn` and `/jobs/event`.
 - [Upstream Dependency Strategy](docs/UPSTREAM_DEPENDENCY_STRATEGY.md) - how BaiLongma and other upstream runtimes are managed without copying full source trees into this repository.
 - [QQ Connector Plan](docs/QQ_CONNECTOR.md)
@@ -101,6 +102,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 27 Brain UI Routing Fix Chinese Report](reports/phase-27-brain-ui-routing-fix.zh-CN.md)
 - [Phase 28 Brain UI Settings State Cleanup Chinese Report](reports/phase-28-settings-tab-state-cleanup.zh-CN.md)
 - [Phase 29 Hermes Settings Control Center Chinese Report](reports/phase-29-settings-control-center.zh-CN.md)
+- [Phase 30 Hermes Config Schema Chinese Report](reports/phase-30-hermes-config-schema.zh-CN.md)
 
 ## Repository Automation
 
@@ -160,6 +162,9 @@ not vendor full upstream applications by default.
   matrix, frontend contract, performance budget, memory state, async jobs,
   social channels, model, media, voice, search, security, appearance, and
   update settings are separated by domain.
+- The runtime now exposes a secret-safe writable configuration schema through
+  `/config/schema` and `/config/update`, so Brain UI can save whitelisted
+  Hermes model, search, media, and performance settings without leaking secrets.
 - External runtime install notes live under [external](external/README.md).
 - If a full BaiLongma fork becomes necessary, keep this repository as the
   canonical technical-path source and preserve the upstream MIT license.
@@ -193,6 +198,7 @@ Invoke-RestMethod http://127.0.0.1:8787/health
 Invoke-RestMethod http://127.0.0.1:8787/ready
 Invoke-RestMethod http://127.0.0.1:8787/capabilities
 Invoke-RestMethod http://127.0.0.1:8787/frontend/contract
+Invoke-RestMethod http://127.0.0.1:8787/config/schema
 Invoke-RestMethod http://127.0.0.1:8787/performance
 Invoke-RestMethod "http://127.0.0.1:8787/route?message=generate%20image%20avatar"
 Invoke-RestMethod "http://127.0.0.1:8787/context?message=generate%20image%20avatar"
