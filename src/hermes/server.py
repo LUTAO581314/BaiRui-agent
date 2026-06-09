@@ -8,7 +8,8 @@ from . import __version__
 from .capabilities import collect_capabilities
 from .config import ensure_runtime_dirs, load_settings
 from .license import load_license
-from .storage import create_job, list_audit_events, list_jobs, write_obsidian_report
+from .model_gateway import complete_chat
+from .storage import create_audit_event, create_job, list_audit_events, list_jobs, write_obsidian_report
 
 
 def _json_bytes(payload: dict[str, Any]) -> bytes:
@@ -93,6 +94,25 @@ class HermesHandler(BaseHTTPRequestHandler):
                 return
             report = write_obsidian_report(settings.obsidian_vault_dir, settings.data_dir, title=title, body=body)
             self._send({"service": "hermes", "report": report}, status=201)
+            return
+
+        if self.path == "/chat":
+            prompt = str(payload.get("prompt", ""))
+            system = str(payload.get("system", ""))
+            if not prompt.strip():
+                self._send({"error": "invalid_request", "message": "prompt is required"}, status=400)
+                return
+            result = complete_chat(settings, prompt, system=system)
+            create_audit_event(
+                settings.data_dir,
+                "chat.completed" if result.status == "completed" else "chat.not_completed",
+                resource_type="model_gateway",
+                resource_ref=result.model or "missing_model",
+                risk_level="low",
+                payload={"status": result.status, "provider": result.provider, "error": result.error},
+            )
+            status = 200 if result.status == "completed" else 503
+            self._send({"service": "hermes", "chat": result.__dict__}, status=status)
             return
 
         self._send({"error": "not_found", "path": self.path}, status=404)

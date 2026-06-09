@@ -7,6 +7,7 @@ from pathlib import Path
 from src.hermes.capabilities import collect_capabilities
 from src.hermes.config import load_settings
 from src.hermes.license import load_license
+from src.hermes.model_gateway import build_chat_payload, complete_chat
 from src.hermes.storage import create_job, list_audit_events, list_jobs, write_obsidian_report
 
 
@@ -38,6 +39,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("trendradar_intelligence", names)
         self.assertIn("mirofish_simulation", names)
         self.assertIn("jobs_api", names)
+        self.assertIn("model_gateway", names)
 
     def test_create_job_writes_job_and_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -56,6 +58,17 @@ class RuntimeFoundationTests(unittest.TestCase):
             self.assertTrue(path.exists())
             self.assertIn("# Daily Brief", path.read_text(encoding="utf-8"))
             self.assertEqual(list_audit_events(root / "data")[0]["action"], "obsidian.report_written")
+
+    def test_model_gateway_reports_missing_config(self):
+        settings = load_settings()
+        result = complete_chat(settings, "hello")
+        self.assertEqual(result.status, "missing_config")
+
+    def test_build_chat_payload(self):
+        settings = load_settings()
+        payload = build_chat_payload(settings, "hello", "be brief")
+        self.assertEqual(payload["messages"][0]["role"], "system")
+        self.assertEqual(payload["messages"][1]["role"], "user")
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ def collect_capabilities(settings: Settings) -> list[dict[str, str]]:
         Capability("jobs_api", "ready", "File-backed P0 job creation and listing is available"),
         Capability("audit_api", "ready", "File-backed P0 audit event listing is available"),
         Capability("obsidian_report_write", "ready", "Markdown report write endpoint is available"),
+        Capability("model_gateway", "ready" if settings.has_model_gateway else "missing_config", "OpenAI-compatible model gateway" if settings.has_model_gateway else "BAIRUI_MODEL_* environment is incomplete"),
         Capability("postgresql", "partial" if settings.has_database else "missing_config", "database URL configured" if settings.has_database else "HERMES_DATABASE_URL is empty"),
         Capability("obsidian_vault", "partial" if settings.obsidian_vault_dir.exists() else "missing_config", str(settings.obsidian_vault_dir)),
         _vendor_capability("everos_memory", vendor / "everos", "memory extraction and retrieval", "Apache-2.0"),

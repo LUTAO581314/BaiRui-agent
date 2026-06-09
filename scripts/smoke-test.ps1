@@ -7,6 +7,7 @@ $required = @(
     "docs/18-vendor-runtime-integration.md",
     "src/hermes/server.py",
     "src/hermes/storage.py",
+    "src/hermes/model_gateway.py",
     "tests/test_runtime.py",
     "Dockerfile",
     "docker-compose.production.yml",

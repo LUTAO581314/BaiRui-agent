@@ -28,10 +28,18 @@ class Settings:
     platform_base_url: str
     server_id: str
     vendor_dir: Path
+    model_base_url: str
+    model_api_key: str
+    model_name: str
+    model_timeout_seconds: int
 
     @property
     def has_database(self) -> bool:
         return bool(self.database_url.strip())
+
+    @property
+    def has_model_gateway(self) -> bool:
+        return bool(self.model_base_url.strip() and self.model_api_key.strip() and self.model_name.strip())
 
 
 def load_settings() -> Settings:
@@ -52,6 +60,10 @@ def load_settings() -> Settings:
         platform_base_url=os.getenv("MOXI_PLATFORM_BASE_URL", ""),
         server_id=os.getenv("MOXI_SERVER_ID", ""),
         vendor_dir=root / "vendor" / "runtimes",
+        model_base_url=os.getenv("BAIRUI_MODEL_BASE_URL", ""),
+        model_api_key=os.getenv("BAIRUI_MODEL_API_KEY", ""),
+        model_name=os.getenv("BAIRUI_MODEL_NAME", ""),
+        model_timeout_seconds=int(os.getenv("BAIRUI_MODEL_TIMEOUT_SECONDS", "60")),
     )
 
 
