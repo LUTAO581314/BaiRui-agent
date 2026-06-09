@@ -100,6 +100,7 @@ Current priority: finish the stable core while continuing Feishu Phase 3 with ow
 - [Phase 26 WeChat Media Probe Chinese Report](reports/phase-26-wechat-media-probe.zh-CN.md)
 - [Phase 27 Brain UI Routing Fix Chinese Report](reports/phase-27-brain-ui-routing-fix.zh-CN.md)
 - [Phase 28 Brain UI Settings State Cleanup Chinese Report](reports/phase-28-settings-tab-state-cleanup.zh-CN.md)
+- [Phase 29 Hermes Settings Control Center Chinese Report](reports/phase-29-settings-control-center.zh-CN.md)
 
 ## Repository Automation
 
@@ -155,6 +156,10 @@ not vendor full upstream applications by default.
   outbound image/file send function.
 - `scripts/probe-bailongma-frontend-routing.sh` is the read-only server probe
   for Brain UI browser-side API base and `/events` SSE reverse-proxy issues.
+- The Brain UI settings overlay now acts as a Hermes control center: capability
+  matrix, frontend contract, performance budget, memory state, async jobs,
+  social channels, model, media, voice, search, security, appearance, and
+  update settings are separated by domain.
 - External runtime install notes live under [external](external/README.md).
 - If a full BaiLongma fork becomes necessary, keep this repository as the
   canonical technical-path source and preserve the upstream MIT license.

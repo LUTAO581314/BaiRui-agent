@@ -92,6 +92,10 @@ BaiLongma / Brain UI
 8. Add richer progress events to chat UI. Done in Phase 19.
 9. Add company/persona permission badges. Done in Phase 20.
 10. Connect BaiLongma native worker lifecycle events to Hermes `/jobs/event`.
+11. Promote Brain UI settings into a Hermes control center. Done in Phase 29:
+    overview, capability matrix, frontend contract, performance profile,
+    memory status, async jobs, social channels, model, media, voice, search,
+    security, appearance, and update domains now have separated UI surfaces.
     Done in Phase 21.
 11. Merge active-job follow-ups without interrupting the running native turn.
     Done in Phase 22.

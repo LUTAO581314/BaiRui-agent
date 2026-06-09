@@ -73,11 +73,16 @@ checkout. It is intentionally an overlay, not a full copy of upstream source.
   documents the Brain UI settings-panel state cleanup: one shared tab activation
   path, per-tab refresh behavior, and repaired Chinese labels for the capability
   and QQ settings blocks.
+- [phase-29-settings-control-center.patch](phase-29-settings-control-center.patch)
+  turns Brain UI settings into a Hermes control center: overview, capability
+  matrix, frontend contract, performance budget, memory status, async jobs,
+  social channels, model, media, voice, search, security, appearance, and
+  update domains, plus read-only `/performance` and `/jobs` Hermes proxies.
 
 Future patch files should be named by phase and purpose:
 
 ```text
-phase-29-feishu-readiness-ui.patch
+phase-30-hermes-config-schema.patch
 ```
 
 The server checkout may still contain local runtime-specific changes. Patch
