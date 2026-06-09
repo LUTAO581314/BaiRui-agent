@@ -78,7 +78,23 @@ Required checks:
 - memory write-back errors;
 - audit log write failures.
 
-## 6. Commercial Compliance
+## 6. Server Management Telemetry Boundary
+
+The commercial platform may collect only operational metadata by default:
+
+- server identity;
+- license identity and status;
+- Hermes version;
+- health, database, backup, and connector readiness states;
+- aggregate error counters;
+- last heartbeat timestamp.
+
+The platform must not collect customer prompts, generated answers, uploaded
+files, Obsidian note bodies, memory content, raw private logs, credentials, or
+database dumps unless the customer explicitly triggers a redacted diagnostic
+bundle.
+
+## 7. Commercial Compliance
 
 Before commercial release:
 

@@ -9,6 +9,7 @@ from src.hermes.config import load_settings
 from src.hermes.db import database_status
 from src.hermes.license import load_license, sign_license_payload
 from src.hermes.model_gateway import build_chat_payload, complete_chat
+from src.hermes.platform import HEARTBEAT_PROTOCOL_VERSION, build_platform_heartbeat
 from src.hermes.storage import create_job, list_audit_events, list_jobs, write_obsidian_report
 
 
@@ -91,6 +92,18 @@ class RuntimeFoundationTests(unittest.TestCase):
     def test_database_status_without_url_is_missing_config(self):
         settings = load_settings()
         self.assertEqual(database_status(settings).status, "missing_config")
+
+    def test_platform_heartbeat_uses_operational_metadata_only(self):
+        settings = load_settings()
+        heartbeat = build_platform_heartbeat(settings)
+        self.assertEqual(heartbeat["protocol_version"], HEARTBEAT_PROTOCOL_VERSION)
+        self.assertEqual(heartbeat["brand_key"], "bairui")
+        self.assertEqual(heartbeat["server_id"], "missing_config")
+        self.assertEqual(heartbeat["license_status"], "missing_config")
+        self.assertEqual(heartbeat["database_status"], "missing_config")
+        self.assertEqual(heartbeat["backup_status"], "not_configured")
+        self.assertNotIn("prompt", heartbeat)
+        self.assertNotIn("messages", heartbeat)
 
 
 if __name__ == "__main__":

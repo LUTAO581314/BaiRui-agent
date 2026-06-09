@@ -10,6 +10,7 @@ from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
 from .license import load_license
 from .model_gateway import complete_chat
+from .platform import build_platform_heartbeat
 from .storage import create_audit_event, create_job, list_audit_events, list_jobs, write_obsidian_report
 
 
@@ -59,6 +60,9 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/capabilities":
             self._send({"service": "hermes", "capabilities": collect_capabilities(settings)})
+            return
+        if self.path == "/platform/heartbeat":
+            self._send({"service": "hermes", "heartbeat": build_platform_heartbeat(settings)})
             return
         if self.path == "/license":
             self._send({"service": "hermes", "license": load_license(settings.license_file, settings.license_secret).__dict__})
