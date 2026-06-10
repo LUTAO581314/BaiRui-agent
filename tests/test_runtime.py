@@ -9,6 +9,7 @@ from src.hermes.capabilities import collect_capabilities
 from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
 from src.hermes.db import database_status
+from src.hermes.adapters.everos import build_search_payload, status as everos_status
 from src.hermes.license import load_license, sign_license_payload
 from src.hermes.model_gateway import build_chat_payload, complete_chat
 from src.hermes.platform import HEARTBEAT_PROTOCOL_VERSION, build_platform_heartbeat
@@ -114,6 +115,54 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("status", help_text)
         self.assertIn("capabilities", help_text)
         self.assertIn("heartbeat", help_text)
+        self.assertIn("memory", help_text)
+
+    def test_everos_adapter_detects_source_and_license(self):
+        settings = load_settings()
+        state = everos_status(settings)
+        self.assertEqual(state.license, "Apache-2.0")
+        self.assertIn("POST /api/v1/memory/search", state.api_contract)
+        self.assertIn(state.status, {"source_ready", "configured"})
+
+    def test_build_everos_search_payload_defaults_to_user_track(self):
+        payload = build_search_payload(query="project facts", user_id="owner")
+        self.assertEqual(payload["user_id"], "owner")
+        self.assertEqual(payload["method"], "hybrid")
+        self.assertEqual(payload["top_k"], 5)
+
+    def test_cli_memory_status_prints_everos_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "EVEROS_MEMORY_ROOT": str(Path(tmp) / "everos"),
+                "EVEROS_BASE_URL": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["memory", "status"])
+        self.assertEqual(code, 0)
+        payload = print_json.call_args.args[0]
+        self.assertEqual(payload["service"], "hermes")
+        self.assertEqual(payload["memory"]["license"], "Apache-2.0")
+        self.assertEqual(payload["memory"]["status"], "source_ready")
+
+    def test_cli_memory_search_requires_everos_base_url(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "EVEROS_MEMORY_ROOT": str(Path(tmp) / "everos"),
+                "EVEROS_BASE_URL": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["memory", "search", "--query", "hello"])
+        self.assertEqual(code, 1)
+        payload = print_json.call_args.args[0]
+        self.assertEqual(payload["memory"]["status"], "missing_config")
 
     def test_cli_status_prints_runtime_status(self):
         with tempfile.TemporaryDirectory() as tmp:

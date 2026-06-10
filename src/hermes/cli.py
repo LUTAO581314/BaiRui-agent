@@ -6,6 +6,16 @@ from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from . import __version__
+from .adapters.everos import (
+    add_memory,
+    as_payload,
+    build_add_payload,
+    build_flush_payload,
+    build_search_payload,
+    flush_memory,
+    search_memory,
+    status as everos_status,
+)
 from .capabilities import collect_capabilities
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
@@ -44,6 +54,33 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands.add_parser("migrate", help="Run PostgreSQL schema migrations")
     subcommands.add_parser("heartbeat", help="Print the platform heartbeat payload")
     subcommands.add_parser("paths", help="Print runtime paths and key configuration")
+
+    memory_parser = subcommands.add_parser("memory", help="Operate the EverOS-backed memory adapter")
+    memory_subcommands = memory_parser.add_subparsers(dest="memory_command")
+    memory_subcommands.add_parser("status", help="Inspect EverOS source and API configuration")
+
+    memory_ingest = memory_subcommands.add_parser("ingest", help="Send one text memory message to EverOS /add")
+    memory_ingest.add_argument("--text", required=True)
+    memory_ingest.add_argument("--user-id", default="owner")
+    memory_ingest.add_argument("--session-id", default="cli-session")
+    memory_ingest.add_argument("--app-id", default="default")
+    memory_ingest.add_argument("--project-id", default="default")
+    memory_ingest.add_argument("--sender-name", default="")
+
+    memory_flush = memory_subcommands.add_parser("flush", help="Force EverOS extraction for a session")
+    memory_flush.add_argument("--session-id", required=True)
+    memory_flush.add_argument("--app-id", default="default")
+    memory_flush.add_argument("--project-id", default="default")
+
+    memory_search = memory_subcommands.add_parser("search", help="Search EverOS memory")
+    memory_search.add_argument("--query", required=True)
+    memory_search.add_argument("--user-id", default="owner")
+    memory_search.add_argument("--agent-id", default="")
+    memory_search.add_argument("--app-id", default="default")
+    memory_search.add_argument("--project-id", default="default")
+    memory_search.add_argument("--top-k", type=int, default=5)
+    memory_search.add_argument("--method", default="hybrid")
+    memory_search.add_argument("--include-profile", action="store_true")
 
     job_parser = subcommands.add_parser("job", help="Create a queued job")
     job_parser.add_argument("--title", default="CLI job")
@@ -127,9 +164,49 @@ def run(argv: list[str] | None = None) -> int:
                 "obsidian_vault_dir": str(settings.obsidian_vault_dir),
                 "license_file": str(settings.license_file),
                 "vendor_dir": str(settings.vendor_dir),
+                "everos_memory_root": str(settings.everos_memory_root),
             }
         )
         return 0
+
+    if command == "memory":
+        memory_command = args.memory_command or "status"
+        if memory_command == "status":
+            print_json({"service": "hermes", "memory": as_payload(everos_status(settings))})
+            return 0
+        if memory_command == "ingest":
+            payload = build_add_payload(
+                user_id=args.user_id,
+                session_id=args.session_id,
+                text=args.text,
+                app_id=args.app_id,
+                project_id=args.project_id,
+                sender_name=args.sender_name or None,
+            )
+            result = add_memory(settings, payload)
+            print_json({"service": "hermes", "memory": as_payload(result)})
+            return 0 if result.status == "completed" else 1
+        if memory_command == "flush":
+            payload = build_flush_payload(session_id=args.session_id, app_id=args.app_id, project_id=args.project_id)
+            result = flush_memory(settings, payload)
+            print_json({"service": "hermes", "memory": as_payload(result)})
+            return 0 if result.status == "completed" else 1
+        if memory_command == "search":
+            payload = build_search_payload(
+                query=args.query,
+                user_id=args.user_id,
+                agent_id=args.agent_id,
+                app_id=args.app_id,
+                project_id=args.project_id,
+                top_k=args.top_k,
+                method=args.method,
+                include_profile=args.include_profile,
+            )
+            result = search_memory(settings, payload)
+            print_json({"service": "hermes", "memory": as_payload(result)})
+            return 0 if result.status == "completed" else 1
+        parser.error(f"unknown memory command: {memory_command}")
+        return 2
 
     if command == "job":
         job = create_job(settings.data_dir, title=args.title, prompt=args.prompt, route=args.route)

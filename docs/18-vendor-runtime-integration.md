@@ -1,6 +1,6 @@
 # Vendor Runtime Integration
 
-## Corrected Productization Decision
+## 1. Productization Decision
 
 The product direction is mature-source-first, not blank-slate AI rewriting.
 Hermes may directly use mature open-source runtime code when it helps the
@@ -13,7 +13,7 @@ The commercialization requirement is a quality bar:
 - licenses, notices, upstream names, and attribution must remain visible;
 - GPL/AGPL runtimes can be used when the project accepts the corresponding
   public-source obligations or keeps them isolated as services;
-- third-party runtime source belongs under `vendor/runtimes/` or an equally
+- third-party runtime source belongs under `vendor/runtimes/` or another
   explicit boundary;
 - our added value is productization: adapters, platform contract, deployment,
   license flow, readiness checks, audit, operations, and support workflow.
@@ -22,83 +22,89 @@ Do not replace mature working internals with AI-written blank-slate code just
 to claim self-development. Prefer source-level control over source-level
 reinvention.
 
-本文档定义 Hermes 如何直接集成外部项目源码，同时保持商业产品边界。
+## 2. Current Runtime Sources
 
-## 1. 决策
+| Runtime | Path | Purpose | License | Integration status |
+| --- | --- | --- | --- | --- |
+| EverOS | `vendor/runtimes/everos` | Automatic memory extraction and retrieval | Apache-2.0 | first source-level adapter |
+| TrendRadar | `vendor/runtimes/trendradar` | Trend, RSS, hot-list, and public-opinion intelligence | GPLv3 | planned adapter |
+| MiroFish | `vendor/runtimes/mirofish` | Scenario simulation and multi-agent rehearsal | AGPLv3 | planned adapter |
+| SearXNG | Docker or Linux checkout | Optional metasearch | AGPLv3 | planned HTTP service adapter |
 
-为了更快交付产品，Hermes 可以直接集成外部运行时源码。
+## 3. Adapter Boundary
 
-但集成方式必须是：
+Hermes adapter code belongs under `src/hermes/adapters/`.
 
-- `vendor/runtimes/` 子模块或独立 runtime；
-- Hermes 自研代码在 `src/`；
-- 通过 adapter、API、MCP、worker、进程边界调用；
-- 保留外部项目许可证、来源、版本和替换能力；
-- 不把外部项目代码复制进 Hermes core。
+Each adapter is responsible for:
 
-## 2. 当前集成
+- runtime source discovery;
+- license and source boundary reporting;
+- health and readiness checks;
+- normalized request and response contracts;
+- timeout and error handling;
+- audit events for runtime calls;
+- capability status exposure.
 
-| 项目 | 路径 | 用途 | 许可证 |
-| --- | --- | --- | --- |
-| EverOS | `vendor/runtimes/everos` | 自动记忆提取、检索、候选事实 | Apache-2.0 |
-| TrendRadar | `vendor/runtimes/trendradar` | 热点、趋势、RSS、舆情输入 | GPLv3 |
-| MiroFish | `vendor/runtimes/mirofish` | 多 Agent 推演、场景模拟、报告 | AGPLv3 |
-| SearXNG | Docker / Linux checkout | 可选元搜索 | AGPLv3 |
+The upstream runtime remains responsible for its own internal algorithms,
+storage layout, CLI, server, and domain logic.
 
-## 3. 商用边界
+## 4. EverOS Adapter Contract
 
-### Apache-2.0
+EverOS is the first source-level productization target because it is already
+present under `vendor/runtimes/everos` and uses Apache-2.0.
 
-EverOS 适合更深度集成，但仍应保留 NOTICE、LICENSE 和来源。
+Hermes owns:
 
-### GPLv3
+- `src/hermes/adapters/everos.py`;
+- CLI commands under `python -m src.hermes memory ...`;
+- HTTP routes under `/memory/...`;
+- audit events for memory calls;
+- operational configuration through `EVEROS_BASE_URL`,
+  `EVEROS_MEMORY_ROOT`, and `EVEROS_TIMEOUT_SECONDS`.
 
-TrendRadar 可以作为独立运行时使用。若分发包含它的产品包，必须遵守 GPLv3 的源代码提供义务。
+EverOS owns:
 
-### AGPLv3
+- memory extraction;
+- markdown memory layout;
+- SQLite/LanceDB internals;
+- `/api/v1/memory/add`;
+- `/api/v1/memory/flush`;
+- `/api/v1/memory/search`;
+- `/api/v1/memory/get`.
 
-MiroFish 和 SearXNG 属于更强 copyleft。若作为网络服务对客户提供，通常需要向网络用户提供对应源代码和修改。正式售卖前必须做许可证清单和交付说明。
+This keeps the product honest: Bairui productizes, operates, brands, deploys,
+tests, and supports the memory runtime while preserving the mature upstream
+source boundary.
 
-本说明不是法律意见，正式合同和大规模商用前应做专业许可证审查。
+## 5. Commercial Boundaries
 
-## 4. Hermes Adapter 原则
+Apache-2.0 runtimes such as EverOS are suitable for deeper productized
+integration, while preserving LICENSE, NOTICE, upstream name, and attribution.
 
-Hermes adapter 负责：
+GPLv3 runtimes such as TrendRadar require source-code availability obligations
+when distributed as part of the product package.
 
-- 启动或发现 runtime；
-- 做健康检查；
-- 发送请求；
-- 标准化响应；
-- 写审计；
-- 处理超时和错误；
-- 标注 capability 状态。
+AGPLv3 runtimes such as MiroFish and SearXNG require special care for hosted
+network service use. Before formal sale, distribution, or customer-hosted
+operation, complete a license review and delivery-source checklist.
 
-Runtime 负责自己的内部实现。
+This document is general engineering guidance, not legal advice.
 
-## 5. SearXNG 特殊说明
+## 6. Integration Order
 
-SearXNG 仓库包含 Windows 不兼容文件名，不能可靠 checkout 到当前 Windows 工作树。
+1. EverOS adapter for memory candidates and retrieval.
+2. TrendRadar adapter for intelligence input.
+3. MiroFish adapter for simulation briefs and reports.
+4. SearXNG as an optional Docker-based metasearch runtime after Linux/server
+   deployment.
 
-当前策略：
+## 7. Verification Requirements
 
-- Windows 开发机不直接工作树集成；
-- 服务器或 Linux 环境中用 Docker 运行；
-- Hermes 只对接 SearXNG HTTP API；
-- 源码来源记录为 `https://github.com/searxng/searxng`。
+Each runtime integration must prove:
 
-## 6. 下一步
-
-下一步应在 `src/` 中实现：
-
-- `src/hermes/config.py`
-- `src/hermes/server.py`
-- `src/hermes/capabilities.py`
-- `src/hermes/adapters/everos.py`
-- `src/hermes/adapters/trendradar.py`
-- `src/hermes/adapters/mirofish.py`
-
-并以测试确认：
-
-- Hermes 可启动；
-- `/health`、`/ready`、`/capabilities` 可用；
-- vendor runtime 状态能显示为 `ready`、`missing_config`、`disabled` 或 `planned`。
+- Hermes starts;
+- `/health`, `/ready`, and `/capabilities` still work;
+- CLI status command exposes runtime state;
+- missing runtime configuration fails explicitly instead of pretending success;
+- license/source status is visible;
+- tests cover the adapter boundary.

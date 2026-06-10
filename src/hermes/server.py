@@ -5,6 +5,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from . import __version__
+from .adapters.everos import (
+    add_memory,
+    as_payload,
+    build_add_payload,
+    build_flush_payload,
+    build_search_payload,
+    flush_memory,
+    search_memory,
+    status as everos_status,
+)
 from .capabilities import collect_capabilities
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
@@ -73,6 +83,9 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path == "/audit":
             self._send({"service": "hermes", "audit": list_audit_events(settings.data_dir)})
             return
+        if self.path == "/memory/status":
+            self._send({"service": "hermes", "memory": as_payload(everos_status(settings))})
+            return
 
         self._send({"error": "not_found", "path": self.path}, status=404)
 
@@ -119,6 +132,62 @@ class HermesHandler(BaseHTTPRequestHandler):
             )
             status = 200 if result.status == "completed" else 503
             self._send({"service": "hermes", "chat": result.__dict__}, status=status)
+            return
+
+        if self.path == "/memory/ingest":
+            text = str(payload.get("text", ""))
+            if not text.strip():
+                self._send({"error": "invalid_request", "message": "text is required"}, status=400)
+                return
+            result = add_memory(
+                settings,
+                build_add_payload(
+                    user_id=str(payload.get("user_id", "owner")),
+                    session_id=str(payload.get("session_id", "api-session")),
+                    text=text,
+                    app_id=str(payload.get("app_id", "default")),
+                    project_id=str(payload.get("project_id", "default")),
+                    sender_name=str(payload.get("sender_name") or "") or None,
+                ),
+            )
+            self._send({"service": "hermes", "memory": as_payload(result)}, status=200 if result.status == "completed" else 503)
+            return
+
+        if self.path == "/memory/flush":
+            session_id = str(payload.get("session_id", ""))
+            if not session_id.strip():
+                self._send({"error": "invalid_request", "message": "session_id is required"}, status=400)
+                return
+            result = flush_memory(
+                settings,
+                build_flush_payload(
+                    session_id=session_id,
+                    app_id=str(payload.get("app_id", "default")),
+                    project_id=str(payload.get("project_id", "default")),
+                ),
+            )
+            self._send({"service": "hermes", "memory": as_payload(result)}, status=200 if result.status == "completed" else 503)
+            return
+
+        if self.path == "/memory/search":
+            query = str(payload.get("query", ""))
+            if not query.strip():
+                self._send({"error": "invalid_request", "message": "query is required"}, status=400)
+                return
+            result = search_memory(
+                settings,
+                build_search_payload(
+                    query=query,
+                    user_id=str(payload.get("user_id", "owner")),
+                    agent_id=str(payload.get("agent_id", "")),
+                    app_id=str(payload.get("app_id", "default")),
+                    project_id=str(payload.get("project_id", "default")),
+                    top_k=int(payload.get("top_k", 5)),
+                    method=str(payload.get("method", "hybrid")),
+                    include_profile=bool(payload.get("include_profile", False)),
+                ),
+            )
+            self._send({"service": "hermes", "memory": as_payload(result)}, status=200 if result.status == "completed" else 503)
             return
 
         if self.path == "/admin/migrate":

@@ -41,6 +41,27 @@ EverOS stores and indexes:
 EverOS can accelerate recall and personalization, but its outputs are candidates
 until reviewed.
 
+Hermes integrates EverOS through a runtime adapter, not by rewriting its memory
+engine. The adapter speaks the upstream EverOS HTTP contract:
+
+- `POST /api/v1/memory/add`
+- `POST /api/v1/memory/flush`
+- `POST /api/v1/memory/search`
+- `POST /api/v1/memory/get`
+
+Current Hermes CLI surface:
+
+```bash
+python -m src.hermes memory status
+python -m src.hermes memory ingest --text "Owner prefers concise reports" --user-id owner --session-id owner-setup
+python -m src.hermes memory flush --session-id owner-setup
+python -m src.hermes memory search --query "report preference" --user-id owner
+```
+
+`EVEROS_BASE_URL` enables live calls. Without it, Hermes reports
+`missing_config` for live memory operations while still detecting the local
+Apache-2.0 EverOS source under `vendor/runtimes/everos`.
+
 ## 4. Memory Flow
 
 ```text
@@ -108,4 +129,3 @@ Memory-related PostgreSQL tables:
 - `report_metadata`
 
 These tables track review and provenance. They do not replace the Obsidian note.
-

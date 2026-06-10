@@ -33,6 +33,9 @@ class Settings:
     model_api_key: str
     model_name: str
     model_timeout_seconds: int
+    everos_base_url: str
+    everos_memory_root: Path
+    everos_timeout_seconds: int
 
     @property
     def has_database(self) -> bool:
@@ -66,9 +69,12 @@ def load_settings() -> Settings:
         model_api_key=os.getenv("BAIRUI_MODEL_API_KEY", ""),
         model_name=os.getenv("BAIRUI_MODEL_NAME", ""),
         model_timeout_seconds=int(os.getenv("BAIRUI_MODEL_TIMEOUT_SECONDS", "60")),
+        everos_base_url=os.getenv("EVEROS_BASE_URL", ""),
+        everos_memory_root=Path(os.getenv("EVEROS_MEMORY_ROOT", "./data/everos")),
+        everos_timeout_seconds=int(os.getenv("EVEROS_TIMEOUT_SECONDS", "30")),
     )
 
 
 def ensure_runtime_dirs(settings: Settings) -> None:
-    for path in (settings.data_dir, settings.log_dir, settings.obsidian_vault_dir):
+    for path in (settings.data_dir, settings.log_dir, settings.obsidian_vault_dir, settings.everos_memory_root):
         path.mkdir(parents=True, exist_ok=True)
