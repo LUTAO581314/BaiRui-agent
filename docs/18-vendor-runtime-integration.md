@@ -115,10 +115,13 @@ customer documents must stay inside the controlled deployment boundary.
 Hermes owns:
 
 - `src/hermes/adapters/mineru.py`;
+- `src/hermes/document_pipeline.py`;
 - CLI commands under `python -m src.hermes document parse ...`;
 - file-backed planned ingestion records in `document_ingests.jsonl`;
+- file-backed execution records in `document_ingest_runs.jsonl`;
 - HTTP routes under `/document/parse/status`, `/document/parse/ingest-plan`,
-  and `/document/ingests`;
+  `/document/parse/run-ingest`, `/document/ingests`, and
+  `/document/ingest-runs`;
 - operational configuration through `MINERU_PROJECT_ROOT`,
   `MINERU_OUTPUT_DIR`, `MINERU_BACKEND`, `MINERU_DEVICE`, and
   `MINERU_TIMEOUT_SECONDS`;
@@ -133,10 +136,11 @@ MinerU owns:
 - the upstream CLI and optional service modes.
 
 Hermes may create a planned ingestion record before execution. That record is
-not a parsed result. It is a machine-readable handoff for the next supervised
-worker phase: execute MinerU, register artifacts, index text in Sonic, submit
-memory candidates to EverOS, store PostgreSQL source references, and write an
-Obsidian report when appropriate.
+not a parsed result. The supervised worker may then execute the stored MinerU
+command and record stdout, stderr, exit code, timeout, or missing executable
+errors. Artifact registration, Sonic indexing, EverOS memory candidates,
+PostgreSQL source references, and Obsidian report generation remain separate
+pipeline phases.
 
 ## 7. TrendRadar Adapter Contract
 

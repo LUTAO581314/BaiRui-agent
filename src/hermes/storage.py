@@ -71,6 +71,21 @@ class DocumentIngest:
     updated_at: str
 
 
+@dataclass(frozen=True)
+class DocumentIngestRun:
+    id: str
+    ingest_id: str
+    status: str
+    command: tuple[str, ...]
+    cwd: str
+    exit_code: int | None
+    stdout: str
+    stderr: str
+    error: str
+    started_at: str
+    finished_at: str
+
+
 def create_audit_event(
     data_dir: Path,
     action: str,
@@ -170,6 +185,51 @@ def create_document_ingest(
 
 def list_document_ingests(data_dir: Path, limit: int = 50) -> list[dict[str, Any]]:
     return _read_jsonl(data_dir / "document_ingests.jsonl", limit=limit)
+
+
+def create_document_ingest_run(
+    data_dir: Path,
+    *,
+    ingest_id: str,
+    status: str,
+    command: tuple[str, ...],
+    cwd: str,
+    exit_code: int | None,
+    stdout: str = "",
+    stderr: str = "",
+    error: str = "",
+    started_at: str = "",
+    finished_at: str = "",
+) -> DocumentIngestRun:
+    started = started_at or utc_now()
+    finished = finished_at or utc_now()
+    run = DocumentIngestRun(
+        id=str(uuid.uuid4()),
+        ingest_id=ingest_id,
+        status=status,
+        command=command,
+        cwd=cwd,
+        exit_code=exit_code,
+        stdout=stdout,
+        stderr=stderr,
+        error=error,
+        started_at=started,
+        finished_at=finished,
+    )
+    _append_jsonl(data_dir / "document_ingest_runs.jsonl", asdict(run))
+    create_audit_event(
+        data_dir,
+        "document.ingest_run_finished",
+        resource_type="document_ingest",
+        resource_ref=ingest_id,
+        risk_level="medium" if status != "completed" else "low",
+        payload={"status": status, "exit_code": exit_code, "run_id": run.id},
+    )
+    return run
+
+
+def list_document_ingest_runs(data_dir: Path, limit: int = 50) -> list[dict[str, Any]]:
+    return _read_jsonl(data_dir / "document_ingest_runs.jsonl", limit=limit)
 
 
 def _slug(value: str) -> str:

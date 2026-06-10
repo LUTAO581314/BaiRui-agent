@@ -9,6 +9,7 @@ from src.hermes.capabilities import collect_capabilities
 from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
 from src.hermes.db import database_status
+from src.hermes.document_pipeline import run_document_ingest
 from src.hermes.adapters.everos import build_search_payload, status as everos_status
 from src.hermes.adapters.funasr import build_server_command as build_funasr_server_command, build_transcription_payload as build_funasr_transcription_payload, status as funasr_status
 from src.hermes.adapters.mineru import build_parse_command as build_mineru_parse_command, status as mineru_status
@@ -20,7 +21,15 @@ from src.hermes.license import load_license, sign_license_payload
 from src.hermes.model_gateway import build_chat_payload, complete_chat
 from src.hermes.platform import HEARTBEAT_PROTOCOL_VERSION, build_platform_heartbeat
 from src.hermes.runtime_readiness import collect_runtime_readiness
-from src.hermes.storage import create_document_ingest, create_job, list_audit_events, list_document_ingests, list_jobs, write_obsidian_report
+from src.hermes.storage import (
+    create_document_ingest,
+    create_job,
+    list_audit_events,
+    list_document_ingest_runs,
+    list_document_ingests,
+    list_jobs,
+    write_obsidian_report,
+)
 
 
 class RuntimeFoundationTests(unittest.TestCase):
@@ -97,6 +106,41 @@ class RuntimeFoundationTests(unittest.TestCase):
             self.assertEqual(records[0]["title"], "Contract")
             audit = list_audit_events(data_dir)
             self.assertEqual(audit[0]["action"], "document.ingest_planned")
+
+    def test_run_document_ingest_records_successful_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            ingest = create_document_ingest(
+                data_dir,
+                title="Executable plan",
+                input_path="sample.pdf",
+                output_dir="out",
+                parser_command=("python", "-c", "print('mineru ok')"),
+            )
+            result = run_document_ingest(data_dir, ingest.id, timeout_seconds=10)
+            self.assertEqual(result.status, "completed")
+            self.assertIsNotNone(result.run)
+            runs = list_document_ingest_runs(data_dir)
+            self.assertEqual(runs[0]["ingest_id"], ingest.id)
+            self.assertEqual(runs[0]["exit_code"], 0)
+            self.assertIn("mineru ok", runs[0]["stdout"])
+            self.assertEqual(list_audit_events(data_dir)[1]["action"], "document.ingest_run_finished")
+
+    def test_run_document_ingest_records_missing_executable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            ingest = create_document_ingest(
+                data_dir,
+                title="Missing command",
+                input_path="sample.pdf",
+                output_dir="out",
+                parser_command=("__missing_mineru_binary__", "-p", "sample.pdf"),
+            )
+            result = run_document_ingest(data_dir, ingest.id, timeout_seconds=10)
+            self.assertEqual(result.status, "failed")
+            runs = list_document_ingest_runs(data_dir)
+            self.assertIsNone(runs[0]["exit_code"])
+            self.assertIn("__missing_mineru_binary__", runs[0]["error"])
 
     def test_write_obsidian_report_creates_markdown_and_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -309,6 +353,32 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(payload["document_ingest"].pipeline["artifact_registration"], "pending")
         self.assertEqual(listed[0]["title"], "Sample")
         self.assertEqual(list_print_json.call_args.args[0]["document_ingests"][0]["title"], "Sample")
+
+    def test_cli_document_run_ingest_executes_existing_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            ingest = create_document_ingest(
+                data_dir,
+                title="CLI executable plan",
+                input_path="sample.pdf",
+                output_dir="out",
+                parser_command=("python", "-c", "print('cli mineru ok')"),
+            )
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["document", "parse", "run-ingest", "--ingest-id", ingest.id, "--timeout-seconds", "10"])
+                with patch("src.hermes.cli.print_json") as list_print_json:
+                    list_code = run(["document-ingest-runs"])
+        self.assertEqual(code, 0)
+        self.assertEqual(list_code, 0)
+        payload = print_json.call_args.args[0]
+        self.assertEqual(payload["document_pipeline"].status, "completed")
+        self.assertEqual(list_print_json.call_args.args[0]["document_ingest_runs"][0]["status"], "completed")
 
     def test_cli_memory_status_prints_everos_status(self):
         with tempfile.TemporaryDirectory() as tmp:

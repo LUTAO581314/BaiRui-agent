@@ -188,7 +188,9 @@ python -m src.hermes document parse status
 python -m src.hermes document parse install-command
 python -m src.hermes document parse parse-command --input-path ./sample.pdf
 python -m src.hermes document parse ingest-plan --input-path ./sample.pdf --title "Sample"
+python -m src.hermes document parse run-ingest --ingest-id <ingest_id>
 python -m src.hermes document-ingests
+python -m src.hermes document-ingest-runs
 ```
 
 `ingest-plan` creates a local `document_ingests.jsonl` record with the input
@@ -201,10 +203,14 @@ file, output directory, MinerU command, and downstream pipeline states:
 - PostgreSQL source reference: pending;
 - Obsidian report: pending.
 
-Hermes does not claim parsing is complete by printing a command or writing an
-ingest plan. The next pipeline step will execute the command inside a
-supervised worker, register output files, index titles/text in Sonic, and store
-source references in PostgreSQL.
+`run-ingest` executes the stored MinerU command through a supervised worker and
+writes `document_ingest_runs.jsonl` with command, cwd, exit code, stdout,
+stderr, error, and timestamps. Missing executables, non-zero exits, and
+timeouts are recorded as failed/timeout runs instead of being hidden.
+
+Hermes still does not claim full ingestion is complete after command execution.
+The next pipeline step will register output files, index titles/text in Sonic,
+and store source references in PostgreSQL.
 
 ## 8. Unified Runtime Readiness
 

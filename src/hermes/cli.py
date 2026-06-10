@@ -65,12 +65,21 @@ from .adapters.trendradar import (
 from .capabilities import collect_capabilities
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
+from .document_pipeline import run_document_ingest
 from .license import load_license
 from .model_gateway import complete_chat
 from .platform import build_platform_heartbeat
 from .runtime_readiness import collect_runtime_readiness
 from .server import serve
-from .storage import create_document_ingest, create_job, list_audit_events, list_document_ingests, list_jobs, write_obsidian_report
+from .storage import (
+    create_document_ingest,
+    create_job,
+    list_audit_events,
+    list_document_ingest_runs,
+    list_document_ingests,
+    list_jobs,
+    write_obsidian_report,
+)
 
 
 def _normalize(value: Any) -> Any:
@@ -98,6 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands.add_parser("license", help="Inspect the configured license file")
     subcommands.add_parser("jobs", help="List recent file-backed jobs")
     subcommands.add_parser("document-ingests", help="List planned document ingestion records")
+    subcommands.add_parser("document-ingest-runs", help="List document ingestion execution records")
     subcommands.add_parser("audit", help="List recent audit events")
     subcommands.add_parser("migrate", help="Run PostgreSQL schema migrations")
     subcommands.add_parser("heartbeat", help="Print the platform heartbeat payload")
@@ -221,6 +231,9 @@ def build_parser() -> argparse.ArgumentParser:
     ingest_plan.add_argument("--language", default="")
     ingest_plan.add_argument("--source", default="")
     ingest_plan.add_argument("--device", default="")
+    run_ingest = parse_subcommands.add_parser("run-ingest", help="Execute one planned MinerU document ingestion record")
+    run_ingest.add_argument("--ingest-id", required=True)
+    run_ingest.add_argument("--timeout-seconds", type=int, default=0)
 
     job_parser = subcommands.add_parser("job", help="Create a queued job")
     job_parser.add_argument("--title", default="CLI job")
@@ -284,6 +297,10 @@ def run(argv: list[str] | None = None) -> int:
 
     if command == "document-ingests":
         print_json({"service": "hermes", "document_ingests": list_document_ingests(settings.data_dir)})
+        return 0
+
+    if command == "document-ingest-runs":
+        print_json({"service": "hermes", "document_ingest_runs": list_document_ingest_runs(settings.data_dir)})
         return 0
 
     if command == "audit":
@@ -535,6 +552,14 @@ def run(argv: list[str] | None = None) -> int:
             )
             print_json({"service": "hermes", "document_ingest": ingest, "document_parse": mineru_payload(plan)})
             return 0
+        if parse_command == "run-ingest":
+            result = run_document_ingest(
+                settings.data_dir,
+                args.ingest_id,
+                timeout_seconds=args.timeout_seconds or settings.mineru_timeout_seconds,
+            )
+            print_json({"service": "hermes", "document_pipeline": result})
+            return 0 if result.status == "completed" else 1
         parser.error(f"unknown document parse command: {parse_command}")
         return 2
 
