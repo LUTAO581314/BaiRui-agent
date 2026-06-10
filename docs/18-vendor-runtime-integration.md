@@ -130,7 +130,8 @@ Hermes owns:
   `/document/parse/run-ingest`, `/document/parse/register-artifacts`,
   `/document/parse/index-artifacts`, `/document/parse/memory-candidates`,
   `/document/parse/review-memory-candidate`, `/document/parse/source-refs`,
-  `/document/parse/ingest-report`, `/document/ingests`,
+  `/document/parse/ingest-report`, `/document/parse/workbench-state`,
+  `/document/ingests`,
   `/document/ingest-runs`, `/document/ingest-reports`, `/document/artifacts`,
   `/document/index-runs`, `/document/memory-candidates`, and
   `/document/memory-reviews`, plus `/source-refs`;
@@ -149,6 +150,13 @@ Hermes owns:
   `MINERU_OUTPUT_DIR`, `MINERU_BACKEND`, `MINERU_DEVICE`, and
   `MINERU_TIMEOUT_SECONDS`;
 - capability and commercial-boundary reporting.
+
+`/document/parse/workbench-state` is the UI/workbench contract for one ingest
+workflow. It aggregates the ingest plan, parser runs, registered artifacts,
+Sonic index runs, memory candidates and reviews, source references, Obsidian
+ingest reports, blockers, warnings, counts, latest records, and the next safe
+action into a single response. Missing runtime configuration is surfaced as a
+warning or blocker instead of being hidden behind fake success.
 
 MinerU owns:
 

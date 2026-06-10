@@ -195,6 +195,7 @@ python -m src.hermes document parse memory-candidates --ingest-id <ingest_id>
 python -m src.hermes document parse review-memory-candidate --candidate-id <candidate_id> --decision approve
 python -m src.hermes document parse source-refs --ingest-id <ingest_id>
 python -m src.hermes document parse ingest-report --ingest-id <ingest_id>
+python -m src.hermes document parse workbench-state --ingest-id <ingest_id>
 python -m src.hermes document-ingests
 python -m src.hermes document-ingest-runs
 python -m src.hermes document-ingest-reports
@@ -264,8 +265,24 @@ promotion status, and related Obsidian note paths.
 It summarizes artifacts, Sonic index runs, memory candidates, review status,
 source references, and next actions for the ingest.
 
-The next pipeline phase is surfacing this workflow in the product UI/API as a
-document knowledge ingestion workbench.
+`workbench-state` is the stable product-facing aggregation endpoint for the
+document knowledge ingestion workbench. It returns one object for a single
+ingest id with:
+
+- `pipeline`: plan, parse, artifact registration, Sonic index, memory
+  candidates, memory reviews, source refs, and Obsidian report state;
+- `counts`: artifact, run, candidate, review, source ref, and report totals;
+- `latest`: latest parse run, Sonic index run, and Obsidian ingest report;
+- `blockers` and `warnings`: explicit missing output directories, failed parse
+  runs, missing runtime configuration, pending reviews, or missing reports;
+- `next_actions`: the next safe CLI/API action for a UI to offer;
+- raw linked records: artifacts, runs, candidates, reviews, source refs, and
+  ingest reports.
+
+The same contract is exposed over HTTP at
+`POST /document/parse/workbench-state` with `{"ingest_id": "..."}`. This lets
+Brain UI or the Bairui frontend render a document knowledge ingestion
+workbench without manually joining every file-backed list endpoint.
 
 ## 8. Unified Runtime Readiness
 

@@ -44,6 +44,7 @@ from .capabilities import collect_capabilities
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
 from .document_pipeline import (
+    build_document_workbench_state,
     create_document_ingest_report,
     create_document_source_refs,
     generate_document_memory_candidates,
@@ -504,6 +505,16 @@ class HermesHandler(BaseHTTPRequestHandler):
             if result.status == "not_found":
                 status = 404
             self._send({"service": "hermes", "document_ingest_report": asdict(result)}, status=status)
+            return
+
+        if self.path == "/document/parse/workbench-state":
+            ingest_id = str(payload.get("ingest_id", ""))
+            if not ingest_id.strip():
+                self._send({"error": "invalid_request", "message": "ingest_id is required"}, status=400)
+                return
+            state = build_document_workbench_state(settings, ingest_id)
+            status = 200 if state.status != "not_found" else 404
+            self._send({"service": "hermes", "document_workbench": asdict(state)}, status=status)
             return
 
         if self.path == "/admin/migrate":

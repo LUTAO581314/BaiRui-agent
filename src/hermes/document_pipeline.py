@@ -95,6 +95,26 @@ class DocumentIngestReportResult:
     report: DocumentIngestReport | None
 
 
+@dataclass(frozen=True)
+class DocumentWorkbenchState:
+    status: str
+    detail: str
+    ingest: dict[str, object] | None
+    pipeline: dict[str, str]
+    counts: dict[str, int]
+    latest: dict[str, object | None]
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
+    next_actions: tuple[dict[str, str], ...]
+    artifacts: tuple[dict[str, object], ...]
+    ingest_runs: tuple[dict[str, object], ...]
+    index_runs: tuple[dict[str, object], ...]
+    memory_candidates: tuple[dict[str, object], ...]
+    memory_reviews: tuple[dict[str, object], ...]
+    source_refs: tuple[dict[str, object], ...]
+    ingest_reports: tuple[dict[str, object], ...]
+
+
 def run_document_ingest(data_dir: Path, ingest_id: str, *, timeout_seconds: int) -> DocumentPipelineResult:
     ingest = _find_ingest(data_dir, ingest_id)
     if ingest is None:
@@ -617,6 +637,90 @@ def create_document_ingest_report(settings: Settings, ingest_id: str) -> Documen
     )
 
 
+def build_document_workbench_state(settings: Settings, ingest_id: str) -> DocumentWorkbenchState:
+    ingest = _find_ingest(settings.data_dir, ingest_id)
+    if ingest is None:
+        return DocumentWorkbenchState(
+            status="not_found",
+            detail=f"document ingest not found: {ingest_id}",
+            ingest=None,
+            pipeline={},
+            counts={},
+            latest={},
+            blockers=(f"document ingest not found: {ingest_id}",),
+            warnings=(),
+            next_actions=(),
+            artifacts=(),
+            ingest_runs=(),
+            index_runs=(),
+            memory_candidates=(),
+            memory_reviews=(),
+            source_refs=(),
+            ingest_reports=(),
+        )
+
+    ingest_runs = tuple(run for run in list_document_ingest_runs_for_ingest(settings.data_dir, ingest_id))
+    artifacts = tuple(artifact for artifact in list_document_artifacts(settings.data_dir, limit=1000) if artifact.get("ingest_id") == ingest_id)
+    index_runs = tuple(run for run in list_document_index_runs(settings.data_dir, limit=1000) if run.get("ingest_id") == ingest_id)
+    candidates = tuple(candidate for candidate in list_document_memory_candidates(settings.data_dir, limit=1000) if candidate.get("ingest_id") == ingest_id)
+    candidate_ids = {str(candidate.get("id", "")) for candidate in candidates}
+    reviews = tuple(
+        review
+        for review in list_document_memory_reviews(settings.data_dir, limit=1000)
+        if str(review.get("candidate_id", "")) in candidate_ids
+    )
+    source_refs = tuple(list_source_refs_for_ingest(settings.data_dir, ingest_id))
+    reports = tuple(
+        report
+        for report in list_document_ingest_reports_for_ingest(settings.data_dir, ingest_id)
+    )
+
+    pipeline = _workbench_pipeline(ingest, ingest_runs, artifacts, index_runs, candidates, reviews, source_refs, reports)
+    blockers = _workbench_blockers(ingest, ingest_runs)
+    warnings = _workbench_warnings(index_runs, candidates, reviews, source_refs, reports)
+    next_actions = _workbench_next_actions(pipeline, candidates, reviews)
+    status = "blocked" if blockers else "ready"
+    if warnings and not blockers:
+        status = "partial"
+
+    return DocumentWorkbenchState(
+        status=status,
+        detail="document ingest workbench state",
+        ingest=ingest,
+        pipeline=pipeline,
+        counts={
+            "ingest_runs": len(ingest_runs),
+            "artifacts": len(artifacts),
+            "index_runs": len(index_runs),
+            "memory_candidates": len(candidates),
+            "memory_reviews": len(reviews),
+            "source_refs": len(source_refs),
+            "ingest_reports": len(reports),
+        },
+        latest={
+            "ingest_run": ingest_runs[-1] if ingest_runs else None,
+            "index_run": index_runs[-1] if index_runs else None,
+            "ingest_report": reports[-1] if reports else None,
+        },
+        blockers=tuple(blockers),
+        warnings=tuple(warnings),
+        next_actions=tuple(next_actions),
+        artifacts=artifacts,
+        ingest_runs=ingest_runs,
+        index_runs=index_runs,
+        memory_candidates=candidates,
+        memory_reviews=reviews,
+        source_refs=source_refs,
+        ingest_reports=reports,
+    )
+
+
+def list_document_ingest_runs_for_ingest(data_dir: Path, ingest_id: str) -> list[dict[str, object]]:
+    from .storage import list_document_ingest_runs
+
+    return [run for run in list_document_ingest_runs(data_dir, limit=1000) if run.get("ingest_id") == ingest_id]
+
+
 def list_source_refs_for_ingest(data_dir: Path, ingest_id: str) -> list[dict[str, object]]:
     refs: list[dict[str, object]] = []
     for ref in list_source_refs(data_dir, limit=1000):
@@ -624,6 +728,89 @@ def list_source_refs_for_ingest(data_dir: Path, ingest_id: str) -> list[dict[str
         if isinstance(metadata, dict) and metadata.get("ingest_id") == ingest_id:
             refs.append(ref)
     return refs
+
+
+def list_document_ingest_reports_for_ingest(data_dir: Path, ingest_id: str) -> list[dict[str, object]]:
+    from .storage import list_document_ingest_reports
+
+    return [report for report in list_document_ingest_reports(data_dir, limit=1000) if report.get("ingest_id") == ingest_id]
+
+
+def _workbench_pipeline(
+    ingest: dict[str, object],
+    ingest_runs: tuple[dict[str, object], ...],
+    artifacts: tuple[dict[str, object], ...],
+    index_runs: tuple[dict[str, object], ...],
+    candidates: tuple[dict[str, object], ...],
+    reviews: tuple[dict[str, object], ...],
+    source_refs: tuple[dict[str, object], ...],
+    reports: tuple[dict[str, object], ...],
+) -> dict[str, str]:
+    latest_run_status = str(ingest_runs[-1].get("status", "")) if ingest_runs else ""
+    latest_index_status = str(index_runs[-1].get("status", "")) if index_runs else ""
+    return {
+        "plan": "completed" if ingest else "missing",
+        "parse": latest_run_status or "pending",
+        "artifact_registration": "completed" if artifacts else "pending",
+        "sonic_index": latest_index_status or "pending",
+        "memory_candidates": "completed" if candidates else "pending",
+        "memory_reviews": "completed" if candidates and len(reviews) >= len(candidates) else ("partial" if reviews else "pending"),
+        "source_refs": "completed" if source_refs else "pending",
+        "obsidian_report": "completed" if reports else "pending",
+    }
+
+
+def _workbench_blockers(ingest: dict[str, object], ingest_runs: tuple[dict[str, object], ...]) -> list[str]:
+    blockers: list[str] = []
+    output_dir = Path(str(ingest.get("output_dir", "")))
+    if not output_dir.exists():
+        blockers.append(f"output_dir does not exist: {output_dir}")
+    if ingest_runs and ingest_runs[-1].get("status") in {"failed", "timeout"}:
+        blockers.append(f"latest parse run is {ingest_runs[-1].get('status')}")
+    return blockers
+
+
+def _workbench_warnings(
+    index_runs: tuple[dict[str, object], ...],
+    candidates: tuple[dict[str, object], ...],
+    reviews: tuple[dict[str, object], ...],
+    source_refs: tuple[dict[str, object], ...],
+    reports: tuple[dict[str, object], ...],
+) -> list[str]:
+    warnings: list[str] = []
+    if index_runs and index_runs[-1].get("status") not in {"completed", "skipped"}:
+        warnings.append(f"latest Sonic index run is {index_runs[-1].get('status')}")
+    if candidates and len(reviews) < len(candidates):
+        warnings.append(f"{len(candidates) - len(reviews)} memory candidates still need review")
+    if candidates and not source_refs:
+        warnings.append("source refs have not been generated")
+    if source_refs and not reports:
+        warnings.append("Obsidian ingest report has not been generated")
+    return warnings
+
+
+def _workbench_next_actions(
+    pipeline: dict[str, str],
+    candidates: tuple[dict[str, object], ...],
+    reviews: tuple[dict[str, object], ...],
+) -> list[dict[str, str]]:
+    reviewed_ids = {str(review.get("candidate_id", "")) for review in reviews}
+    if pipeline.get("parse") == "pending":
+        return [{"command": "run-ingest", "label": "Run document parser"}]
+    if pipeline.get("artifact_registration") == "pending":
+        return [{"command": "register-artifacts", "label": "Register parser artifacts"}]
+    if pipeline.get("sonic_index") == "pending":
+        return [{"command": "index-artifacts", "label": "Index text artifacts into Sonic"}]
+    if pipeline.get("memory_candidates") == "pending":
+        return [{"command": "memory-candidates", "label": "Generate memory candidates"}]
+    pending_candidates = [candidate for candidate in candidates if str(candidate.get("id", "")) not in reviewed_ids]
+    if pending_candidates:
+        return [{"command": "review-memory-candidate", "label": "Review pending memory candidates"}]
+    if pipeline.get("source_refs") == "pending":
+        return [{"command": "source-refs", "label": "Create source references"}]
+    if pipeline.get("obsidian_report") == "pending":
+        return [{"command": "ingest-report", "label": "Write Obsidian ingest report"}]
+    return [{"command": "done", "label": "Ingest workflow is complete"}]
 
 
 def _find_ingest(data_dir: Path, ingest_id: str) -> dict[str, object] | None:

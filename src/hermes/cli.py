@@ -66,6 +66,7 @@ from .capabilities import collect_capabilities
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
 from .document_pipeline import (
+    build_document_workbench_state,
     create_document_ingest_report,
     create_document_source_refs,
     generate_document_memory_candidates,
@@ -277,6 +278,8 @@ def build_parser() -> argparse.ArgumentParser:
     source_refs.add_argument("--ingest-id", required=True)
     ingest_report = parse_subcommands.add_parser("ingest-report", help="Write one Obsidian report for a document ingestion")
     ingest_report.add_argument("--ingest-id", required=True)
+    workbench_state = parse_subcommands.add_parser("workbench-state", help="Summarize one document ingestion workflow for UI/workbench use")
+    workbench_state.add_argument("--ingest-id", required=True)
 
     job_parser = subcommands.add_parser("job", help="Create a queued job")
     job_parser.add_argument("--title", default="CLI job")
@@ -671,6 +674,10 @@ def run(argv: list[str] | None = None) -> int:
             result = create_document_ingest_report(settings, args.ingest_id)
             print_json({"service": "hermes", "document_ingest_report": result})
             return 0 if result.status == "completed" else 1
+        if parse_command == "workbench-state":
+            state = build_document_workbench_state(settings, args.ingest_id)
+            print_json({"service": "hermes", "document_workbench": state})
+            return 0 if state.status != "not_found" else 1
         parser.error(f"unknown document parse command: {parse_command}")
         return 2
 
