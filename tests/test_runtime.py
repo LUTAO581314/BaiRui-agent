@@ -9,7 +9,7 @@ from src.hermes.capabilities import collect_capabilities
 from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
 from src.hermes.db import SCHEMA_SQL, database_status
-from src.hermes.document_pipeline import build_document_workbench_state, create_document_ingest_report, create_document_source_refs, execute_document_workbench_next, generate_document_memory_candidates, index_document_artifacts, list_pending_document_memory_reviews, register_document_artifacts, review_document_memory_candidate, review_document_memory_candidates_batch, run_document_ingest, run_document_workbench_until_blocked
+from src.hermes.document_pipeline import build_document_ingest_session_summary, build_document_workbench_state, create_document_ingest_report, create_document_source_refs, execute_document_workbench_next, generate_document_memory_candidates, index_document_artifacts, list_pending_document_memory_reviews, register_document_artifacts, review_document_memory_candidate, review_document_memory_candidates_batch, run_document_ingest, run_document_workbench_until_blocked
 from src.hermes.adapters.everos import EverOSResult, build_search_payload, status as everos_status
 from src.hermes.adapters.funasr import build_server_command as build_funasr_server_command, build_transcription_payload as build_funasr_transcription_payload, status as funasr_status
 from src.hermes.adapters.mineru import build_parse_command as build_mineru_parse_command, status as mineru_status
@@ -647,6 +647,49 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertFalse(state.blockers)
         self.assertTrue(any("Sonic index" in warning for warning in state.warnings))
 
+    def test_document_ingest_session_summary_is_frontend_ready(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            output_dir = root / "mineru-output"
+            output_dir.mkdir()
+            (output_dir / "sample.md").write_text(
+                "Owner preference: session summary should show reviewed memory and generated report.",
+                encoding="utf-8",
+            )
+            ingest = create_document_ingest(
+                data_dir,
+                title="Session summary plan",
+                input_path="sample.pdf",
+                output_dir=str(output_dir),
+                parser_command=("python", "-c", "print('session summary parse ok')"),
+            )
+            run_document_ingest(data_dir, ingest.id, timeout_seconds=10)
+            register_document_artifacts(data_dir, ingest.id)
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "SONIC_HOST": "127.0.0.1",
+                "SONIC_PASSWORD": "secret",
+            }
+            sonic_result = SonicResult(status="completed", channel="ingest", command="PUSH", payload={})
+            with patch.dict(os.environ, env, clear=False):
+                with patch("src.hermes.document_pipeline.sonic_push", return_value=sonic_result):
+                    index_document_artifacts(load_settings(), ingest.id)
+                    candidate = generate_document_memory_candidates(data_dir, ingest.id).candidates[0]
+                    review_document_memory_candidate(load_settings(), candidate.id, decision="reject")
+                    create_document_source_refs(load_settings(), ingest.id)
+                    create_document_ingest_report(load_settings(), ingest.id)
+                    summary = build_document_ingest_session_summary(load_settings(), ingest.id)
+        self.assertEqual(summary.status, "ready")
+        self.assertEqual(summary.current_stage, "done")
+        self.assertEqual(summary.progress_percent, 100)
+        self.assertEqual(summary.primary_action["command"], "done")
+        self.assertEqual(summary.review_queue.pending_count, 0)
+        self.assertEqual(summary.report["ingest_id"], ingest.id)
+        self.assertEqual(summary.stages[-1]["id"], "obsidian_report")
+
     def test_document_workbench_next_executes_parser_step(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1264,6 +1307,32 @@ class RuntimeFoundationTests(unittest.TestCase):
         payload = print_json.call_args.args[0]
         self.assertEqual(payload["document_workbench"].pipeline["plan"], "completed")
         self.assertEqual(payload["document_workbench"].next_actions[0]["command"], "run-ingest")
+
+    def test_cli_document_ingest_session_summary_prints_primary_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            output_dir = root / "mineru-output"
+            output_dir.mkdir()
+            ingest = create_document_ingest(
+                data_dir,
+                title="CLI session summary plan",
+                input_path="sample.pdf",
+                output_dir=str(output_dir),
+                parser_command=("mineru", "-p", "sample.pdf", "-o", str(output_dir)),
+            )
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["document", "parse", "session-summary", "--ingest-id", ingest.id])
+        self.assertEqual(code, 0)
+        payload = print_json.call_args.args[0]
+        self.assertEqual(payload["document_ingest_session"].current_stage, "parse")
+        self.assertEqual(payload["document_ingest_session"].primary_action["command"], "run-ingest")
 
     def test_cli_document_workbench_next_executes_next_action(self):
         with tempfile.TemporaryDirectory() as tmp:

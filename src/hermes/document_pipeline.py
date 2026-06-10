@@ -155,6 +155,25 @@ class DocumentWorkbenchRunResult:
     state: DocumentWorkbenchState
 
 
+@dataclass(frozen=True)
+class DocumentIngestSessionSummary:
+    status: str
+    detail: str
+    ingest_id: str
+    title: str
+    source: str
+    current_stage: str
+    progress_percent: int
+    stages: tuple[dict[str, object], ...]
+    primary_action: dict[str, str] | None
+    review_queue: DocumentMemoryReviewQueue | None
+    report: dict[str, object] | None
+    counts: dict[str, int]
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
+    workbench: DocumentWorkbenchState
+
+
 def run_document_ingest(data_dir: Path, ingest_id: str, *, timeout_seconds: int) -> DocumentPipelineResult:
     ingest = _find_ingest(data_dir, ingest_id)
     if ingest is None:
@@ -868,6 +887,52 @@ def build_document_workbench_state(settings: Settings, ingest_id: str) -> Docume
     )
 
 
+def build_document_ingest_session_summary(settings: Settings, ingest_id: str) -> DocumentIngestSessionSummary:
+    workbench = build_document_workbench_state(settings, ingest_id)
+    if workbench.status == "not_found" or workbench.ingest is None:
+        return DocumentIngestSessionSummary(
+            status="not_found",
+            detail=workbench.detail,
+            ingest_id=ingest_id,
+            title="",
+            source="",
+            current_stage="not_found",
+            progress_percent=0,
+            stages=(),
+            primary_action=None,
+            review_queue=None,
+            report=None,
+            counts={},
+            blockers=workbench.blockers,
+            warnings=workbench.warnings,
+            workbench=workbench,
+        )
+
+    stages = tuple(_session_stage(stage_id, label, workbench.pipeline.get(stage_id, "pending")) for stage_id, label in _SESSION_STAGE_LABELS)
+    completed_count = sum(1 for stage in stages if stage["status"] in {"completed", "skipped"})
+    current_stage = next((str(stage["id"]) for stage in stages if stage["status"] not in {"completed", "skipped"}), "done")
+    review_queue = list_pending_document_memory_reviews(settings, ingest_id=ingest_id)
+    primary_action = workbench.next_actions[0] if workbench.next_actions else None
+    report = workbench.latest.get("ingest_report")
+    return DocumentIngestSessionSummary(
+        status=workbench.status,
+        detail="document ingest session summary",
+        ingest_id=ingest_id,
+        title=str(workbench.ingest.get("title", "")),
+        source=str(workbench.ingest.get("input_path", "")),
+        current_stage=current_stage,
+        progress_percent=round(completed_count * 100 / len(stages)) if stages else 0,
+        stages=stages,
+        primary_action=primary_action,
+        review_queue=review_queue,
+        report=report if isinstance(report, dict) else None,
+        counts=workbench.counts,
+        blockers=workbench.blockers,
+        warnings=workbench.warnings,
+        workbench=workbench,
+    )
+
+
 def execute_document_workbench_next(
     settings: Settings,
     ingest_id: str,
@@ -1039,6 +1104,28 @@ def list_document_ingest_reports_for_ingest(data_dir: Path, ingest_id: str) -> l
     from .storage import list_document_ingest_reports
 
     return [report for report in list_document_ingest_reports(data_dir, limit=1000) if report.get("ingest_id") == ingest_id]
+
+
+_SESSION_STAGE_LABELS = (
+    ("plan", "Ingest plan"),
+    ("parse", "Document parser"),
+    ("artifact_registration", "Artifact registration"),
+    ("sonic_index", "Sonic index"),
+    ("memory_candidates", "Memory candidates"),
+    ("memory_reviews", "Memory review"),
+    ("source_refs", "Source references"),
+    ("obsidian_report", "Obsidian report"),
+)
+
+
+def _session_stage(stage_id: str, label: str, status: str) -> dict[str, object]:
+    return {
+        "id": stage_id,
+        "label": label,
+        "status": status,
+        "complete": status in {"completed", "skipped"},
+        "blocked": status in {"failed", "timeout", "missing"},
+    }
 
 
 def _workbench_pipeline(

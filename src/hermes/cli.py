@@ -66,6 +66,7 @@ from .capabilities import collect_capabilities
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
 from .document_pipeline import (
+    build_document_ingest_session_summary,
     build_document_workbench_state,
     create_document_ingest_report,
     create_document_source_refs,
@@ -298,6 +299,8 @@ def build_parser() -> argparse.ArgumentParser:
     ingest_report.add_argument("--ingest-id", required=True)
     workbench_state = parse_subcommands.add_parser("workbench-state", help="Summarize one document ingestion workflow for UI/workbench use")
     workbench_state.add_argument("--ingest-id", required=True)
+    session_summary = parse_subcommands.add_parser("session-summary", help="Build a frontend-ready document ingestion session summary")
+    session_summary.add_argument("--ingest-id", required=True)
     workbench_next = parse_subcommands.add_parser("workbench-next", help="Execute the next safe document ingestion workbench action")
     workbench_next.add_argument("--ingest-id", required=True)
     workbench_next.add_argument("--timeout-seconds", type=int, default=0)
@@ -732,6 +735,10 @@ def run(argv: list[str] | None = None) -> int:
             state = build_document_workbench_state(settings, args.ingest_id)
             print_json({"service": "hermes", "document_workbench": state})
             return 0 if state.status != "not_found" else 1
+        if parse_command == "session-summary":
+            summary = build_document_ingest_session_summary(settings, args.ingest_id)
+            print_json({"service": "hermes", "document_ingest_session": summary})
+            return 0 if summary.status != "not_found" else 1
         if parse_command == "workbench-next":
             result = execute_document_workbench_next(
                 settings,

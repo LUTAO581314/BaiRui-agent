@@ -44,6 +44,7 @@ from .capabilities import collect_capabilities
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
 from .document_pipeline import (
+    build_document_ingest_session_summary,
     build_document_workbench_state,
     create_document_ingest_report,
     create_document_source_refs,
@@ -554,6 +555,16 @@ class HermesHandler(BaseHTTPRequestHandler):
             state = build_document_workbench_state(settings, ingest_id)
             status = 200 if state.status != "not_found" else 404
             self._send({"service": "hermes", "document_workbench": asdict(state)}, status=status)
+            return
+
+        if self.path == "/document/parse/session-summary":
+            ingest_id = str(payload.get("ingest_id", ""))
+            if not ingest_id.strip():
+                self._send({"error": "invalid_request", "message": "ingest_id is required"}, status=400)
+                return
+            summary = build_document_ingest_session_summary(settings, ingest_id)
+            status = 200 if summary.status != "not_found" else 404
+            self._send({"service": "hermes", "document_ingest_session": asdict(summary)}, status=status)
             return
 
         if self.path == "/document/parse/workbench-next":

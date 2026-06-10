@@ -199,6 +199,7 @@ python -m src.hermes document parse memory-review-batch --candidate-id <candidat
 python -m src.hermes document parse source-refs --ingest-id <ingest_id>
 python -m src.hermes document parse ingest-report --ingest-id <ingest_id>
 python -m src.hermes document parse workbench-state --ingest-id <ingest_id>
+python -m src.hermes document parse session-summary --ingest-id <ingest_id>
 python -m src.hermes document parse workbench-next --ingest-id <ingest_id>
 python -m src.hermes document parse workbench-run-until-blocked --ingest-id <ingest_id>
 python -m src.hermes document-ingests
@@ -297,6 +298,12 @@ The same contract is exposed over HTTP at
 `POST /document/parse/workbench-state` with `{"ingest_id": "..."}`. This lets
 Brain UI or the Bairui frontend render a document knowledge ingestion
 workbench without manually joining every file-backed list endpoint.
+
+`session-summary` is the frontend page model built on top of `workbench-state`.
+It returns the ingest title/source, current stage, progress percentage, stage
+list, primary action, pending review queue, latest report, blockers, warnings,
+and the underlying workbench state. It is available over HTTP at
+`POST /document/parse/session-summary`.
 
 `workbench-next` executes the first safe action from `next_actions` and returns
 both the action result and the refreshed workbench state. It is available as:
