@@ -384,7 +384,8 @@ The strongest source-backed supplements to add next are:
    - `GET /events` exists as snapshot SSE.
    - Event shape: `{ type, data, ts }`.
    - Current events include job created, document step completed, memory review
-     required/completed, command completed/blocked, and report created.
+     required/completed, command completed/blocked, channel send
+     approval-required/blocked, and report created.
    - Next upgrade: keep the same event shape and add long-lived broadcast for
      readiness changes and running-step progress.
 

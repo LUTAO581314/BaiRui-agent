@@ -219,6 +219,26 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(audit[-1]["action"], "channel.send_planned")
         self.assertEqual(audit[-1]["payload"]["will_send"], False)
 
+    def test_frontend_events_project_channel_send_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                plan_channel_send(
+                    load_settings(),
+                    {"target_id": "owner_review", "text": "approve this summary", "media_kind": "text"},
+                )
+                events = list_frontend_events(data_dir)
+        self.assertEqual(events[-1]["type"], "channel.send.approval_required")
+        self.assertEqual(events[-1]["data"]["action"], "channel.send_planned")
+        self.assertEqual(events[-1]["data"]["resource_type"], "channel_target")
+        self.assertFalse(events[-1]["data"]["payload"]["will_send"])
+
     def test_channel_send_rejects_unsupported_media(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = {
@@ -234,6 +254,25 @@ class RuntimeFoundationTests(unittest.TestCase):
                 )
         self.assertEqual(result.status, "unsupported_media")
         self.assertEqual(result.reason, "unsupported_media_kind")
+
+    def test_frontend_events_project_blocked_channel_send(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                plan_channel_send(
+                    load_settings(),
+                    {"target_id": "owner_review", "text": "blocked by default", "media_kind": "text"},
+                )
+                events = list_frontend_events(data_dir)
+        self.assertEqual(events[-1]["type"], "channel.send.blocked")
+        self.assertEqual(events[-1]["data"]["action"], "channel.send_blocked")
+        self.assertEqual(events[-1]["data"]["payload"]["reason"], "channels_disabled")
 
     def test_create_document_ingest_writes_plan_and_audit(self):
         with tempfile.TemporaryDirectory() as tmp:

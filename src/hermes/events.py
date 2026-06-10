@@ -21,6 +21,8 @@ ACTION_EVENT_TYPES = {
     "obsidian.report_written": "report.created",
     "chat.completed": "command.completed",
     "chat.not_completed": "command.blocked",
+    "channel.send_planned": "channel.send.approval_required",
+    "channel.send_blocked": "channel.send.blocked",
     "database.migration": "system.changed",
 }
 
