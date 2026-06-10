@@ -33,6 +33,10 @@ Internal source reference:
   `configured`, `missing_config`, `blocked`, or `needs_review`;
 - never bundle runtime secrets into frontend JavaScript.
 
+Detailed source-based frontend integration, design direction, screen mapping,
+backend supplement list, implementation prompt, and QA checklist live in
+[`20-bairui-frontend-source-ui-integration.md`](20-bairui-frontend-source-ui-integration.md).
+
 ## 3. Core Screens
 
 The frontend must connect these product screens to real backend contracts:

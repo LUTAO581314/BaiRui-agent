@@ -84,6 +84,7 @@ Internal frontend source reference:
 - [Three-Pillar Commercial Project Plan](docs/17-three-pillar-commercial-project-plan.md)
 - [Vendor Runtime Integration](docs/18-vendor-runtime-integration.md)
 - [Brand And Trademark Fields](docs/19-brand-and-trademark-fields.md)
+- [bairui Frontend Source UI Integration](docs/20-bairui-frontend-source-ui-integration.md)
 
 ## CLI Entry Point
 

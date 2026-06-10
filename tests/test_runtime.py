@@ -22,6 +22,7 @@ from src.hermes.license import load_license, sign_license_payload
 from src.hermes.model_gateway import build_chat_payload, complete_chat
 from src.hermes.platform import HEARTBEAT_PROTOCOL_VERSION, build_platform_heartbeat
 from src.hermes.runtime_readiness import collect_runtime_readiness
+from src.hermes.server import PUBLIC_SERVICE
 from src.hermes.storage import (
     create_document_ingest,
     create_job,
@@ -129,6 +130,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/audit", operation_paths)
         self.assertIn("/document/parse/workbench-next", document_paths)
         self.assertIn("needs_review", contract["state_values"])
+
+    def test_public_api_service_name_is_bairui(self):
+        self.assertEqual(PUBLIC_SERVICE, "bairui")
 
     def test_create_job_writes_job_and_audit(self):
         with tempfile.TemporaryDirectory() as tmp:

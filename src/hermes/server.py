@@ -82,12 +82,15 @@ from .storage import (
 )
 
 
+PUBLIC_SERVICE = "bairui"
+
+
 def _json_bytes(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
 
 
 class HermesHandler(BaseHTTPRequestHandler):
-    server_version = "HermesHTTP/0.1"
+    server_version = "bairuiHTTP/0.1"
 
     def do_GET(self) -> None:
         settings = load_settings()
@@ -97,7 +100,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             self._send(
                 {
                     "status": "ok",
-                    "service": "hermes",
+                    "service": PUBLIC_SERVICE,
                     "product": settings.product_name,
                     "brand": {
                         "key": settings.brand_key,
@@ -115,7 +118,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             self._send(
                 {
                     "status": "partial",
-                    "service": "hermes",
+                    "service": PUBLIC_SERVICE,
                     "database": db_state.__dict__,
                     "license": license_state.status,
                     "platform": "configured" if settings.platform_base_url else "missing_config",
@@ -124,73 +127,73 @@ class HermesHandler(BaseHTTPRequestHandler):
             )
             return
         if self.path == "/version":
-            self._send({"service": "hermes", "version": __version__})
+            self._send({"service": PUBLIC_SERVICE, "version": __version__})
             return
         if self.path == "/capabilities":
-            self._send({"service": "hermes", "capabilities": collect_capabilities(settings)})
+            self._send({"service": PUBLIC_SERVICE, "capabilities": collect_capabilities(settings)})
             return
         if self.path == "/frontend/contract":
             self._send({"service": "bairui", "frontend_contract": build_frontend_contract(settings, __version__)})
             return
         if self.path == "/runtime/readiness":
-            self._send({"service": "hermes", "runtime_readiness": collect_runtime_readiness(settings)})
+            self._send({"service": PUBLIC_SERVICE, "runtime_readiness": collect_runtime_readiness(settings)})
             return
         if self.path == "/platform/heartbeat":
-            self._send({"service": "hermes", "heartbeat": build_platform_heartbeat(settings)})
+            self._send({"service": PUBLIC_SERVICE, "heartbeat": build_platform_heartbeat(settings)})
             return
         if self.path == "/license":
-            self._send({"service": "hermes", "license": load_license(settings.license_file, settings.license_secret).__dict__})
+            self._send({"service": PUBLIC_SERVICE, "license": load_license(settings.license_file, settings.license_secret).__dict__})
             return
         if self.path == "/jobs":
-            self._send({"service": "hermes", "jobs": list_jobs(settings.data_dir)})
+            self._send({"service": PUBLIC_SERVICE, "jobs": list_jobs(settings.data_dir)})
             return
         if self.path == "/document/ingests":
-            self._send({"service": "hermes", "document_ingests": list_document_ingests(settings.data_dir)})
+            self._send({"service": PUBLIC_SERVICE, "document_ingests": list_document_ingests(settings.data_dir)})
             return
         if self.path == "/document/ingest-runs":
-            self._send({"service": "hermes", "document_ingest_runs": list_document_ingest_runs(settings.data_dir)})
+            self._send({"service": PUBLIC_SERVICE, "document_ingest_runs": list_document_ingest_runs(settings.data_dir)})
             return
         if self.path == "/document/ingest-reports":
-            self._send({"service": "hermes", "document_ingest_reports": list_document_ingest_reports(settings.data_dir)})
+            self._send({"service": PUBLIC_SERVICE, "document_ingest_reports": list_document_ingest_reports(settings.data_dir)})
             return
         if self.path == "/document/artifacts":
-            self._send({"service": "hermes", "document_artifacts": list_document_artifacts(settings.data_dir)})
+            self._send({"service": PUBLIC_SERVICE, "document_artifacts": list_document_artifacts(settings.data_dir)})
             return
         if self.path == "/document/index-runs":
-            self._send({"service": "hermes", "document_index_runs": list_document_index_runs(settings.data_dir)})
+            self._send({"service": PUBLIC_SERVICE, "document_index_runs": list_document_index_runs(settings.data_dir)})
             return
         if self.path == "/document/memory-candidates":
-            self._send({"service": "hermes", "document_memory_candidates": list_document_memory_candidates(settings.data_dir)})
+            self._send({"service": PUBLIC_SERVICE, "document_memory_candidates": list_document_memory_candidates(settings.data_dir)})
             return
         if self.path == "/document/memory-reviews":
-            self._send({"service": "hermes", "document_memory_reviews": list_document_memory_reviews(settings.data_dir)})
+            self._send({"service": PUBLIC_SERVICE, "document_memory_reviews": list_document_memory_reviews(settings.data_dir)})
             return
         if self.path == "/source-refs":
-            self._send({"service": "hermes", "source_refs": list_source_refs(settings.data_dir)})
+            self._send({"service": PUBLIC_SERVICE, "source_refs": list_source_refs(settings.data_dir)})
             return
         if self.path == "/audit":
-            self._send({"service": "hermes", "audit": list_audit_events(settings.data_dir)})
+            self._send({"service": PUBLIC_SERVICE, "audit": list_audit_events(settings.data_dir)})
             return
         if self.path == "/memory/status":
-            self._send({"service": "hermes", "memory": as_payload(everos_status(settings))})
+            self._send({"service": PUBLIC_SERVICE, "memory": as_payload(everos_status(settings))})
             return
         if self.path == "/voice/asr/status":
-            self._send({"service": "hermes", "voice_asr": funasr_payload(funasr_status(settings))})
+            self._send({"service": PUBLIC_SERVICE, "voice_asr": funasr_payload(funasr_status(settings))})
             return
         if self.path == "/document/parse/status":
-            self._send({"service": "hermes", "document_parse": mineru_payload(mineru_status(settings))})
+            self._send({"service": PUBLIC_SERVICE, "document_parse": mineru_payload(mineru_status(settings))})
             return
         if self.path == "/intel/status":
-            self._send({"service": "hermes", "intelligence": trendradar_payload(trendradar_status(settings))})
+            self._send({"service": PUBLIC_SERVICE, "intelligence": trendradar_payload(trendradar_status(settings))})
             return
         if self.path == "/simulation/status":
-            self._send({"service": "hermes", "simulation": mirofish_payload(mirofish_status(settings))})
+            self._send({"service": PUBLIC_SERVICE, "simulation": mirofish_payload(mirofish_status(settings))})
             return
         if self.path == "/search/status":
-            self._send({"service": "hermes", "search": searxng_payload(searxng_status(settings))})
+            self._send({"service": PUBLIC_SERVICE, "search": searxng_payload(searxng_status(settings))})
             return
         if self.path == "/index/status":
-            self._send({"service": "hermes", "index": sonic_payload(sonic_status(settings))})
+            self._send({"service": PUBLIC_SERVICE, "index": sonic_payload(sonic_status(settings))})
             return
 
         self._send({"error": "not_found", "path": self.path}, status=404)
@@ -208,17 +211,17 @@ class HermesHandler(BaseHTTPRequestHandler):
                 self._send({"error": "invalid_request", "message": "prompt is required"}, status=400)
                 return
             job = create_job(settings.data_dir, title=title, prompt=prompt, route=route)
-            self._send({"service": "hermes", "job": job.__dict__}, status=201)
+            self._send({"service": PUBLIC_SERVICE, "job": job.__dict__}, status=201)
             return
 
         if self.path == "/obsidian/reports":
-            title = str(payload.get("title", "Hermes Report"))
+            title = str(payload.get("title", "bairui Report"))
             body = str(payload.get("body", ""))
             if not body.strip():
                 self._send({"error": "invalid_request", "message": "body is required"}, status=400)
                 return
             report = write_obsidian_report(settings.obsidian_vault_dir, settings.data_dir, title=title, body=body)
-            self._send({"service": "hermes", "report": report}, status=201)
+            self._send({"service": PUBLIC_SERVICE, "report": report}, status=201)
             return
 
         if self.path == "/chat":
@@ -237,7 +240,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                 payload={"status": result.status, "provider": result.provider, "error": result.error},
             )
             status = 200 if result.status == "completed" else 503
-            self._send({"service": "hermes", "chat": result.__dict__}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "chat": result.__dict__}, status=status)
             return
 
         if self.path == "/memory/ingest":
@@ -256,7 +259,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                     sender_name=str(payload.get("sender_name") or "") or None,
                 ),
             )
-            self._send({"service": "hermes", "memory": as_payload(result)}, status=200 if result.status == "completed" else 503)
+            self._send({"service": PUBLIC_SERVICE, "memory": as_payload(result)}, status=200 if result.status == "completed" else 503)
             return
 
         if self.path == "/memory/flush":
@@ -272,7 +275,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                     project_id=str(payload.get("project_id", "default")),
                 ),
             )
-            self._send({"service": "hermes", "memory": as_payload(result)}, status=200 if result.status == "completed" else 503)
+            self._send({"service": PUBLIC_SERVICE, "memory": as_payload(result)}, status=200 if result.status == "completed" else 503)
             return
 
         if self.path == "/memory/search":
@@ -293,7 +296,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                     include_profile=bool(payload.get("include_profile", False)),
                 ),
             )
-            self._send({"service": "hermes", "memory": as_payload(result)}, status=200 if result.status == "completed" else 503)
+            self._send({"service": PUBLIC_SERVICE, "memory": as_payload(result)}, status=200 if result.status == "completed" else 503)
             return
 
         if self.path == "/search/query":
@@ -313,12 +316,12 @@ class HermesHandler(BaseHTTPRequestHandler):
                     page=int(payload.get("page", 1)),
                 ),
             )
-            self._send({"service": "hermes", "search": searxng_payload(result)}, status=200 if result.status == "completed" else 503)
+            self._send({"service": PUBLIC_SERVICE, "search": searxng_payload(result)}, status=200 if result.status == "completed" else 503)
             return
 
         if self.path == "/index/ping":
             result = sonic_ping(settings)
-            self._send({"service": "hermes", "index": sonic_payload(result)}, status=200 if result.status == "completed" else 503)
+            self._send({"service": PUBLIC_SERVICE, "index": sonic_payload(result)}, status=200 if result.status == "completed" else 503)
             return
 
         if self.path == "/index/push":
@@ -336,7 +339,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                     lang=str(payload.get("lang", "")),
                 ),
             )
-            self._send({"service": "hermes", "index": sonic_payload(result)}, status=200 if result.status == "completed" else 503)
+            self._send({"service": PUBLIC_SERVICE, "index": sonic_payload(result)}, status=200 if result.status == "completed" else 503)
             return
 
         if self.path == "/index/query":
@@ -355,7 +358,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                     lang=str(payload.get("lang", "")),
                 ),
             )
-            self._send({"service": "hermes", "index": sonic_payload(result)}, status=200 if result.status == "completed" else 503)
+            self._send({"service": PUBLIC_SERVICE, "index": sonic_payload(result)}, status=200 if result.status == "completed" else 503)
             return
 
         if self.path == "/voice/asr/transcribe":
@@ -373,7 +376,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                     response_format=str(payload.get("response_format", "json")),
                 ),
             )
-            self._send({"service": "hermes", "voice_asr": funasr_payload(result)}, status=200 if result.status == "completed" else 503)
+            self._send({"service": PUBLIC_SERVICE, "voice_asr": funasr_payload(result)}, status=200 if result.status == "completed" else 503)
             return
 
         if self.path == "/document/parse/ingest-plan":
@@ -398,7 +401,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                 output_dir=output_dir,
                 parser_command=plan.command,
             )
-            self._send({"service": "hermes", "document_ingest": ingest.__dict__, "document_parse": mineru_payload(plan)}, status=201)
+            self._send({"service": PUBLIC_SERVICE, "document_ingest": ingest.__dict__, "document_parse": mineru_payload(plan)}, status=201)
             return
 
         if self.path == "/document/parse/run-ingest":
@@ -414,7 +417,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             status = 200 if result.status == "completed" else 503
             if result.status == "not_found":
                 status = 404
-            self._send({"service": "hermes", "document_pipeline": asdict(result)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_pipeline": asdict(result)}, status=status)
             return
 
         if self.path == "/document/parse/register-artifacts":
@@ -426,7 +429,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             status = 200 if result.status == "completed" else 503
             if result.status == "not_found":
                 status = 404
-            self._send({"service": "hermes", "document_artifact_registration": asdict(result)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_artifact_registration": asdict(result)}, status=status)
             return
 
         if self.path == "/document/parse/index-artifacts":
@@ -444,7 +447,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             status = 200 if result.status in {"completed", "skipped"} else 503
             if result.status == "not_found":
                 status = 404
-            self._send({"service": "hermes", "document_index": asdict(result)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_index": asdict(result)}, status=status)
             return
 
         if self.path == "/document/parse/memory-candidates":
@@ -460,7 +463,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             status = 200 if result.status in {"completed", "skipped"} else 503
             if result.status == "not_found":
                 status = 404
-            self._send({"service": "hermes", "document_memory_candidate_generation": asdict(result)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_memory_candidate_generation": asdict(result)}, status=status)
             return
 
         if self.path == "/document/parse/review-memory-candidate":
@@ -490,13 +493,13 @@ class HermesHandler(BaseHTTPRequestHandler):
                 status = 400
             if result.status == "already_reviewed":
                 status = 409
-            self._send({"service": "hermes", "document_memory_review": asdict(result)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_memory_review": asdict(result)}, status=status)
             return
 
         if self.path == "/document/parse/memory-review-pending":
             result = list_pending_document_memory_reviews(settings, ingest_id=str(payload.get("ingest_id", "")))
             status = 200 if result.status != "not_found" else 404
-            self._send({"service": "hermes", "document_memory_review_queue": asdict(result)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_memory_review_queue": asdict(result)}, status=status)
             return
 
         if self.path == "/document/parse/memory-review-batch":
@@ -525,7 +528,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             status = 200 if result.status in {"completed", "partial", "empty"} else 503
             if result.status == "invalid_decision":
                 status = 400
-            self._send({"service": "hermes", "document_memory_review_batch": asdict(result)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_memory_review_batch": asdict(result)}, status=status)
             return
 
         if self.path == "/document/parse/source-refs":
@@ -537,7 +540,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             status = 200 if result.status in {"completed", "skipped"} else 503
             if result.status == "not_found":
                 status = 404
-            self._send({"service": "hermes", "document_source_refs": asdict(result)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_source_refs": asdict(result)}, status=status)
             return
 
         if self.path == "/document/parse/ingest-report":
@@ -549,7 +552,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             status = 200 if result.status == "completed" else 503
             if result.status == "not_found":
                 status = 404
-            self._send({"service": "hermes", "document_ingest_report": asdict(result)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_ingest_report": asdict(result)}, status=status)
             return
 
         if self.path == "/document/parse/workbench-state":
@@ -559,7 +562,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                 return
             state = build_document_workbench_state(settings, ingest_id)
             status = 200 if state.status != "not_found" else 404
-            self._send({"service": "hermes", "document_workbench": asdict(state)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_workbench": asdict(state)}, status=status)
             return
 
         if self.path == "/document/parse/session-summary":
@@ -569,12 +572,12 @@ class HermesHandler(BaseHTTPRequestHandler):
                 return
             summary = build_document_ingest_session_summary(settings, ingest_id)
             status = 200 if summary.status != "not_found" else 404
-            self._send({"service": "hermes", "document_ingest_session": asdict(summary)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_ingest_session": asdict(summary)}, status=status)
             return
 
         if self.path == "/document/parse/session-list":
             result = list_document_ingest_session_summaries(settings, limit=int(payload.get("limit", 50)))
-            self._send({"service": "hermes", "document_ingest_sessions": asdict(result)})
+            self._send({"service": PUBLIC_SERVICE, "document_ingest_sessions": asdict(result)})
             return
 
         if self.path == "/document/parse/workbench-next":
@@ -596,7 +599,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                 status = 404
             if result.status == "unsupported_action":
                 status = 409
-            self._send({"service": "hermes", "document_workbench_step": asdict(result)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_workbench_step": asdict(result)}, status=status)
             return
 
         if self.path == "/document/parse/workbench-run-until-blocked":
@@ -619,7 +622,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                 status = 404
             if result.status == "unsupported_action":
                 status = 409
-            self._send({"service": "hermes", "document_workbench_run": asdict(result)}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "document_workbench_run": asdict(result)}, status=status)
             return
 
         if self.path == "/admin/migrate":
@@ -633,7 +636,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                 payload=result.__dict__,
             )
             status = 200 if result.status == "ready" else 503
-            self._send({"service": "hermes", "database": result.__dict__}, status=status)
+            self._send({"service": PUBLIC_SERVICE, "database": result.__dict__}, status=status)
             return
 
         self._send({"error": "not_found", "path": self.path}, status=404)
@@ -667,7 +670,7 @@ def serve(settings: Any | None = None) -> None:
     settings = settings or load_settings()
     ensure_runtime_dirs(settings)
     server = ThreadingHTTPServer((settings.host, settings.port), HermesHandler)
-    print(f"Hermes listening on http://{settings.host}:{settings.port}", flush=True)
+    print(f"bairui listening on http://{settings.host}:{settings.port}", flush=True)
     server.serve_forever()
 
 
