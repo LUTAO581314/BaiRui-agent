@@ -43,7 +43,7 @@ from .adapters.trendradar import as_payload as trendradar_payload, status as tre
 from .capabilities import collect_capabilities
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
-from .document_pipeline import run_document_ingest
+from .document_pipeline import register_document_artifacts, run_document_ingest
 from .license import load_license
 from .model_gateway import complete_chat
 from .platform import build_platform_heartbeat
@@ -53,6 +53,7 @@ from .storage import (
     create_document_ingest,
     create_job,
     list_audit_events,
+    list_document_artifacts,
     list_document_ingest_runs,
     list_document_ingests,
     list_jobs,
@@ -124,6 +125,9 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/document/ingest-runs":
             self._send({"service": "hermes", "document_ingest_runs": list_document_ingest_runs(settings.data_dir)})
+            return
+        if self.path == "/document/artifacts":
+            self._send({"service": "hermes", "document_artifacts": list_document_artifacts(settings.data_dir)})
             return
         if self.path == "/audit":
             self._send({"service": "hermes", "audit": list_audit_events(settings.data_dir)})
@@ -372,6 +376,18 @@ class HermesHandler(BaseHTTPRequestHandler):
             if result.status == "not_found":
                 status = 404
             self._send({"service": "hermes", "document_pipeline": asdict(result)}, status=status)
+            return
+
+        if self.path == "/document/parse/register-artifacts":
+            ingest_id = str(payload.get("ingest_id", ""))
+            if not ingest_id.strip():
+                self._send({"error": "invalid_request", "message": "ingest_id is required"}, status=400)
+                return
+            result = register_document_artifacts(settings.data_dir, ingest_id)
+            status = 200 if result.status == "completed" else 503
+            if result.status == "not_found":
+                status = 404
+            self._send({"service": "hermes", "document_artifact_registration": asdict(result)}, status=status)
             return
 
         if self.path == "/admin/migrate":

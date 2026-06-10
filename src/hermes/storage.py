@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import re
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +86,19 @@ class DocumentIngestRun:
     error: str
     started_at: str
     finished_at: str
+
+
+@dataclass(frozen=True)
+class DocumentArtifact:
+    id: str
+    ingest_id: str
+    path: str
+    relative_path: str
+    artifact_type: str
+    mime_type: str
+    size_bytes: int
+    sha256: str
+    created_at: str
 
 
 def create_audit_event(
@@ -230,6 +245,63 @@ def create_document_ingest_run(
 
 def list_document_ingest_runs(data_dir: Path, limit: int = 50) -> list[dict[str, Any]]:
     return _read_jsonl(data_dir / "document_ingest_runs.jsonl", limit=limit)
+
+
+def create_document_artifact(
+    data_dir: Path,
+    *,
+    ingest_id: str,
+    path: Path,
+    output_dir: Path,
+) -> DocumentArtifact:
+    resolved_path = path.resolve()
+    resolved_output_dir = output_dir.resolve()
+    try:
+        relative_path = str(resolved_path.relative_to(resolved_output_dir))
+    except ValueError:
+        relative_path = resolved_path.name
+    artifact = DocumentArtifact(
+        id=str(uuid.uuid4()),
+        ingest_id=ingest_id,
+        path=str(resolved_path),
+        relative_path=relative_path,
+        artifact_type=_classify_artifact(resolved_path),
+        mime_type=mimetypes.guess_type(resolved_path.name)[0] or "application/octet-stream",
+        size_bytes=resolved_path.stat().st_size,
+        sha256=_file_sha256(resolved_path),
+        created_at=utc_now(),
+    )
+    _append_jsonl(data_dir / "document_artifacts.jsonl", asdict(artifact))
+    return artifact
+
+
+def list_document_artifacts(data_dir: Path, limit: int = 50) -> list[dict[str, Any]]:
+    return _read_jsonl(data_dir / "document_artifacts.jsonl", limit=limit)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _classify_artifact(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix in {".md", ".markdown"}:
+        return "markdown"
+    if suffix in {".json", ".jsonl"}:
+        return "json"
+    if suffix in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff"}:
+        return "image"
+    if suffix in {".csv", ".tsv", ".xlsx", ".xls"}:
+        return "table"
+    if suffix in {".html", ".htm"}:
+        return "html"
+    if suffix in {".txt", ".text"}:
+        return "text"
+    return "other"
 
 
 def _slug(value: str) -> str:

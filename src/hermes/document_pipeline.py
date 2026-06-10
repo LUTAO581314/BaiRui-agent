@@ -4,7 +4,15 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .storage import DocumentIngestRun, create_document_ingest_run, list_document_ingests, utc_now
+from .storage import (
+    DocumentArtifact,
+    DocumentIngestRun,
+    create_audit_event,
+    create_document_artifact,
+    create_document_ingest_run,
+    list_document_ingests,
+    utc_now,
+)
 
 
 @dataclass(frozen=True)
@@ -13,6 +21,14 @@ class DocumentPipelineResult:
     detail: str
     ingest: dict[str, object] | None
     run: DocumentIngestRun | None
+
+
+@dataclass(frozen=True)
+class DocumentArtifactRegistrationResult:
+    status: str
+    detail: str
+    ingest: dict[str, object] | None
+    artifacts: tuple[DocumentArtifact, ...]
 
 
 def run_document_ingest(data_dir: Path, ingest_id: str, *, timeout_seconds: int) -> DocumentPipelineResult:
@@ -87,6 +103,68 @@ def run_document_ingest(data_dir: Path, ingest_id: str, *, timeout_seconds: int)
             finished_at=utc_now(),
         )
         return DocumentPipelineResult(status="timeout", detail=f"command timed out after {timeout_seconds}s", ingest=ingest, run=run)
+
+
+def register_document_artifacts(data_dir: Path, ingest_id: str) -> DocumentArtifactRegistrationResult:
+    ingest = _find_ingest(data_dir, ingest_id)
+    if ingest is None:
+        return DocumentArtifactRegistrationResult(
+            status="not_found",
+            detail=f"document ingest not found: {ingest_id}",
+            ingest=None,
+            artifacts=(),
+        )
+
+    output_dir = Path(str(ingest.get("output_dir", "")))
+    if not output_dir.exists():
+        create_audit_event(
+            data_dir,
+            "document.artifact_registration_failed",
+            resource_type="document_ingest",
+            resource_ref=ingest_id,
+            risk_level="medium",
+            payload={"reason": "output_dir_not_found", "output_dir": str(output_dir)},
+        )
+        return DocumentArtifactRegistrationResult(
+            status="missing_output",
+            detail=f"output_dir does not exist: {output_dir}",
+            ingest=ingest,
+            artifacts=(),
+        )
+    if not output_dir.is_dir():
+        create_audit_event(
+            data_dir,
+            "document.artifact_registration_failed",
+            resource_type="document_ingest",
+            resource_ref=ingest_id,
+            risk_level="medium",
+            payload={"reason": "output_dir_is_not_directory", "output_dir": str(output_dir)},
+        )
+        return DocumentArtifactRegistrationResult(
+            status="invalid_output",
+            detail=f"output_dir is not a directory: {output_dir}",
+            ingest=ingest,
+            artifacts=(),
+        )
+
+    artifacts = tuple(
+        create_document_artifact(data_dir, ingest_id=ingest_id, path=path, output_dir=output_dir)
+        for path in sorted(output_dir.rglob("*"))
+        if path.is_file()
+    )
+    create_audit_event(
+        data_dir,
+        "document.artifacts_registered",
+        resource_type="document_ingest",
+        resource_ref=ingest_id,
+        payload={"artifact_count": len(artifacts), "output_dir": str(output_dir)},
+    )
+    return DocumentArtifactRegistrationResult(
+        status="completed",
+        detail=f"registered {len(artifacts)} document artifacts",
+        ingest=ingest,
+        artifacts=artifacts,
+    )
 
 
 def _find_ingest(data_dir: Path, ingest_id: str) -> dict[str, object] | None:

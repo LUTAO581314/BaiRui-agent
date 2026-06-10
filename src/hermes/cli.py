@@ -65,7 +65,7 @@ from .adapters.trendradar import (
 from .capabilities import collect_capabilities
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
-from .document_pipeline import run_document_ingest
+from .document_pipeline import register_document_artifacts, run_document_ingest
 from .license import load_license
 from .model_gateway import complete_chat
 from .platform import build_platform_heartbeat
@@ -75,6 +75,7 @@ from .storage import (
     create_document_ingest,
     create_job,
     list_audit_events,
+    list_document_artifacts,
     list_document_ingest_runs,
     list_document_ingests,
     list_jobs,
@@ -108,6 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands.add_parser("jobs", help="List recent file-backed jobs")
     subcommands.add_parser("document-ingests", help="List planned document ingestion records")
     subcommands.add_parser("document-ingest-runs", help="List document ingestion execution records")
+    subcommands.add_parser("document-artifacts", help="List registered document parser artifacts")
     subcommands.add_parser("audit", help="List recent audit events")
     subcommands.add_parser("migrate", help="Run PostgreSQL schema migrations")
     subcommands.add_parser("heartbeat", help="Print the platform heartbeat payload")
@@ -234,6 +236,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_ingest = parse_subcommands.add_parser("run-ingest", help="Execute one planned MinerU document ingestion record")
     run_ingest.add_argument("--ingest-id", required=True)
     run_ingest.add_argument("--timeout-seconds", type=int, default=0)
+    register_artifacts = parse_subcommands.add_parser("register-artifacts", help="Register files produced by one document ingestion")
+    register_artifacts.add_argument("--ingest-id", required=True)
 
     job_parser = subcommands.add_parser("job", help="Create a queued job")
     job_parser.add_argument("--title", default="CLI job")
@@ -301,6 +305,10 @@ def run(argv: list[str] | None = None) -> int:
 
     if command == "document-ingest-runs":
         print_json({"service": "hermes", "document_ingest_runs": list_document_ingest_runs(settings.data_dir)})
+        return 0
+
+    if command == "document-artifacts":
+        print_json({"service": "hermes", "document_artifacts": list_document_artifacts(settings.data_dir)})
         return 0
 
     if command == "audit":
@@ -559,6 +567,10 @@ def run(argv: list[str] | None = None) -> int:
                 timeout_seconds=args.timeout_seconds or settings.mineru_timeout_seconds,
             )
             print_json({"service": "hermes", "document_pipeline": result})
+            return 0 if result.status == "completed" else 1
+        if parse_command == "register-artifacts":
+            result = register_document_artifacts(settings.data_dir, args.ingest_id)
+            print_json({"service": "hermes", "document_artifact_registration": result})
             return 0 if result.status == "completed" else 1
         parser.error(f"unknown document parse command: {parse_command}")
         return 2

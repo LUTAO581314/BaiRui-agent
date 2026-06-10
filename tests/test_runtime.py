@@ -9,7 +9,7 @@ from src.hermes.capabilities import collect_capabilities
 from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
 from src.hermes.db import database_status
-from src.hermes.document_pipeline import run_document_ingest
+from src.hermes.document_pipeline import register_document_artifacts, run_document_ingest
 from src.hermes.adapters.everos import build_search_payload, status as everos_status
 from src.hermes.adapters.funasr import build_server_command as build_funasr_server_command, build_transcription_payload as build_funasr_transcription_payload, status as funasr_status
 from src.hermes.adapters.mineru import build_parse_command as build_mineru_parse_command, status as mineru_status
@@ -25,6 +25,7 @@ from src.hermes.storage import (
     create_document_ingest,
     create_job,
     list_audit_events,
+    list_document_artifacts,
     list_document_ingest_runs,
     list_document_ingests,
     list_jobs,
@@ -141,6 +142,54 @@ class RuntimeFoundationTests(unittest.TestCase):
             runs = list_document_ingest_runs(data_dir)
             self.assertIsNone(runs[0]["exit_code"])
             self.assertIn("__missing_mineru_binary__", runs[0]["error"])
+
+    def test_register_document_artifacts_records_real_output_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            output_dir = root / "mineru-output"
+            nested_dir = output_dir / "images"
+            nested_dir.mkdir(parents=True)
+            markdown = output_dir / "sample.md"
+            metadata = output_dir / "sample.json"
+            image = nested_dir / "page-1.png"
+            markdown.write_text("# Sample\n\nParsed text", encoding="utf-8")
+            metadata.write_text('{"pages": 1}', encoding="utf-8")
+            image.write_bytes(b"\x89PNG\r\n\x1a\n")
+            ingest = create_document_ingest(
+                data_dir,
+                title="Artifact plan",
+                input_path="sample.pdf",
+                output_dir=str(output_dir),
+                parser_command=("mineru", "-p", "sample.pdf", "-o", str(output_dir)),
+            )
+            result = register_document_artifacts(data_dir, ingest.id)
+            records = list_document_artifacts(data_dir)
+            audit = list_audit_events(data_dir)
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(len(result.artifacts), 3)
+        self.assertEqual(len(records), 3)
+        types = {record["relative_path"]: record["artifact_type"] for record in records}
+        self.assertEqual(types["sample.md"], "markdown")
+        self.assertEqual(types["sample.json"], "json")
+        self.assertEqual(types["images\\page-1.png"] if "images\\page-1.png" in types else types["images/page-1.png"], "image")
+        self.assertTrue(all(record["sha256"] for record in records))
+        self.assertTrue(all(record["size_bytes"] > 0 for record in records))
+        self.assertEqual(audit[1]["action"], "document.artifacts_registered")
+
+    def test_register_document_artifacts_reports_missing_output_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            ingest = create_document_ingest(
+                data_dir,
+                title="Missing output",
+                input_path="sample.pdf",
+                output_dir=str(Path(tmp) / "missing-output"),
+                parser_command=("mineru", "-p", "sample.pdf"),
+            )
+            result = register_document_artifacts(data_dir, ingest.id)
+        self.assertEqual(result.status, "missing_output")
+        self.assertEqual(result.artifacts, ())
 
     def test_write_obsidian_report_creates_markdown_and_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -379,6 +428,37 @@ class RuntimeFoundationTests(unittest.TestCase):
         payload = print_json.call_args.args[0]
         self.assertEqual(payload["document_pipeline"].status, "completed")
         self.assertEqual(list_print_json.call_args.args[0]["document_ingest_runs"][0]["status"], "completed")
+
+    def test_cli_document_register_artifacts_lists_registered_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            output_dir = root / "mineru-output"
+            output_dir.mkdir()
+            (output_dir / "sample.md").write_text("parsed text", encoding="utf-8")
+            ingest = create_document_ingest(
+                data_dir,
+                title="CLI artifact plan",
+                input_path="sample.pdf",
+                output_dir=str(output_dir),
+                parser_command=("mineru", "-p", "sample.pdf", "-o", str(output_dir)),
+            )
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["document", "parse", "register-artifacts", "--ingest-id", ingest.id])
+                with patch("src.hermes.cli.print_json") as list_print_json:
+                    list_code = run(["document-artifacts"])
+        self.assertEqual(code, 0)
+        self.assertEqual(list_code, 0)
+        payload = print_json.call_args.args[0]
+        self.assertEqual(payload["document_artifact_registration"].status, "completed")
+        self.assertEqual(payload["document_artifact_registration"].artifacts[0].artifact_type, "markdown")
+        self.assertEqual(list_print_json.call_args.args[0]["document_artifacts"][0]["artifact_type"], "markdown")
 
     def test_cli_memory_status_prints_everos_status(self):
         with tempfile.TemporaryDirectory() as tmp:

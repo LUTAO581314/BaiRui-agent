@@ -189,8 +189,10 @@ python -m src.hermes document parse install-command
 python -m src.hermes document parse parse-command --input-path ./sample.pdf
 python -m src.hermes document parse ingest-plan --input-path ./sample.pdf --title "Sample"
 python -m src.hermes document parse run-ingest --ingest-id <ingest_id>
+python -m src.hermes document parse register-artifacts --ingest-id <ingest_id>
 python -m src.hermes document-ingests
 python -m src.hermes document-ingest-runs
+python -m src.hermes document-artifacts
 ```
 
 `ingest-plan` creates a local `document_ingests.jsonl` record with the input
@@ -208,9 +210,15 @@ writes `document_ingest_runs.jsonl` with command, cwd, exit code, stdout,
 stderr, error, and timestamps. Missing executables, non-zero exits, and
 timeouts are recorded as failed/timeout runs instead of being hidden.
 
-Hermes still does not claim full ingestion is complete after command execution.
-The next pipeline step will register output files, index titles/text in Sonic,
-and store source references in PostgreSQL.
+`register-artifacts` scans the ingest output directory and writes
+`document_artifacts.jsonl` records for real files produced by MinerU. Each
+artifact record stores the ingest id, absolute path, relative path, artifact
+type, MIME type, size, sha256 hash, and timestamp. Markdown, JSON, images,
+tables, HTML, and text files are classified for downstream processing.
+
+Hermes still does not claim full knowledge ingestion is complete after artifact
+registration. The next pipeline phases are Sonic indexing, EverOS memory
+candidates, PostgreSQL source references, and Obsidian report generation.
 
 ## 8. Unified Runtime Readiness
 
