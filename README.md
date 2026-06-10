@@ -3,16 +3,15 @@
 This repository is the source-owned engineering framework for MOXI Industrial
 Agent OS.
 
-The previous prototype source has been removed. The repository now keeps the
-commercial product plan, deployment environment baseline, and clean source
-skeleton from which Hermes will be rebuilt.
+The previous prototype source and historical phase reports have been removed.
+The repository now restarts from a clean, mature-source-first Hermes
+productization baseline.
 
 ## Current Repository State
 
 This repository intentionally contains:
 
 - current product and architecture documents under `docs/`;
-- historical phase summaries under `reports/`;
 - environment templates and deployment skeleton files;
 - `src/` as the rebuilt Hermes runtime source location;
 - `tests/` as the rebuilt test suite location.
@@ -23,6 +22,7 @@ This repository intentionally does not contain:
 - old tests tied to removed implementation details;
 - external project patches;
 - copied frontend prototypes;
+- historical phase report noise;
 - runtime data, logs, secrets, sessions, QR state, or generated media.
 
 ## Product Direction
@@ -82,8 +82,8 @@ Production will support only two deployment modes:
 
 ## Documentation Map
 
-The old explanatory documents have been removed. Phase summaries remain under
-`reports/`. The current product plan is now organized by functional domain:
+The old explanatory documents and phase summaries have been removed. The
+current product plan is organized by functional domain:
 
 - [Product Blueprint](docs/00-product-blueprint.md)
 - [System Architecture](docs/01-system-architecture.md)
@@ -108,6 +108,15 @@ The old explanatory documents have been removed. Phase summaries remain under
 
 ## P0 Hermes Deployment
 
+CLI entrypoint:
+
+```bash
+python -m src.hermes --help
+python -m src.hermes status
+python -m src.hermes capabilities
+python -m src.hermes serve
+```
+
 Local usable deployment remains:
 
 ```bash
@@ -131,8 +140,6 @@ The repository must converge toward production ownership:
 - External projects are isolated behind adapter contracts.
 - Platform credentials, sessions, QR state, generated media, and raw private logs
   must stay outside Git.
-- Every phase must include verification and a Chinese owner-facing report in
-  `reports/`.
 - New runtime code must be rebuilt under `src/`.
 - New tests must be rebuilt under `tests/`.
 - External runtime source lives under `vendor/runtimes/` and must keep its

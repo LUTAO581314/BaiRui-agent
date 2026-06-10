@@ -3,8 +3,10 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from src.hermes.capabilities import collect_capabilities
+from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
 from src.hermes.db import database_status
 from src.hermes.license import load_license, sign_license_payload
@@ -104,6 +106,46 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(heartbeat["backup_status"], "not_configured")
         self.assertNotIn("prompt", heartbeat)
         self.assertNotIn("messages", heartbeat)
+
+    def test_cli_parser_exposes_product_commands(self):
+        parser = build_parser()
+        help_text = parser.format_help()
+        self.assertIn("serve", help_text)
+        self.assertIn("status", help_text)
+        self.assertIn("capabilities", help_text)
+        self.assertIn("heartbeat", help_text)
+
+    def test_cli_status_prints_runtime_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"HERMES_DATA_DIR": str(Path(tmp) / "data"), "HERMES_LOG_DIR": str(Path(tmp) / "logs"), "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault")}, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["status"])
+        self.assertEqual(code, 0)
+        payload = print_json.call_args.args[0]
+        self.assertEqual(payload["service"], "hermes")
+        self.assertEqual(payload["brand_key"], "bairui")
+        self.assertEqual(payload["database"].status, "missing_config")
+
+    def test_cli_job_creates_file_backed_job(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            with patch.dict(os.environ, {"HERMES_DATA_DIR": str(data_dir), "HERMES_LOG_DIR": str(Path(tmp) / "logs"), "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault")}, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["job", "--title", "CLI task", "--prompt", "do work", "--route", "ops"])
+            jobs_file_exists = (data_dir / "jobs.jsonl").exists()
+        self.assertEqual(code, 0)
+        payload = print_json.call_args.args[0]
+        self.assertEqual(payload["job"].title, "CLI task")
+        self.assertEqual(payload["job"].route, "ops")
+        self.assertTrue(jobs_file_exists)
+
+    def test_cli_chat_missing_config_returns_failure_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"HERMES_DATA_DIR": str(Path(tmp) / "data"), "HERMES_LOG_DIR": str(Path(tmp) / "logs"), "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"), "BAIRUI_MODEL_BASE_URL": "", "BAIRUI_MODEL_API_KEY": "", "BAIRUI_MODEL_NAME": ""}, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["chat", "--prompt", "hello"])
+        self.assertEqual(code, 1)
+        self.assertEqual(print_json.call_args.args[0]["chat"].status, "missing_config")
 
 
 if __name__ == "__main__":

@@ -1,12 +1,21 @@
 # Hermes Runtime Source
 
-This directory is reserved for the rebuilt Hermes runtime source.
+This directory contains the bairui/Hermes runtime source.
 
-The previous prototype implementation has been removed. New source code must be
-implemented from the current product, architecture, database, memory, deployment,
-and commercial delivery documents under `docs/`.
+The runtime is mature-source-first: use existing Hermes/vendor runtime code
+where it reduces product risk, preserve upstream attribution and licenses, and
+add bairui product behavior through clear adapters, deployment scripts,
+readiness checks, CLI commands, tests, and platform contracts.
 
-Initial rebuild order:
+Current CLI entrypoint:
+
+```bash
+python -m src.hermes --help
+python -m src.hermes status
+python -m src.hermes serve
+```
+
+Productization order:
 
 1. configuration and environment loading;
 2. PostgreSQL migrations;

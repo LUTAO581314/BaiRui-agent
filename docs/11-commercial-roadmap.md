@@ -5,7 +5,7 @@
 Status target:
 
 - old explanatory docs removed;
-- phase reports preserved;
+- historical phase reports removed;
 - product documentation rebuilt by function;
 - PostgreSQL selected for production;
 - server rebuild strategy documented.
@@ -13,7 +13,7 @@ Status target:
 Acceptance:
 
 - README points only to the new documentation set;
-- `reports/` remains intact;
+- no tracked `reports/` directory remains;
 - no stale docs continue to describe the old architecture as current.
 
 ## 2. Phase B: Server Rebuild Foundation

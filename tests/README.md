@@ -1,10 +1,11 @@
 # Tests
 
-This directory is reserved for the rebuilt Hermes test suite.
+This directory contains the bairui/Hermes test suite.
 
-The previous tests were removed with the old runtime implementation. New tests
-should be added alongside the rebuilt runtime, starting with:
+Tests should protect the mature-source-first product boundary:
 
+- CLI behavior;
+- source/runtime attribution boundaries;
 - configuration loading;
 - PostgreSQL migration checks;
 - health and readiness API;

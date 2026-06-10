@@ -43,7 +43,6 @@ The repository should converge toward this structure:
   deploy/                # Nginx, systemd, container templates
   scripts/               # product deployment and verification scripts
   docs/                  # current product documentation only
-  reports/               # historical phase summaries
   tests/                 # backend and product contract tests
 ```
 
@@ -222,4 +221,4 @@ Commercial milestones must also include:
 - security review;
 - license review;
 - release note;
-- owner-facing Chinese report.
+- operator-facing release or deployment note when needed.

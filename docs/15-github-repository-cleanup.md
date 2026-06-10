@@ -20,7 +20,6 @@ Keep:
 - source code owned by this product;
 - tests;
 - current product documentation;
-- phase reports;
 - deployment scripts that belong to the new product path;
 - CI workflows;
 - configuration templates without secrets;
@@ -37,6 +36,8 @@ Remove:
 - legacy static pages not used by the product;
 - outdated deployment scripts that point to old paths;
 - probe scripts for retired runtimes;
+- historical phase reports that compete with the current mature-source-first
+  baseline;
 - runtime data, logs, sessions, QR state, and media.
 
 ## 4. Quarantine Rule
@@ -49,16 +50,14 @@ Use one of:
 - Git submodule only after license review;
 - container image reference;
 - documented adapter contract;
-- generated report stored in `reports/` only when it is a phase summary.
+- documented evidence in current docs or release notes.
 
 ## 5. Documentation Rule
 
 Current docs live in `docs/`.
 
-Historical owner-facing phase reports live in `reports/`.
-
 Do not keep multiple competing architecture documents. When the architecture
-changes, update the current functional docs and write a phase report.
+changes, update the current functional docs directly.
 
 ## 6. Deployment Rule
 
@@ -84,4 +83,3 @@ The repository is clean when:
 - repository hygiene check passes;
 - CI passes;
 - README points only to current docs.
-

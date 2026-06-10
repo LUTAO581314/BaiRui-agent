@@ -162,9 +162,13 @@ class HermesHandler(BaseHTTPRequestHandler):
         return {}
 
 
-def main() -> None:
-    settings = load_settings()
+def serve(settings: Any | None = None) -> None:
+    settings = settings or load_settings()
     ensure_runtime_dirs(settings)
     server = ThreadingHTTPServer((settings.host, settings.port), HermesHandler)
     print(f"Hermes listening on http://{settings.host}:{settings.port}", flush=True)
     server.serve_forever()
+
+
+def main() -> None:
+    serve()
