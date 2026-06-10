@@ -115,6 +115,15 @@ class DocumentWorkbenchState:
     ingest_reports: tuple[dict[str, object], ...]
 
 
+@dataclass(frozen=True)
+class DocumentWorkbenchStepResult:
+    status: str
+    detail: str
+    action: dict[str, str] | None
+    result: object | None
+    state: DocumentWorkbenchState
+
+
 def run_document_ingest(data_dir: Path, ingest_id: str, *, timeout_seconds: int) -> DocumentPipelineResult:
     ingest = _find_ingest(data_dir, ingest_id)
     if ingest is None:
@@ -715,6 +724,85 @@ def build_document_workbench_state(settings: Settings, ingest_id: str) -> Docume
     )
 
 
+def execute_document_workbench_next(
+    settings: Settings,
+    ingest_id: str,
+    *,
+    timeout_seconds: int,
+    collection: str = "bairui",
+    bucket: str = "documents",
+    lang: str = "",
+    max_candidates: int = 20,
+) -> DocumentWorkbenchStepResult:
+    state = build_document_workbench_state(settings, ingest_id)
+    if state.status == "not_found":
+        return DocumentWorkbenchStepResult(
+            status="not_found",
+            detail=state.detail,
+            action=None,
+            result=None,
+            state=state,
+        )
+
+    action = state.next_actions[0] if state.next_actions else {"command": "done", "label": "Ingest workflow is complete"}
+    command = action.get("command", "")
+    result: object | None
+
+    if command == "done":
+        return DocumentWorkbenchStepResult(
+            status="completed",
+            detail="document ingest workflow is already complete",
+            action=action,
+            result=None,
+            state=state,
+        )
+    if command == "review-memory-candidate":
+        pending_candidates = _pending_memory_candidates(state.memory_candidates, state.memory_reviews)
+        return DocumentWorkbenchStepResult(
+            status="needs_review",
+            detail=f"{len(pending_candidates)} memory candidates require owner review",
+            action=action,
+            result={"pending_candidates": pending_candidates},
+            state=state,
+        )
+    if command == "run-ingest":
+        result = run_document_ingest(settings.data_dir, ingest_id, timeout_seconds=timeout_seconds)
+    elif command == "register-artifacts":
+        result = register_document_artifacts(settings.data_dir, ingest_id)
+    elif command == "index-artifacts":
+        result = index_document_artifacts(settings, ingest_id, collection=collection, bucket=bucket, lang=lang)
+    elif command == "memory-candidates":
+        result = generate_document_memory_candidates(settings.data_dir, ingest_id, max_candidates=max_candidates)
+    elif command == "source-refs":
+        result = create_document_source_refs(settings, ingest_id)
+    elif command == "ingest-report":
+        result = create_document_ingest_report(settings, ingest_id)
+    else:
+        return DocumentWorkbenchStepResult(
+            status="unsupported_action",
+            detail=f"unsupported workbench action: {command}",
+            action=action,
+            result=None,
+            state=state,
+        )
+
+    next_state = build_document_workbench_state(settings, ingest_id)
+    result_status = str(getattr(result, "status", ""))
+    if result_status in {"completed", "skipped"}:
+        status = "completed"
+    elif result_status == "not_found":
+        status = "not_found"
+    else:
+        status = "failed"
+    return DocumentWorkbenchStepResult(
+        status=status,
+        detail=f"executed workbench action: {command}",
+        action=action,
+        result=result,
+        state=next_state,
+    )
+
+
 def list_document_ingest_runs_for_ingest(data_dir: Path, ingest_id: str) -> list[dict[str, object]]:
     from .storage import list_document_ingest_runs
 
@@ -811,6 +899,14 @@ def _workbench_next_actions(
     if pipeline.get("obsidian_report") == "pending":
         return [{"command": "ingest-report", "label": "Write Obsidian ingest report"}]
     return [{"command": "done", "label": "Ingest workflow is complete"}]
+
+
+def _pending_memory_candidates(
+    candidates: tuple[dict[str, object], ...],
+    reviews: tuple[dict[str, object], ...],
+) -> tuple[dict[str, object], ...]:
+    reviewed_ids = {str(review.get("candidate_id", "")) for review in reviews}
+    return tuple(candidate for candidate in candidates if str(candidate.get("id", "")) not in reviewed_ids)
 
 
 def _find_ingest(data_dir: Path, ingest_id: str) -> dict[str, object] | None:

@@ -196,6 +196,7 @@ python -m src.hermes document parse review-memory-candidate --candidate-id <cand
 python -m src.hermes document parse source-refs --ingest-id <ingest_id>
 python -m src.hermes document parse ingest-report --ingest-id <ingest_id>
 python -m src.hermes document parse workbench-state --ingest-id <ingest_id>
+python -m src.hermes document parse workbench-next --ingest-id <ingest_id>
 python -m src.hermes document-ingests
 python -m src.hermes document-ingest-runs
 python -m src.hermes document-ingest-reports
@@ -283,6 +284,20 @@ The same contract is exposed over HTTP at
 `POST /document/parse/workbench-state` with `{"ingest_id": "..."}`. This lets
 Brain UI or the Bairui frontend render a document knowledge ingestion
 workbench without manually joining every file-backed list endpoint.
+
+`workbench-next` executes the first safe action from `next_actions` and returns
+both the action result and the refreshed workbench state. It is available as:
+
+```bash
+python -m src.hermes document parse workbench-next --ingest-id <ingest_id>
+```
+
+and over HTTP at `POST /document/parse/workbench-next`. The command can advance
+parser execution, artifact registration, Sonic indexing, memory candidate
+generation, source reference creation, and Obsidian report writing. It does not
+auto-approve or auto-reject memory candidates. When owner review is required,
+it returns `needs_review` with the pending candidates so the UI can show an
+explicit approval/rejection step.
 
 ## 8. Unified Runtime Readiness
 

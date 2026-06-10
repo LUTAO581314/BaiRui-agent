@@ -9,7 +9,7 @@ from src.hermes.capabilities import collect_capabilities
 from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
 from src.hermes.db import SCHEMA_SQL, database_status
-from src.hermes.document_pipeline import build_document_workbench_state, create_document_ingest_report, create_document_source_refs, generate_document_memory_candidates, index_document_artifacts, register_document_artifacts, review_document_memory_candidate, run_document_ingest
+from src.hermes.document_pipeline import build_document_workbench_state, create_document_ingest_report, create_document_source_refs, execute_document_workbench_next, generate_document_memory_candidates, index_document_artifacts, register_document_artifacts, review_document_memory_candidate, run_document_ingest
 from src.hermes.adapters.everos import EverOSResult, build_search_payload, status as everos_status
 from src.hermes.adapters.funasr import build_server_command as build_funasr_server_command, build_transcription_payload as build_funasr_transcription_payload, status as funasr_status
 from src.hermes.adapters.mineru import build_parse_command as build_mineru_parse_command, status as mineru_status
@@ -589,6 +589,63 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertFalse(state.blockers)
         self.assertTrue(any("Sonic index" in warning for warning in state.warnings))
 
+    def test_document_workbench_next_executes_parser_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            output_dir = root / "mineru-output"
+            output_dir.mkdir()
+            ingest = create_document_ingest(
+                data_dir,
+                title="Workbench next plan",
+                input_path="sample.pdf",
+                output_dir=str(output_dir),
+                parser_command=("python", "-c", "print('workbench next ok')"),
+            )
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                result = execute_document_workbench_next(load_settings(), ingest.id, timeout_seconds=10)
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.action["command"], "run-ingest")
+        self.assertEqual(result.result.status, "completed")
+        self.assertEqual(result.state.pipeline["parse"], "completed")
+
+    def test_document_workbench_next_stops_for_memory_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            output_dir = root / "mineru-output"
+            output_dir.mkdir()
+            (output_dir / "sample.md").write_text("Owner must review this memory candidate.", encoding="utf-8")
+            ingest = create_document_ingest(
+                data_dir,
+                title="Review stop plan",
+                input_path="sample.pdf",
+                output_dir=str(output_dir),
+                parser_command=("python", "-c", "print('ok')"),
+            )
+            run_document_ingest(data_dir, ingest.id, timeout_seconds=10)
+            register_document_artifacts(data_dir, ingest.id)
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "SONIC_HOST": "",
+                "SONIC_PASSWORD": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                index_document_artifacts(load_settings(), ingest.id)
+                generate_document_memory_candidates(data_dir, ingest.id)
+                result = execute_document_workbench_next(load_settings(), ingest.id, timeout_seconds=10)
+        self.assertEqual(result.status, "needs_review")
+        self.assertEqual(result.action["command"], "review-memory-candidate")
+        self.assertEqual(len(result.result["pending_candidates"]), 1)
+        self.assertEqual(result.state.counts["memory_reviews"], 0)
+
     def test_write_obsidian_report_creates_markdown_and_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1059,6 +1116,33 @@ class RuntimeFoundationTests(unittest.TestCase):
         payload = print_json.call_args.args[0]
         self.assertEqual(payload["document_workbench"].pipeline["plan"], "completed")
         self.assertEqual(payload["document_workbench"].next_actions[0]["command"], "run-ingest")
+
+    def test_cli_document_workbench_next_executes_next_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            output_dir = root / "mineru-output"
+            output_dir.mkdir()
+            ingest = create_document_ingest(
+                data_dir,
+                title="CLI workbench next plan",
+                input_path="sample.pdf",
+                output_dir=str(output_dir),
+                parser_command=("python", "-c", "print('cli workbench next ok')"),
+            )
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["document", "parse", "workbench-next", "--ingest-id", ingest.id, "--timeout-seconds", "10"])
+        self.assertEqual(code, 0)
+        payload = print_json.call_args.args[0]
+        self.assertEqual(payload["document_workbench_step"].status, "completed")
+        self.assertEqual(payload["document_workbench_step"].action["command"], "run-ingest")
+        self.assertEqual(payload["document_workbench_step"].state.pipeline["parse"], "completed")
 
     def test_cli_memory_status_prints_everos_status(self):
         with tempfile.TemporaryDirectory() as tmp:
