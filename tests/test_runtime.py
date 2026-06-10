@@ -127,6 +127,23 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("index", help_text)
         self.assertIn("runtime-readiness", help_text)
 
+    def test_deploy_scripts_poll_readiness_and_write_json(self):
+        bash_script = Path("scripts/deploy-usable.sh").read_text(encoding="utf-8")
+        ps_script = Path("scripts/deploy-usable.ps1").read_text(encoding="utf-8")
+        for script in (bash_script, ps_script):
+            self.assertIn("/health", script)
+            self.assertIn("/ready", script)
+            self.assertIn("/runtime/readiness", script)
+            self.assertIn("readiness.json", script)
+        self.assertIn("wait_for_endpoint", bash_script)
+        self.assertIn("Wait-Endpoint", ps_script)
+
+    def test_repo_hygiene_allows_env_placeholder_passwords(self):
+        hygiene_script = Path("scripts/check-repo-hygiene.ps1").read_text(encoding="utf-8")
+        sonic_config = Path("infra/sonic/config.cfg").read_text(encoding="utf-8")
+        self.assertIn(r"\$\{env\.", hygiene_script)
+        self.assertIn('auth_password = "${env.SONIC_CHANNEL__AUTH_PASSWORD}"', sonic_config)
+
     def test_everos_adapter_detects_source_and_license(self):
         settings = load_settings()
         state = everos_status(settings)

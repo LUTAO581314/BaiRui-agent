@@ -3,6 +3,9 @@ set -euo pipefail
 
 MODE="${MODE:-local}"
 DOMAIN="${DOMAIN:-}"
+HERMES_LOCAL_URL="${HERMES_LOCAL_URL:-http://127.0.0.1:8787}"
+READINESS_FILE="${READINESS_FILE:-data/readiness.json}"
+READINESS_TIMEOUT_SECONDS="${READINESS_TIMEOUT_SECONDS:-90}"
 
 step() {
   printf '== %s ==\n' "$1"
@@ -35,6 +38,91 @@ ensure_env_value() {
   else
     printf '%s=%s\n' "$name" "$value" >> .env
   fi
+}
+
+fetch_url() {
+  local url="$1"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS "$url"
+    return
+  fi
+  python - "$url" <<'PY'
+import sys
+import urllib.request
+
+with urllib.request.urlopen(sys.argv[1], timeout=5) as response:
+    sys.stdout.write(response.read().decode("utf-8"))
+PY
+}
+
+wait_for_endpoint() {
+  local label="$1"
+  local path="$2"
+  local deadline=$((SECONDS + READINESS_TIMEOUT_SECONDS))
+  local url="${HERMES_LOCAL_URL}${path}"
+  while (( SECONDS < deadline )); do
+    if fetch_url "$url" >/dev/null 2>&1; then
+      printf '%s reachable: %s\n' "$label" "$url"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "$label did not become reachable before timeout: $url" >&2
+  return 1
+}
+
+write_readiness_file() {
+  mkdir -p "$(dirname "$READINESS_FILE")"
+  python - "$HERMES_LOCAL_URL" "$READINESS_FILE" <<'PY'
+import json
+import sys
+import time
+import urllib.request
+
+base_url = sys.argv[1].rstrip("/")
+target = sys.argv[2]
+paths = {
+    "health": "/health",
+    "ready": "/ready",
+    "runtime_readiness": "/runtime/readiness",
+}
+payload = {
+    "generated_at_unix": int(time.time()),
+    "base_url": base_url,
+    "endpoints": {},
+}
+overall = "ready"
+for name, path in paths.items():
+    url = base_url + path
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            body = response.read().decode("utf-8")
+            data = json.loads(body) if body else {}
+            payload["endpoints"][name] = {
+                "status": "reachable",
+                "http_status": response.status,
+                "url": url,
+                "body": data,
+            }
+    except Exception as exc:
+        overall = "blocked"
+        payload["endpoints"][name] = {
+            "status": "error",
+            "url": url,
+            "error": str(exc),
+        }
+
+runtime = payload["endpoints"].get("runtime_readiness", {}).get("body", {}).get("runtime_readiness")
+if isinstance(runtime, dict) and runtime.get("status") == "blocked":
+    overall = "blocked"
+elif overall == "ready" and isinstance(runtime, dict) and runtime.get("status") == "partial":
+    overall = "partial"
+
+payload["status"] = overall
+with open(target, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+    handle.write("\n")
+PY
 }
 
 step "Preparing MOXI Hermes runtime environment"
@@ -74,7 +162,13 @@ else
 fi
 
 step "Deployment started"
-printf 'Hermes health:       http://127.0.0.1:8787/health\n'
-printf 'Hermes ready:        http://127.0.0.1:8787/ready\n'
-printf 'Hermes capabilities: http://127.0.0.1:8787/capabilities\n'
-printf 'Runtime readiness:   http://127.0.0.1:8787/runtime/readiness\n'
+wait_for_endpoint "Hermes health" "/health"
+wait_for_endpoint "Hermes ready" "/ready"
+wait_for_endpoint "Runtime readiness" "/runtime/readiness"
+write_readiness_file
+
+printf 'Hermes health:       %s/health\n' "$HERMES_LOCAL_URL"
+printf 'Hermes ready:        %s/ready\n' "$HERMES_LOCAL_URL"
+printf 'Hermes capabilities: %s/capabilities\n' "$HERMES_LOCAL_URL"
+printf 'Runtime readiness:   %s/runtime/readiness\n' "$HERMES_LOCAL_URL"
+printf 'Readiness file:      %s\n' "$READINESS_FILE"

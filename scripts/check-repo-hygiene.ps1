@@ -41,6 +41,9 @@ foreach ($file in $files) {
 
     $matches = Select-String -Path $file -Pattern $secretPattern -AllMatches -ErrorAction SilentlyContinue
     foreach ($match in $matches) {
+        if ($match.Line -match "\$\{env\.[A-Za-z0-9_]+\}") {
+            continue
+        }
         $hits += "${file}:$($match.LineNumber)"
     }
 }

@@ -25,6 +25,8 @@ Usable stage means:
 - `/ready` is reachable;
 - `/capabilities` is reachable;
 - `/runtime/readiness` is reachable;
+- `data/readiness.json` is written with the health, readiness, and runtime
+  readiness endpoint bodies;
 - the deploy script prints the local access URLs;
 - unsupported public callbacks are clearly disabled or marked unavailable.
 
@@ -113,10 +115,11 @@ http://127.0.0.1:8787/health
 http://127.0.0.1:8787/ready
 http://127.0.0.1:8787/capabilities
 http://127.0.0.1:8787/runtime/readiness
+data/readiness.json
 ```
 
 The deploy command must fail loudly when Docker, Docker Compose, `.env.example`,
-or health checks are unavailable.
+health checks, or readiness polling are unavailable.
 
 ## 7. Roadmap To Full One-Click Production
 
@@ -128,6 +131,7 @@ Base one-command deployment:
 - Sonic local index;
 - local folders;
 - health checks.
+- readiness polling and local `data/readiness.json` evidence.
 
 Next deploy layers:
 

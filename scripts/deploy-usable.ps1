@@ -1,7 +1,10 @@
 param(
     [ValidateSet("local", "domain")]
     [string] $Mode = "local",
-    [string] $Domain = ""
+    [string] $Domain = "",
+    [string] $HermesLocalUrl = "http://127.0.0.1:8787",
+    [string] $ReadinessFile = "data/readiness.json",
+    [int] $ReadinessTimeoutSeconds = 90
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,6 +40,67 @@ function Ensure-EnvValue($Name, $Value) {
     Add-Content -LiteralPath ".env" -Value "$Name=$Value"
 }
 
+function Wait-Endpoint($Label, $Path) {
+    $deadline = (Get-Date).AddSeconds($ReadinessTimeoutSeconds)
+    $url = "$HermesLocalUrl$Path"
+    while ((Get-Date) -lt $deadline) {
+        try {
+            Invoke-RestMethod -Uri $url -TimeoutSec 5 | Out-Null
+            Write-Host "$Label reachable: $url"
+            return
+        } catch {
+            Start-Sleep -Seconds 2
+        }
+    }
+    throw "$Label did not become reachable before timeout: $url"
+}
+
+function Write-ReadinessFile {
+    $parent = Split-Path -Parent $ReadinessFile
+    if (-not [string]::IsNullOrWhiteSpace($parent)) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+
+    $endpoints = [ordered]@{}
+    $overall = "ready"
+    foreach ($item in @(
+        @{ Name = "health"; Path = "/health" },
+        @{ Name = "ready"; Path = "/ready" },
+        @{ Name = "runtime_readiness"; Path = "/runtime/readiness" }
+    )) {
+        $url = "$HermesLocalUrl$($item.Path)"
+        try {
+            $body = Invoke-RestMethod -Uri $url -TimeoutSec 10
+            $endpoints[$item.Name] = [ordered]@{
+                status = "reachable"
+                url = $url
+                body = $body
+            }
+        } catch {
+            $overall = "blocked"
+            $endpoints[$item.Name] = [ordered]@{
+                status = "error"
+                url = $url
+                error = $_.Exception.Message
+            }
+        }
+    }
+
+    $runtime = $endpoints["runtime_readiness"].body.runtime_readiness
+    if ($runtime -and $runtime.status -eq "blocked") {
+        $overall = "blocked"
+    } elseif ($overall -eq "ready" -and $runtime -and $runtime.status -eq "partial") {
+        $overall = "partial"
+    }
+
+    [ordered]@{
+        status = $overall
+        generated_at_unix = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        base_url = $HermesLocalUrl
+        endpoints = $endpoints
+    } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $ReadinessFile -Encoding UTF8
+}
+
 Write-Step "Preparing MOXI Hermes runtime environment"
 Ensure-EnvFile
 Ensure-EnvValue "POSTGRES_DB" "moxi"
@@ -67,7 +131,13 @@ Write-Step "Starting PostgreSQL and Hermes"
 if ($LASTEXITCODE -ne 0) { throw "docker compose failed" }
 
 Write-Step "Deployment started"
-Write-Host "Hermes health:       http://127.0.0.1:8787/health"
-Write-Host "Hermes ready:        http://127.0.0.1:8787/ready"
-Write-Host "Hermes capabilities: http://127.0.0.1:8787/capabilities"
-Write-Host "Runtime readiness:   http://127.0.0.1:8787/runtime/readiness"
+Wait-Endpoint "Hermes health" "/health"
+Wait-Endpoint "Hermes ready" "/ready"
+Wait-Endpoint "Runtime readiness" "/runtime/readiness"
+Write-ReadinessFile
+
+Write-Host "Hermes health:       $HermesLocalUrl/health"
+Write-Host "Hermes ready:        $HermesLocalUrl/ready"
+Write-Host "Hermes capabilities: $HermesLocalUrl/capabilities"
+Write-Host "Runtime readiness:   $HermesLocalUrl/runtime/readiness"
+Write-Host "Readiness file:      $ReadinessFile"
