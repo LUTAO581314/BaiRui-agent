@@ -32,5 +32,5 @@ foreach ($path in $required) {
 [pscustomobject]@{
     status = "ok"
     mode = "runtime-foundation"
-    message = "MOXI Hermes runtime foundation is present."
+    message = "bairui runtime foundation is present."
 }

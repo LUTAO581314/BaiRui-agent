@@ -34,5 +34,5 @@ if ($combined -notmatch "bairui") {
 [pscustomobject]@{
     status = "ok"
     mode = "deployment-assets"
-    message = "bairui Hermes deployment assets are present."
+    message = "bairui deployment assets are present."
 }

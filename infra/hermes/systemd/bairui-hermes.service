@@ -1,5 +1,5 @@
 [Unit]
-Description=bairui Hermes Agent OS runtime
+Description=bairui Agent OS runtime
 After=network-online.target docker.service
 Wants=network-online.target
 

@@ -125,7 +125,7 @@ with open(target, "w", encoding="utf-8") as handle:
 PY
 }
 
-step "Preparing MOXI Hermes runtime environment"
+step "Preparing bairui runtime environment"
 ensure_env_file
 ensure_env_value "POSTGRES_DB" "moxi"
 ensure_env_value "POSTGRES_USER" "moxi"
@@ -151,7 +151,7 @@ if [[ "$MODE" == "domain" && -z "$DOMAIN" ]]; then
   exit 1
 fi
 
-step "Starting PostgreSQL and Hermes"
+step "Starting PostgreSQL and bairui"
 if docker compose version >/dev/null 2>&1; then
   docker compose -f docker-compose.production.yml up -d --build
 elif command -v docker-compose >/dev/null 2>&1; then
@@ -162,13 +162,13 @@ else
 fi
 
 step "Deployment started"
-wait_for_endpoint "Hermes health" "/health"
-wait_for_endpoint "Hermes ready" "/ready"
+wait_for_endpoint "bairui health" "/health"
+wait_for_endpoint "bairui ready" "/ready"
 wait_for_endpoint "Runtime readiness" "/runtime/readiness"
 write_readiness_file
 
-printf 'Hermes health:       %s/health\n' "$HERMES_LOCAL_URL"
-printf 'Hermes ready:        %s/ready\n' "$HERMES_LOCAL_URL"
-printf 'Hermes capabilities: %s/capabilities\n' "$HERMES_LOCAL_URL"
+printf 'bairui health:       %s/health\n' "$HERMES_LOCAL_URL"
+printf 'bairui ready:        %s/ready\n' "$HERMES_LOCAL_URL"
+printf 'bairui capabilities: %s/capabilities\n' "$HERMES_LOCAL_URL"
 printf 'Runtime readiness:   %s/runtime/readiness\n' "$HERMES_LOCAL_URL"
 printf 'Readiness file:      %s\n' "$READINESS_FILE"

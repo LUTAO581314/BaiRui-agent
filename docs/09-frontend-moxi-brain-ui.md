@@ -62,6 +62,7 @@ The frontend reads:
 - `/runtime/readiness`;
 - `/platform/heartbeat`;
 - `/audit`;
+- `/events`;
 - `/document/parse/session-list`;
 - `/document/parse/session-summary`;
 - `/document/parse/workbench-next`;

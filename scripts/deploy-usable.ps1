@@ -101,7 +101,7 @@ function Write-ReadinessFile {
     } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $ReadinessFile -Encoding UTF8
 }
 
-Write-Step "Preparing MOXI Hermes runtime environment"
+Write-Step "Preparing bairui runtime environment"
 Ensure-EnvFile
 Ensure-EnvValue "POSTGRES_DB" "moxi"
 Ensure-EnvValue "POSTGRES_USER" "moxi"
@@ -126,18 +126,18 @@ if ($Mode -eq "domain" -and [string]::IsNullOrWhiteSpace($Domain)) {
     throw "Domain mode requires -Domain, for example: -Mode domain -Domain moxi.example.com"
 }
 
-Write-Step "Starting PostgreSQL and Hermes"
+Write-Step "Starting PostgreSQL and bairui"
 & docker compose -f docker-compose.production.yml up -d --build
 if ($LASTEXITCODE -ne 0) { throw "docker compose failed" }
 
 Write-Step "Deployment started"
-Wait-Endpoint "Hermes health" "/health"
-Wait-Endpoint "Hermes ready" "/ready"
+Wait-Endpoint "bairui health" "/health"
+Wait-Endpoint "bairui ready" "/ready"
 Wait-Endpoint "Runtime readiness" "/runtime/readiness"
 Write-ReadinessFile
 
-Write-Host "Hermes health:       $HermesLocalUrl/health"
-Write-Host "Hermes ready:        $HermesLocalUrl/ready"
-Write-Host "Hermes capabilities: $HermesLocalUrl/capabilities"
+Write-Host "bairui health:       $HermesLocalUrl/health"
+Write-Host "bairui ready:        $HermesLocalUrl/ready"
+Write-Host "bairui capabilities: $HermesLocalUrl/capabilities"
 Write-Host "Runtime readiness:   $HermesLocalUrl/runtime/readiness"
 Write-Host "Readiness file:      $ReadinessFile"

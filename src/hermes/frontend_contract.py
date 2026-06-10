@@ -13,7 +13,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
         "env": settings.env,
     }
     return {
-        "contract_version": "2026-06-11.2",
+        "contract_version": "2026-06-11.3",
         "service": "bairui",
         "brand": brand,
         "product": brand,
@@ -143,7 +143,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             {
                 "id": "dashboard",
                 "title": "Dashboard",
-                "read": ("/health", "/ready", "/runtime/readiness", "/capabilities", "/platform/heartbeat", "/jobs", "/audit"),
+                "read": ("/health", "/ready", "/runtime/readiness", "/capabilities", "/platform/heartbeat", "/jobs", "/audit", "/events"),
                 "actions": ({"id": "create_job", "method": "POST", "path": "/jobs", "schema": "job_create"},),
             },
             {
@@ -258,6 +258,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"method": "GET", "path": "/jobs"},
                     {"method": "POST", "path": "/jobs"},
                     {"method": "GET", "path": "/audit"},
+                    {"method": "GET", "path": "/events", "content_type": "text/event-stream"},
                     {"method": "GET", "path": "/platform/heartbeat"},
                 ),
             },

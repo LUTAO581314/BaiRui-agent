@@ -59,6 +59,7 @@ from .document_pipeline import (
     run_document_workbench_until_blocked,
     run_document_ingest,
 )
+from .events import build_sse_frame, list_frontend_events
 from .frontend_contract import build_frontend_contract
 from .license import load_license
 from .model_gateway import complete_chat
@@ -173,6 +174,9 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/audit":
             self._send({"service": PUBLIC_SERVICE, "audit": list_audit_events(settings.data_dir)})
+            return
+        if self.path == "/events":
+            self._send_sse(list_frontend_events(settings.data_dir))
             return
         if self.path == "/memory/status":
             self._send({"service": PUBLIC_SERVICE, "memory": as_payload(everos_status(settings))})
@@ -648,6 +652,16 @@ class HermesHandler(BaseHTTPRequestHandler):
         body = _json_bytes(payload)
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_sse(self, events: list[dict[str, Any]]) -> None:
+        body = b"".join(build_sse_frame(event) for event in events)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Accel-Buffering", "no")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

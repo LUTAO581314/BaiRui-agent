@@ -11,7 +11,7 @@ SYSTEMD_UNIT_PATH=${BAIRUI_SYSTEMD_UNIT_PATH:-/etc/systemd/system/bairui-hermes.
 
 cd "$PROJECT_ROOT"
 
-echo "bairui Hermes deploy: project root is $PROJECT_ROOT"
+echo "bairui deploy: project root is $PROJECT_ROOT"
 
 if ! command -v python >/dev/null 2>&1; then
   echo "python is required. Install Python before running this script." >&2
@@ -71,6 +71,6 @@ else
   echo "systemd install skipped. Set BAIRUI_INSTALL_SYSTEMD=1 as root to install the service."
 fi
 
-echo "Hermes health:       http://127.0.0.1:8787/health"
-echo "Hermes ready:        http://127.0.0.1:8787/ready"
-echo "Hermes capabilities: http://127.0.0.1:8787/capabilities"
+echo "bairui health:       http://127.0.0.1:8787/health"
+echo "bairui ready:        http://127.0.0.1:8787/ready"
+echo "bairui capabilities: http://127.0.0.1:8787/capabilities"

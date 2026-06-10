@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import tempfile
 import unittest
@@ -10,6 +10,7 @@ from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
 from src.hermes.db import SCHEMA_SQL, database_status
 from src.hermes.document_pipeline import build_document_ingest_session_summary, build_document_workbench_state, create_document_ingest_report, create_document_source_refs, execute_document_workbench_next, generate_document_memory_candidates, index_document_artifacts, list_document_ingest_session_summaries, list_pending_document_memory_reviews, register_document_artifacts, review_document_memory_candidate, review_document_memory_candidates_batch, run_document_ingest, run_document_workbench_until_blocked
+from src.hermes.events import audit_event_to_frontend_event, build_sse_frame, list_frontend_events
 from src.hermes.frontend_contract import build_frontend_contract
 from src.hermes.adapters.everos import EverOSResult, build_search_payload, status as everos_status
 from src.hermes.adapters.funasr import build_server_command as build_funasr_server_command, build_transcription_payload as build_funasr_transcription_payload, status as funasr_status
@@ -120,6 +121,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("activation", screens)
         self.assertIn("/jobs", screens["dashboard"]["read"])
         self.assertIn("/audit", screens["dashboard"]["read"])
+        self.assertIn("/events", screens["dashboard"]["read"])
         self.assertIn("document_ingest", screens)
         self.assertIn("/document/parse/session-list", screens["document_ingest"]["read"])
         self.assertIn("/document/parse/session-summary", screens["document_ingest"]["read"])
@@ -128,6 +130,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertGreaterEqual(len(contract["activation_flow"]), 7)
         self.assertIn("/jobs", operation_paths)
         self.assertIn("/audit", operation_paths)
+        self.assertIn("/events", operation_paths)
         self.assertIn("/document/parse/workbench-next", document_paths)
         self.assertIn("needs_review", contract["state_values"])
 
@@ -142,6 +145,33 @@ class RuntimeFoundationTests(unittest.TestCase):
             self.assertEqual(len(list_jobs(data_dir)), 1)
             audit = list_audit_events(data_dir)
             self.assertEqual(audit[0]["action"], "job.created")
+
+    def test_frontend_events_project_audit_for_sse(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            create_job(data_dir, title="First job", prompt="Summarize this", route="research")
+            events = list_frontend_events(data_dir)
+            self.assertEqual(events[0]["type"], "job.created")
+            self.assertEqual(events[0]["data"]["action"], "job.created")
+            self.assertEqual(events[0]["data"]["resource_type"], "job")
+            frame = build_sse_frame(events[0]).decode("utf-8")
+            self.assertIn("event: job.created", frame)
+            self.assertIn('"type": "job.created"', frame)
+
+    def test_frontend_event_falls_back_to_audit_event(self):
+        event = audit_event_to_frontend_event(
+            {
+                "id": "evt_1",
+                "action": "unknown.action",
+                "resource_type": "runtime",
+                "resource_ref": "local",
+                "risk_level": "low",
+                "payload": {"ok": True},
+                "created_at": "2026-06-11T00:00:00+00:00",
+            }
+        )
+        self.assertEqual(event["type"], "audit.event")
+        self.assertEqual(event["data"]["payload"], {"ok": True})
 
     def test_create_document_ingest_writes_plan_and_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1004,7 +1034,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                     code = run(["voice", "asr", "status"])
         self.assertEqual(code, 0)
         payload = print_json.call_args.args[0]
-        self.assertEqual(payload["service"], "hermes")
+        self.assertEqual(payload["service"], "bairui")
         self.assertEqual(payload["voice_asr"]["license"], "MIT")
         self.assertEqual(payload["voice_asr"]["status"], "missing_config")
 
@@ -1058,7 +1088,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                     code = run(["document", "parse", "status"])
         self.assertEqual(code, 0)
         payload = print_json.call_args.args[0]
-        self.assertEqual(payload["service"], "hermes")
+        self.assertEqual(payload["service"], "bairui")
         self.assertEqual(payload["document_parse"]["license"], "MinerU Open Source License")
 
     def test_cli_document_parse_command_prints_mineru_command(self):
@@ -1535,7 +1565,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                     code = run(["memory", "status"])
         self.assertEqual(code, 0)
         payload = print_json.call_args.args[0]
-        self.assertEqual(payload["service"], "hermes")
+        self.assertEqual(payload["service"], "bairui")
         self.assertEqual(payload["memory"]["license"], "Apache-2.0")
         self.assertEqual(payload["memory"]["status"], "source_ready")
 
@@ -1583,7 +1613,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                     code = run(["intel", "status"])
         self.assertEqual(code, 0)
         payload = print_json.call_args.args[0]
-        self.assertEqual(payload["service"], "hermes")
+        self.assertEqual(payload["service"], "bairui")
         self.assertEqual(payload["intelligence"]["license"], "GPLv3")
         self.assertEqual(payload["intelligence"]["status"], "source_ready")
 
@@ -1616,7 +1646,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                     code = run(["simulation", "status"])
         self.assertEqual(code, 0)
         payload = print_json.call_args.args[0]
-        self.assertEqual(payload["service"], "hermes")
+        self.assertEqual(payload["service"], "bairui")
         self.assertEqual(payload["simulation"]["license"], "AGPLv3")
         self.assertEqual(payload["simulation"]["status"], "source_ready")
 
@@ -1655,7 +1685,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                     code = run(["search", "status"])
         self.assertEqual(code, 0)
         payload = print_json.call_args.args[0]
-        self.assertEqual(payload["service"], "hermes")
+        self.assertEqual(payload["service"], "bairui")
         self.assertEqual(payload["search"]["license"], "AGPLv3")
         self.assertEqual(payload["search"]["status"], "missing_config")
 
@@ -1712,7 +1742,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                     code = run(["index", "status"])
         self.assertEqual(code, 0)
         payload = print_json.call_args.args[0]
-        self.assertEqual(payload["service"], "hermes")
+        self.assertEqual(payload["service"], "bairui")
         self.assertEqual(payload["index"]["license"], "MPL-2.0")
         self.assertEqual(payload["index"]["status"], "missing_config")
 
@@ -1762,7 +1792,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                     code = run(["status"])
         self.assertEqual(code, 0)
         payload = print_json.call_args.args[0]
-        self.assertEqual(payload["service"], "hermes")
+        self.assertEqual(payload["service"], "bairui")
         self.assertEqual(payload["brand_key"], "bairui")
         self.assertEqual(payload["database"].status, "missing_config")
 

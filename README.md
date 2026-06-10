@@ -93,6 +93,7 @@ python -m src.hermes --help
 python -m src.hermes status
 python -m src.hermes capabilities
 python -m src.hermes frontend-contract
+python -m src.hermes events
 python -m src.hermes memory status
 python -m src.hermes memory search --query "owner preferences"
 python -m src.hermes voice asr status

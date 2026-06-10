@@ -81,6 +81,7 @@ from .document_pipeline import (
     run_document_workbench_until_blocked,
     run_document_ingest,
 )
+from .events import list_frontend_events
 from .frontend_contract import build_frontend_contract
 from .license import load_license
 from .model_gateway import complete_chat
@@ -119,11 +120,11 @@ def print_json(payload: dict[str, Any]) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m src.hermes",
-        description="bairui Agent OS Hermes runtime CLI",
+        description="bairui Agent OS runtime CLI",
     )
     subcommands = parser.add_subparsers(dest="command")
 
-    subcommands.add_parser("serve", help="Start the Hermes HTTP server")
+    subcommands.add_parser("serve", help="Start the bairui HTTP server")
     subcommands.add_parser("status", help="Print health, readiness, license, and database status")
     subcommands.add_parser("capabilities", help="List runtime and vendor capabilities")
     subcommands.add_parser("frontend-contract", help="Print the bairui frontend API contract")
@@ -138,6 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands.add_parser("document-memory-reviews", help="List reviewed document memory candidates")
     subcommands.add_parser("source-refs", help="List structured source reference records")
     subcommands.add_parser("audit", help="List recent audit events")
+    subcommands.add_parser("events", help="List frontend event stream snapshots")
     subcommands.add_parser("migrate", help="Run PostgreSQL schema migrations")
     subcommands.add_parser("heartbeat", help="Print the platform heartbeat payload")
     subcommands.add_parser("paths", help="Print runtime paths and key configuration")
@@ -332,7 +334,7 @@ def build_parser() -> argparse.ArgumentParser:
     chat_parser.add_argument("--system", default="")
 
     report_parser = subcommands.add_parser("report", help="Write one markdown report into the Obsidian vault")
-    report_parser.add_argument("--title", default="Hermes CLI Report")
+    report_parser.add_argument("--title", default="bairui CLI Report")
     report_parser.add_argument("--body", required=True)
 
     return parser
@@ -355,7 +357,7 @@ def run(argv: list[str] | None = None) -> int:
         db_state = database_status(settings)
         print_json(
             {
-                "service": "hermes",
+                "service": "bairui",
                 "version": __version__,
                 "product": settings.product_name,
                 "brand_key": settings.brand_key,
@@ -371,7 +373,7 @@ def run(argv: list[str] | None = None) -> int:
         return 0
 
     if command == "capabilities":
-        print_json({"service": "hermes", "capabilities": collect_capabilities(settings)})
+        print_json({"service": "bairui", "capabilities": collect_capabilities(settings)})
         return 0
 
     if command == "frontend-contract":
@@ -379,62 +381,66 @@ def run(argv: list[str] | None = None) -> int:
         return 0
 
     if command == "license":
-        print_json({"service": "hermes", "license": load_license(settings.license_file, settings.license_secret)})
+        print_json({"service": "bairui", "license": load_license(settings.license_file, settings.license_secret)})
         return 0
 
     if command == "jobs":
-        print_json({"service": "hermes", "jobs": list_jobs(settings.data_dir)})
+        print_json({"service": "bairui", "jobs": list_jobs(settings.data_dir)})
         return 0
 
     if command == "document-ingests":
-        print_json({"service": "hermes", "document_ingests": list_document_ingests(settings.data_dir)})
+        print_json({"service": "bairui", "document_ingests": list_document_ingests(settings.data_dir)})
         return 0
 
     if command == "document-ingest-runs":
-        print_json({"service": "hermes", "document_ingest_runs": list_document_ingest_runs(settings.data_dir)})
+        print_json({"service": "bairui", "document_ingest_runs": list_document_ingest_runs(settings.data_dir)})
         return 0
 
     if command == "document-ingest-reports":
-        print_json({"service": "hermes", "document_ingest_reports": list_document_ingest_reports(settings.data_dir)})
+        print_json({"service": "bairui", "document_ingest_reports": list_document_ingest_reports(settings.data_dir)})
         return 0
 
     if command == "document-artifacts":
-        print_json({"service": "hermes", "document_artifacts": list_document_artifacts(settings.data_dir)})
+        print_json({"service": "bairui", "document_artifacts": list_document_artifacts(settings.data_dir)})
         return 0
 
     if command == "document-index-runs":
-        print_json({"service": "hermes", "document_index_runs": list_document_index_runs(settings.data_dir)})
+        print_json({"service": "bairui", "document_index_runs": list_document_index_runs(settings.data_dir)})
         return 0
 
     if command == "document-memory-candidates":
-        print_json({"service": "hermes", "document_memory_candidates": list_document_memory_candidates(settings.data_dir)})
+        print_json({"service": "bairui", "document_memory_candidates": list_document_memory_candidates(settings.data_dir)})
         return 0
 
     if command == "document-memory-reviews":
-        print_json({"service": "hermes", "document_memory_reviews": list_document_memory_reviews(settings.data_dir)})
+        print_json({"service": "bairui", "document_memory_reviews": list_document_memory_reviews(settings.data_dir)})
         return 0
 
     if command == "source-refs":
-        print_json({"service": "hermes", "source_refs": list_source_refs(settings.data_dir)})
+        print_json({"service": "bairui", "source_refs": list_source_refs(settings.data_dir)})
         return 0
 
     if command == "audit":
-        print_json({"service": "hermes", "audit": list_audit_events(settings.data_dir)})
+        print_json({"service": "bairui", "audit": list_audit_events(settings.data_dir)})
+        return 0
+
+    if command == "events":
+        print_json({"service": "bairui", "events": list_frontend_events(settings.data_dir)})
         return 0
 
     if command == "migrate":
         result = run_migrations(settings)
-        print_json({"service": "hermes", "database": result})
+        print_json({"service": "bairui", "database": result})
         return 0 if result.status == "ready" else 1
 
     if command == "heartbeat":
-        print_json({"service": "hermes", "heartbeat": build_platform_heartbeat(settings)})
+        print_json({"service": "bairui", "heartbeat": build_platform_heartbeat(settings)})
         return 0
 
     if command == "paths":
         print_json(
             {
-                "service": "hermes",
+                "service": "bairui",
                 "data_dir": str(settings.data_dir),
                 "log_dir": str(settings.log_dir),
                 "obsidian_vault_dir": str(settings.obsidian_vault_dir),
@@ -446,13 +452,13 @@ def run(argv: list[str] | None = None) -> int:
         return 0
 
     if command == "runtime-readiness":
-        print_json({"service": "hermes", "runtime_readiness": collect_runtime_readiness(settings)})
+        print_json({"service": "bairui", "runtime_readiness": collect_runtime_readiness(settings)})
         return 0
 
     if command == "memory":
         memory_command = args.memory_command or "status"
         if memory_command == "status":
-            print_json({"service": "hermes", "memory": as_payload(everos_status(settings))})
+            print_json({"service": "bairui", "memory": as_payload(everos_status(settings))})
             return 0
         if memory_command == "ingest":
             payload = build_add_payload(
@@ -464,12 +470,12 @@ def run(argv: list[str] | None = None) -> int:
                 sender_name=args.sender_name or None,
             )
             result = add_memory(settings, payload)
-            print_json({"service": "hermes", "memory": as_payload(result)})
+            print_json({"service": "bairui", "memory": as_payload(result)})
             return 0 if result.status == "completed" else 1
         if memory_command == "flush":
             payload = build_flush_payload(session_id=args.session_id, app_id=args.app_id, project_id=args.project_id)
             result = flush_memory(settings, payload)
-            print_json({"service": "hermes", "memory": as_payload(result)})
+            print_json({"service": "bairui", "memory": as_payload(result)})
             return 0 if result.status == "completed" else 1
         if memory_command == "search":
             payload = build_search_payload(
@@ -483,7 +489,7 @@ def run(argv: list[str] | None = None) -> int:
                 include_profile=args.include_profile,
             )
             result = search_memory(settings, payload)
-            print_json({"service": "hermes", "memory": as_payload(result)})
+            print_json({"service": "bairui", "memory": as_payload(result)})
             return 0 if result.status == "completed" else 1
         parser.error(f"unknown memory command: {memory_command}")
         return 2
@@ -491,18 +497,18 @@ def run(argv: list[str] | None = None) -> int:
     if command == "intel":
         intel_command = args.intel_command or "status"
         if intel_command == "status":
-            print_json({"service": "hermes", "intelligence": trendradar_payload(trendradar_status(settings))})
+            print_json({"service": "bairui", "intelligence": trendradar_payload(trendradar_status(settings))})
             return 0
         if intel_command == "doctor-command":
-            print_json({"service": "hermes", "intelligence": trendradar_payload(build_doctor_command(settings))})
+            print_json({"service": "bairui", "intelligence": trendradar_payload(build_doctor_command(settings))})
             return 0
         if intel_command == "schedule-command":
-            print_json({"service": "hermes", "intelligence": trendradar_payload(build_schedule_command(settings))})
+            print_json({"service": "bairui", "intelligence": trendradar_payload(build_schedule_command(settings))})
             return 0
         if intel_command == "mcp-command":
             print_json(
                 {
-                    "service": "hermes",
+                    "service": "bairui",
                     "intelligence": trendradar_payload(
                         build_mcp_command(settings, transport=args.transport, host=args.host, port=args.port)
                     ),
@@ -515,19 +521,19 @@ def run(argv: list[str] | None = None) -> int:
     if command == "simulation":
         simulation_command = args.simulation_command or "status"
         if simulation_command == "status":
-            print_json({"service": "hermes", "simulation": mirofish_payload(mirofish_status(settings))})
+            print_json({"service": "bairui", "simulation": mirofish_payload(mirofish_status(settings))})
             return 0
         if simulation_command == "setup-command":
-            print_json({"service": "hermes", "simulation": mirofish_payload(build_setup_command(settings))})
+            print_json({"service": "bairui", "simulation": mirofish_payload(build_setup_command(settings))})
             return 0
         if simulation_command == "backend-command":
-            print_json({"service": "hermes", "simulation": mirofish_payload(build_backend_command(settings))})
+            print_json({"service": "bairui", "simulation": mirofish_payload(build_backend_command(settings))})
             return 0
         if simulation_command == "frontend-command":
-            print_json({"service": "hermes", "simulation": mirofish_payload(build_frontend_command(settings))})
+            print_json({"service": "bairui", "simulation": mirofish_payload(build_frontend_command(settings))})
             return 0
         if simulation_command == "dev-command":
-            print_json({"service": "hermes", "simulation": mirofish_payload(build_dev_command(settings))})
+            print_json({"service": "bairui", "simulation": mirofish_payload(build_dev_command(settings))})
             return 0
         parser.error(f"unknown simulation command: {simulation_command}")
         return 2
@@ -535,10 +541,10 @@ def run(argv: list[str] | None = None) -> int:
     if command == "search":
         search_command = args.search_command or "status"
         if search_command == "status":
-            print_json({"service": "hermes", "search": searxng_payload(searxng_status(settings))})
+            print_json({"service": "bairui", "search": searxng_payload(searxng_status(settings))})
             return 0
         if search_command == "docker-command":
-            print_json({"service": "hermes", "search": searxng_payload(build_searxng_docker_command(settings, host_port=args.host_port))})
+            print_json({"service": "bairui", "search": searxng_payload(build_searxng_docker_command(settings, host_port=args.host_port))})
             return 0
         if search_command == "query":
             payload = build_searxng_search_payload(
@@ -551,7 +557,7 @@ def run(argv: list[str] | None = None) -> int:
                 page=args.page,
             )
             result = searxng_search(settings, payload)
-            print_json({"service": "hermes", "search": searxng_payload(result)})
+            print_json({"service": "bairui", "search": searxng_payload(result)})
             return 0 if result.status == "completed" else 1
         parser.error(f"unknown search command: {search_command}")
         return 2
@@ -559,14 +565,14 @@ def run(argv: list[str] | None = None) -> int:
     if command == "index":
         index_command = args.index_command or "status"
         if index_command == "status":
-            print_json({"service": "hermes", "index": sonic_payload(sonic_status(settings))})
+            print_json({"service": "bairui", "index": sonic_payload(sonic_status(settings))})
             return 0
         if index_command == "docker-command":
-            print_json({"service": "hermes", "index": sonic_payload(build_sonic_docker_command(settings, host_port=args.host_port))})
+            print_json({"service": "bairui", "index": sonic_payload(build_sonic_docker_command(settings, host_port=args.host_port))})
             return 0
         if index_command == "ping":
             result = sonic_ping(settings)
-            print_json({"service": "hermes", "index": sonic_payload(result)})
+            print_json({"service": "bairui", "index": sonic_payload(result)})
             return 0 if result.status == "completed" else 1
         if index_command == "push":
             payload = build_sonic_push_payload(
@@ -577,7 +583,7 @@ def run(argv: list[str] | None = None) -> int:
                 lang=args.lang,
             )
             result = sonic_push(settings, payload)
-            print_json({"service": "hermes", "index": sonic_payload(result)})
+            print_json({"service": "bairui", "index": sonic_payload(result)})
             return 0 if result.status == "completed" else 1
         if index_command == "query":
             payload = build_sonic_query_payload(
@@ -589,7 +595,7 @@ def run(argv: list[str] | None = None) -> int:
                 lang=args.lang,
             )
             result = sonic_query(settings, payload)
-            print_json({"service": "hermes", "index": sonic_payload(result)})
+            print_json({"service": "bairui", "index": sonic_payload(result)})
             return 0 if result.status == "completed" else 1
         parser.error(f"unknown index command: {index_command}")
         return 2
@@ -601,13 +607,13 @@ def run(argv: list[str] | None = None) -> int:
             return 2
         asr_command = args.asr_command or "status"
         if asr_command == "status":
-            print_json({"service": "hermes", "voice_asr": funasr_payload(funasr_status(settings))})
+            print_json({"service": "bairui", "voice_asr": funasr_payload(funasr_status(settings))})
             return 0
         if asr_command == "server-command":
-            print_json({"service": "hermes", "voice_asr": funasr_payload(build_funasr_server_command(settings, device=args.device, model=args.model))})
+            print_json({"service": "bairui", "voice_asr": funasr_payload(build_funasr_server_command(settings, device=args.device, model=args.model))})
             return 0
         if asr_command == "docker-command":
-            print_json({"service": "hermes", "voice_asr": funasr_payload(build_funasr_docker_command(settings, host_port=args.host_port))})
+            print_json({"service": "bairui", "voice_asr": funasr_payload(build_funasr_docker_command(settings, host_port=args.host_port))})
             return 0
         if asr_command == "transcribe":
             payload = build_funasr_transcription_payload(
@@ -618,7 +624,7 @@ def run(argv: list[str] | None = None) -> int:
                 response_format=args.response_format,
             )
             result = funasr_transcribe(settings, payload)
-            print_json({"service": "hermes", "voice_asr": funasr_payload(result)})
+            print_json({"service": "bairui", "voice_asr": funasr_payload(result)})
             return 0 if result.status == "completed" else 1
         parser.error(f"unknown voice asr command: {asr_command}")
         return 2
@@ -630,10 +636,10 @@ def run(argv: list[str] | None = None) -> int:
             return 2
         parse_command = args.parse_command or "status"
         if parse_command == "status":
-            print_json({"service": "hermes", "document_parse": mineru_payload(mineru_status(settings))})
+            print_json({"service": "bairui", "document_parse": mineru_payload(mineru_status(settings))})
             return 0
         if parse_command == "install-command":
-            print_json({"service": "hermes", "document_parse": mineru_payload(build_mineru_install_command(settings))})
+            print_json({"service": "bairui", "document_parse": mineru_payload(build_mineru_install_command(settings))})
             return 0
         if parse_command == "parse-command":
             plan = build_mineru_parse_command(
@@ -645,7 +651,7 @@ def run(argv: list[str] | None = None) -> int:
                 source=args.source,
                 device=args.device,
             )
-            print_json({"service": "hermes", "document_parse": mineru_payload(plan)})
+            print_json({"service": "bairui", "document_parse": mineru_payload(plan)})
             return 0
         if parse_command == "ingest-plan":
             plan = build_mineru_parse_command(
@@ -665,7 +671,7 @@ def run(argv: list[str] | None = None) -> int:
                 output_dir=output_dir,
                 parser_command=plan.command,
             )
-            print_json({"service": "hermes", "document_ingest": ingest, "document_parse": mineru_payload(plan)})
+            print_json({"service": "bairui", "document_ingest": ingest, "document_parse": mineru_payload(plan)})
             return 0
         if parse_command == "run-ingest":
             result = run_document_ingest(
@@ -673,11 +679,11 @@ def run(argv: list[str] | None = None) -> int:
                 args.ingest_id,
                 timeout_seconds=args.timeout_seconds or settings.mineru_timeout_seconds,
             )
-            print_json({"service": "hermes", "document_pipeline": result})
+            print_json({"service": "bairui", "document_pipeline": result})
             return 0 if result.status == "completed" else 1
         if parse_command == "register-artifacts":
             result = register_document_artifacts(settings.data_dir, args.ingest_id)
-            print_json({"service": "hermes", "document_artifact_registration": result})
+            print_json({"service": "bairui", "document_artifact_registration": result})
             return 0 if result.status == "completed" else 1
         if parse_command == "index-artifacts":
             result = index_document_artifacts(
@@ -687,7 +693,7 @@ def run(argv: list[str] | None = None) -> int:
                 bucket=args.bucket,
                 lang=args.lang,
             )
-            print_json({"service": "hermes", "document_index": result})
+            print_json({"service": "bairui", "document_index": result})
             return 0 if result.status in {"completed", "skipped"} else 1
         if parse_command == "memory-candidates":
             result = generate_document_memory_candidates(
@@ -695,7 +701,7 @@ def run(argv: list[str] | None = None) -> int:
                 args.ingest_id,
                 max_candidates=args.max_candidates,
             )
-            print_json({"service": "hermes", "document_memory_candidate_generation": result})
+            print_json({"service": "bairui", "document_memory_candidate_generation": result})
             return 0 if result.status in {"completed", "skipped"} else 1
         if parse_command == "review-memory-candidate":
             result = review_document_memory_candidate(
@@ -709,11 +715,11 @@ def run(argv: list[str] | None = None) -> int:
                 app_id=args.app_id,
                 project_id=args.project_id,
             )
-            print_json({"service": "hermes", "document_memory_review": result})
+            print_json({"service": "bairui", "document_memory_review": result})
             return 0 if result.status in {"approved", "rejected"} else 1
         if parse_command == "memory-review-pending":
             result = list_pending_document_memory_reviews(settings, ingest_id=args.ingest_id)
-            print_json({"service": "hermes", "document_memory_review_queue": result})
+            print_json({"service": "bairui", "document_memory_review_queue": result})
             return 0 if result.status != "not_found" else 1
         if parse_command == "memory-review-batch":
             result = review_document_memory_candidates_batch(
@@ -730,27 +736,27 @@ def run(argv: list[str] | None = None) -> int:
                 timeout_seconds=args.timeout_seconds or settings.mineru_timeout_seconds,
                 max_steps=args.max_steps,
             )
-            print_json({"service": "hermes", "document_memory_review_batch": result})
+            print_json({"service": "bairui", "document_memory_review_batch": result})
             return 0 if result.status in {"completed", "partial", "empty"} else 1
         if parse_command == "source-refs":
             result = create_document_source_refs(settings, args.ingest_id)
-            print_json({"service": "hermes", "document_source_refs": result})
+            print_json({"service": "bairui", "document_source_refs": result})
             return 0 if result.status in {"completed", "skipped"} else 1
         if parse_command == "ingest-report":
             result = create_document_ingest_report(settings, args.ingest_id)
-            print_json({"service": "hermes", "document_ingest_report": result})
+            print_json({"service": "bairui", "document_ingest_report": result})
             return 0 if result.status == "completed" else 1
         if parse_command == "workbench-state":
             state = build_document_workbench_state(settings, args.ingest_id)
-            print_json({"service": "hermes", "document_workbench": state})
+            print_json({"service": "bairui", "document_workbench": state})
             return 0 if state.status != "not_found" else 1
         if parse_command == "session-summary":
             summary = build_document_ingest_session_summary(settings, args.ingest_id)
-            print_json({"service": "hermes", "document_ingest_session": summary})
+            print_json({"service": "bairui", "document_ingest_session": summary})
             return 0 if summary.status != "not_found" else 1
         if parse_command == "session-list":
             session_list = list_document_ingest_session_summaries(settings, limit=args.limit)
-            print_json({"service": "hermes", "document_ingest_sessions": session_list})
+            print_json({"service": "bairui", "document_ingest_sessions": session_list})
             return 0
         if parse_command == "workbench-next":
             result = execute_document_workbench_next(
@@ -762,7 +768,7 @@ def run(argv: list[str] | None = None) -> int:
                 lang=args.lang,
                 max_candidates=args.max_candidates,
             )
-            print_json({"service": "hermes", "document_workbench_step": result})
+            print_json({"service": "bairui", "document_workbench_step": result})
             return 0 if result.status in {"completed", "needs_review"} else 1
         if parse_command == "workbench-run-until-blocked":
             result = run_document_workbench_until_blocked(
@@ -775,24 +781,24 @@ def run(argv: list[str] | None = None) -> int:
                 max_candidates=args.max_candidates,
                 max_steps=args.max_steps,
             )
-            print_json({"service": "hermes", "document_workbench_run": result})
+            print_json({"service": "bairui", "document_workbench_run": result})
             return 0 if result.status in {"completed", "needs_review", "step_limit_reached"} else 1
         parser.error(f"unknown document parse command: {parse_command}")
         return 2
 
     if command == "job":
         job = create_job(settings.data_dir, title=args.title, prompt=args.prompt, route=args.route)
-        print_json({"service": "hermes", "job": job})
+        print_json({"service": "bairui", "job": job})
         return 0
 
     if command == "chat":
         result = complete_chat(settings, args.prompt, system=args.system)
-        print_json({"service": "hermes", "chat": result})
+        print_json({"service": "bairui", "chat": result})
         return 0 if result.status == "completed" else 1
 
     if command == "report":
         report = write_obsidian_report(settings.obsidian_vault_dir, settings.data_dir, title=args.title, body=args.body)
-        print_json({"service": "hermes", "report": report})
+        print_json({"service": "bairui", "report": report})
         return 0
 
     parser.error(f"unknown command: {command}")

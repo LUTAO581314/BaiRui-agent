@@ -372,15 +372,19 @@ the contract must not.
 
 The current backend already covers activation, health/readiness, jobs, audit,
 model gateway, memory, document pipeline, source refs, reports, and runtime
-status.
+status. It also exposes `GET /events` as a snapshot SSE stream projected from
+audit records, so the frontend can start rendering event panels before a
+long-lived broadcaster is added.
 
 The strongest source-backed supplements to add next are:
 
 1. Realtime events.
-   - Add `GET /events` as SSE.
+   - `GET /events` exists as snapshot SSE.
    - Event shape: `{ type, data, ts }`.
-   - First events: readiness changed, job created, document step started,
-     document step completed, memory review required, report created.
+   - Current events include job created, document step completed, memory review
+     required/completed, command completed/blocked, and report created.
+   - Next upgrade: keep the same event shape and add long-lived broadcast for
+     readiness changes and running-step progress.
 
 2. UI command cards.
    - Add an internal event type for mount/update/unmount cards.
@@ -483,5 +487,5 @@ with reduced motion. Do not introduce upstream product names or raw secrets.
 4. Render activation from `/frontend/contract`.
 5. Connect Dashboard, Documents, Memory Review, and Reports first.
 6. Add Command and Settings next.
-7. Add Channels/Media and SSE events after backend supplements land.
+7. Upgrade snapshot SSE into long-lived broadcast, then add Channels/Media.
 8. Run brand leak, endpoint, screenshot, and reduced-motion QA.
