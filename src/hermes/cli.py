@@ -16,6 +16,13 @@ from .adapters.everos import (
     search_memory,
     status as everos_status,
 )
+from .adapters.trendradar import (
+    as_payload as trendradar_payload,
+    build_doctor_command,
+    build_mcp_command,
+    build_schedule_command,
+    status as trendradar_status,
+)
 from .capabilities import collect_capabilities
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
@@ -81,6 +88,16 @@ def build_parser() -> argparse.ArgumentParser:
     memory_search.add_argument("--top-k", type=int, default=5)
     memory_search.add_argument("--method", default="hybrid")
     memory_search.add_argument("--include-profile", action="store_true")
+
+    intel_parser = subcommands.add_parser("intel", help="Operate intelligence runtime adapters")
+    intel_subcommands = intel_parser.add_subparsers(dest="intel_command")
+    intel_subcommands.add_parser("status", help="Inspect TrendRadar source and MCP configuration")
+    intel_subcommands.add_parser("doctor-command", help="Print the real TrendRadar doctor command")
+    intel_subcommands.add_parser("schedule-command", help="Print the real TrendRadar schedule command")
+    intel_mcp = intel_subcommands.add_parser("mcp-command", help="Print the real TrendRadar MCP server command")
+    intel_mcp.add_argument("--transport", choices=["stdio", "http"], default="http")
+    intel_mcp.add_argument("--host", default="127.0.0.1")
+    intel_mcp.add_argument("--port", type=int, default=3333)
 
     job_parser = subcommands.add_parser("job", help="Create a queued job")
     job_parser.add_argument("--title", default="CLI job")
@@ -206,6 +223,30 @@ def run(argv: list[str] | None = None) -> int:
             print_json({"service": "hermes", "memory": as_payload(result)})
             return 0 if result.status == "completed" else 1
         parser.error(f"unknown memory command: {memory_command}")
+        return 2
+
+    if command == "intel":
+        intel_command = args.intel_command or "status"
+        if intel_command == "status":
+            print_json({"service": "hermes", "intelligence": trendradar_payload(trendradar_status(settings))})
+            return 0
+        if intel_command == "doctor-command":
+            print_json({"service": "hermes", "intelligence": trendradar_payload(build_doctor_command(settings))})
+            return 0
+        if intel_command == "schedule-command":
+            print_json({"service": "hermes", "intelligence": trendradar_payload(build_schedule_command(settings))})
+            return 0
+        if intel_command == "mcp-command":
+            print_json(
+                {
+                    "service": "hermes",
+                    "intelligence": trendradar_payload(
+                        build_mcp_command(settings, transport=args.transport, host=args.host, port=args.port)
+                    ),
+                }
+            )
+            return 0
+        parser.error(f"unknown intel command: {intel_command}")
         return 2
 
     if command == "job":

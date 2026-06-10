@@ -10,6 +10,7 @@ from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
 from src.hermes.db import database_status
 from src.hermes.adapters.everos import build_search_payload, status as everos_status
+from src.hermes.adapters.trendradar import build_mcp_command, status as trendradar_status
 from src.hermes.license import load_license, sign_license_payload
 from src.hermes.model_gateway import build_chat_payload, complete_chat
 from src.hermes.platform import HEARTBEAT_PROTOCOL_VERSION, build_platform_heartbeat
@@ -116,6 +117,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("capabilities", help_text)
         self.assertIn("heartbeat", help_text)
         self.assertIn("memory", help_text)
+        self.assertIn("intel", help_text)
 
     def test_everos_adapter_detects_source_and_license(self):
         settings = load_settings()
@@ -163,6 +165,38 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(code, 1)
         payload = print_json.call_args.args[0]
         self.assertEqual(payload["memory"]["status"], "missing_config")
+
+    def test_trendradar_adapter_detects_source_and_gpl_boundary(self):
+        settings = load_settings()
+        state = trendradar_status(settings)
+        self.assertEqual(state.license, "GPLv3")
+        self.assertIn("python -m trendradar --doctor", state.cli_contract)
+        self.assertIn("HTTP MCP endpoint: /mcp", state.mcp_contract)
+        self.assertIn(state.status, {"source_ready", "configured"})
+
+    def test_build_trendradar_mcp_command_uses_real_module(self):
+        settings = load_settings()
+        plan = build_mcp_command(settings, transport="http", host="127.0.0.1", port=3333)
+        self.assertEqual(plan.status, "ready")
+        self.assertEqual(plan.command[:4], ("python", "-m", "mcp_server.server", "--transport"))
+        self.assertEqual(plan.cwd, str(settings.vendor_dir / "trendradar"))
+
+    def test_cli_intel_status_prints_trendradar_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "TRENDRADAR_MCP_URL": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["intel", "status"])
+        self.assertEqual(code, 0)
+        payload = print_json.call_args.args[0]
+        self.assertEqual(payload["service"], "hermes")
+        self.assertEqual(payload["intelligence"]["license"], "GPLv3")
+        self.assertEqual(payload["intelligence"]["status"], "source_ready")
 
     def test_cli_status_prints_runtime_status(self):
         with tempfile.TemporaryDirectory() as tmp:

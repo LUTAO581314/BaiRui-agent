@@ -27,7 +27,7 @@ reinvention.
 | Runtime | Path | Purpose | License | Integration status |
 | --- | --- | --- | --- | --- |
 | EverOS | `vendor/runtimes/everos` | Automatic memory extraction and retrieval | Apache-2.0 | first source-level adapter |
-| TrendRadar | `vendor/runtimes/trendradar` | Trend, RSS, hot-list, and public-opinion intelligence | GPLv3 | planned adapter |
+| TrendRadar | `vendor/runtimes/trendradar` | Trend, RSS, hot-list, and public-opinion intelligence | GPLv3 | source-level adapter |
 | MiroFish | `vendor/runtimes/mirofish` | Scenario simulation and multi-agent rehearsal | AGPLv3 | planned adapter |
 | SearXNG | Docker or Linux checkout | Optional metasearch | AGPLv3 | planned HTTP service adapter |
 
@@ -76,7 +76,34 @@ This keeps the product honest: Bairui productizes, operates, brands, deploys,
 tests, and supports the memory runtime while preserving the mature upstream
 source boundary.
 
-## 5. Commercial Boundaries
+## 5. TrendRadar Adapter Contract
+
+TrendRadar is the first intelligence runtime integration. Because it is GPLv3,
+Hermes treats it as an isolated runtime with an explicit source and license
+boundary.
+
+Hermes owns:
+
+- `src/hermes/adapters/trendradar.py`;
+- CLI commands under `python -m src.hermes intel ...`;
+- HTTP status route under `/intel/status`;
+- operational configuration through `TRENDRADAR_PROJECT_ROOT`,
+  `TRENDRADAR_MCP_URL`, and `TRENDRADAR_TIMEOUT_SECONDS`;
+- capability and commercial-boundary reporting.
+
+TrendRadar owns:
+
+- hot-list crawling;
+- RSS and trend data collection;
+- AI filtering and report generation;
+- notification formatting and dispatch;
+- the `trendradar` CLI;
+- the `mcp_server.server` MCP service.
+
+Hermes must not copy TrendRadar internals into core code. Use the upstream CLI,
+MCP server, process boundary, or service boundary.
+
+## 6. Commercial Boundaries
 
 Apache-2.0 runtimes such as EverOS are suitable for deeper productized
 integration, while preserving LICENSE, NOTICE, upstream name, and attribution.
@@ -90,7 +117,7 @@ operation, complete a license review and delivery-source checklist.
 
 This document is general engineering guidance, not legal advice.
 
-## 6. Integration Order
+## 7. Integration Order
 
 1. EverOS adapter for memory candidates and retrieval.
 2. TrendRadar adapter for intelligence input.
@@ -98,7 +125,7 @@ This document is general engineering guidance, not legal advice.
 4. SearXNG as an optional Docker-based metasearch runtime after Linux/server
    deployment.
 
-## 7. Verification Requirements
+## 8. Verification Requirements
 
 Each runtime integration must prove:
 

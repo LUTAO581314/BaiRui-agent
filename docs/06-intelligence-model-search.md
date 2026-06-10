@@ -41,6 +41,27 @@ TrendRadar provides:
 It remains an isolated external runtime. Do not copy its source or internals
 into this repository.
 
+Hermes integrates TrendRadar through an adapter boundary:
+
+- source discovery under `vendor/runtimes/trendradar`;
+- GPLv3 license and commercial-boundary reporting;
+- CLI command planning for the upstream `trendradar` module;
+- MCP server command planning for the upstream `mcp_server.server` module;
+- future MCP-backed live intelligence calls through `TRENDRADAR_MCP_URL`.
+
+Current Hermes CLI surface:
+
+```bash
+python -m src.hermes intel status
+python -m src.hermes intel doctor-command
+python -m src.hermes intel schedule-command
+python -m src.hermes intel mcp-command --transport http --host 127.0.0.1 --port 3333
+```
+
+`TRENDRADAR_MCP_URL` enables future live MCP-backed intelligence calls. Without
+it, Hermes reports `source_ready` and still exposes the real upstream commands
+needed to start or diagnose TrendRadar.
+
 ## 4. SearXNG
 
 SearXNG is optional.
@@ -75,4 +96,3 @@ Research outputs must:
 - include retrieval time;
 - avoid unsupported claims;
 - write durable conclusions to Obsidian only after quality checks.
-

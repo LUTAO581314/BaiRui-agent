@@ -36,6 +36,9 @@ class Settings:
     everos_base_url: str
     everos_memory_root: Path
     everos_timeout_seconds: int
+    trendradar_project_root: Path | None
+    trendradar_mcp_url: str
+    trendradar_timeout_seconds: int
 
     @property
     def has_database(self) -> bool:
@@ -72,6 +75,9 @@ def load_settings() -> Settings:
         everos_base_url=os.getenv("EVEROS_BASE_URL", ""),
         everos_memory_root=Path(os.getenv("EVEROS_MEMORY_ROOT", "./data/everos")),
         everos_timeout_seconds=int(os.getenv("EVEROS_TIMEOUT_SECONDS", "30")),
+        trendradar_project_root=Path(os.environ["TRENDRADAR_PROJECT_ROOT"]) if os.getenv("TRENDRADAR_PROJECT_ROOT") else None,
+        trendradar_mcp_url=os.getenv("TRENDRADAR_MCP_URL", ""),
+        trendradar_timeout_seconds=int(os.getenv("TRENDRADAR_TIMEOUT_SECONDS", "30")),
     )
 
 
