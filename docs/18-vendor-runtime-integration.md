@@ -171,7 +171,9 @@ behind fake success.
 `/document/parse/memory-review-batch` are the product workbench review
 contracts. Batch review reuses the single-candidate review path so EverOS
 promotion, duplicate protection, audit events, and Obsidian graph notes remain
-consistent.
+consistent. When `resume_after_review` is true, the batch endpoint invokes the
+workbench runner after review so source references and the Obsidian ingest
+report can be generated in the same product action.
 
 MinerU owns:
 

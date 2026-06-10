@@ -289,6 +289,9 @@ def build_parser() -> argparse.ArgumentParser:
     review_batch.add_argument("--session-id", default="")
     review_batch.add_argument("--app-id", default="default")
     review_batch.add_argument("--project-id", default="default")
+    review_batch.add_argument("--resume-after-review", action="store_true")
+    review_batch.add_argument("--timeout-seconds", type=int, default=0)
+    review_batch.add_argument("--max-steps", type=int, default=10)
     source_refs = parse_subcommands.add_parser("source-refs", help="Create source reference records for one document ingestion")
     source_refs.add_argument("--ingest-id", required=True)
     ingest_report = parse_subcommands.add_parser("ingest-report", help="Write one Obsidian report for a document ingestion")
@@ -711,6 +714,9 @@ def run(argv: list[str] | None = None) -> int:
                 session_id=args.session_id,
                 app_id=args.app_id,
                 project_id=args.project_id,
+                resume_after_review=args.resume_after_review,
+                timeout_seconds=args.timeout_seconds or settings.mineru_timeout_seconds,
+                max_steps=args.max_steps,
             )
             print_json({"service": "hermes", "document_memory_review_batch": result})
             return 0 if result.status in {"completed", "partial", "empty"} else 1

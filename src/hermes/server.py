@@ -512,6 +512,9 @@ class HermesHandler(BaseHTTPRequestHandler):
                 session_id=str(payload.get("session_id", "")),
                 app_id=str(payload.get("app_id", "default")),
                 project_id=str(payload.get("project_id", "default")),
+                resume_after_review=bool(payload.get("resume_after_review", False)),
+                timeout_seconds=int(payload.get("timeout_seconds") or settings.mineru_timeout_seconds),
+                max_steps=int(payload.get("max_steps", 10)),
             )
             status = 200 if result.status in {"completed", "partial", "empty"} else 503
             if result.status == "invalid_decision":

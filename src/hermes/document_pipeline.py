@@ -98,6 +98,7 @@ class DocumentMemoryReviewBatchResult:
     skipped_count: int
     results: tuple[DocumentMemoryReviewResult, ...]
     state: DocumentWorkbenchState | None
+    workbench_run: DocumentWorkbenchRunResult | None
 
 
 @dataclass(frozen=True)
@@ -584,6 +585,9 @@ def review_document_memory_candidates_batch(
     session_id: str = "",
     app_id: str = "default",
     project_id: str = "default",
+    resume_after_review: bool = False,
+    timeout_seconds: int = 60,
+    max_steps: int = 10,
 ) -> DocumentMemoryReviewBatchResult:
     normalized_decision = decision.strip().lower()
     if normalized_decision not in {"approve", "reject"}:
@@ -596,6 +600,7 @@ def review_document_memory_candidates_batch(
             skipped_count=len(candidate_ids),
             results=(),
             state=None,
+            workbench_run=None,
         )
 
     unique_candidate_ids = tuple(dict.fromkeys(candidate_id.strip() for candidate_id in candidate_ids if candidate_id.strip()))
@@ -625,6 +630,15 @@ def review_document_memory_candidates_batch(
         if result.candidate is not None and result.candidate.get("ingest_id")
     }
     state = build_document_workbench_state(settings, next(iter(ingest_ids))) if len(ingest_ids) == 1 else None
+    workbench_run = None
+    if resume_after_review and state is not None and reviewed_count > 0:
+        workbench_run = run_document_workbench_until_blocked(
+            settings,
+            str(state.ingest.get("id", "")) if state.ingest else "",
+            timeout_seconds=timeout_seconds,
+            max_steps=max_steps,
+        )
+        state = workbench_run.state
     return DocumentMemoryReviewBatchResult(
         status=status,
         detail=f"reviewed {reviewed_count} document memory candidates",
@@ -634,6 +648,7 @@ def review_document_memory_candidates_batch(
         skipped_count=skipped_count,
         results=results,
         state=state,
+        workbench_run=workbench_run,
     )
 
 

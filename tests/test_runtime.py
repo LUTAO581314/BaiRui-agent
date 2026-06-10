@@ -472,24 +472,31 @@ class RuntimeFoundationTests(unittest.TestCase):
                 title="Batch review plan",
                 input_path="sample.pdf",
                 output_dir=str(output_dir),
-                parser_command=("mineru", "-p", "sample.pdf", "-o", str(output_dir)),
+                parser_command=("python", "-c", "print('batch review parse ok')"),
             )
+            run_document_ingest(data_dir, ingest.id, timeout_seconds=10)
             register_document_artifacts(data_dir, ingest.id)
             generate_document_memory_candidates(data_dir, ingest.id, max_candidates=2)
             env = {
                 "HERMES_DATA_DIR": str(data_dir),
                 "HERMES_LOG_DIR": str(root / "logs"),
                 "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "SONIC_HOST": "127.0.0.1",
+                "SONIC_PASSWORD": "secret",
             }
+            sonic_result = SonicResult(status="completed", channel="ingest", command="PUSH", payload={})
             with patch.dict(os.environ, env, clear=False):
-                queue = list_pending_document_memory_reviews(load_settings(), ingest_id=ingest.id)
-                result = review_document_memory_candidates_batch(
-                    load_settings(),
-                    tuple(candidate["id"] for candidate in queue.candidates),
-                    decision="reject",
-                    note="batch reviewed",
-                )
-                refreshed = list_pending_document_memory_reviews(load_settings(), ingest_id=ingest.id)
+                with patch("src.hermes.document_pipeline.sonic_push", return_value=sonic_result):
+                    queue = list_pending_document_memory_reviews(load_settings(), ingest_id=ingest.id)
+                    result = review_document_memory_candidates_batch(
+                        load_settings(),
+                        tuple(candidate["id"] for candidate in queue.candidates),
+                        decision="reject",
+                        note="batch reviewed",
+                        resume_after_review=True,
+                        timeout_seconds=10,
+                    )
+                    refreshed = list_pending_document_memory_reviews(load_settings(), ingest_id=ingest.id)
             notes_dir = root / "vault" / "00-Inbox" / "everos-candidates"
             note_count = len(list(notes_dir.glob("*.md"))) - 1
         self.assertEqual(queue.status, "ready")
@@ -499,6 +506,10 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(result.skipped_count, 0)
         self.assertIsNotNone(result.state)
         self.assertEqual(result.state.pipeline["memory_reviews"], "completed")
+        self.assertEqual(result.state.pipeline["source_refs"], "completed")
+        self.assertEqual(result.state.pipeline["obsidian_report"], "completed")
+        self.assertIsNotNone(result.workbench_run)
+        self.assertEqual(result.workbench_run.status, "completed")
         self.assertEqual(refreshed.pending_count, 0)
         self.assertEqual(refreshed.reviewed_count, 2)
         self.assertEqual(note_count, 2)
@@ -1115,29 +1126,47 @@ class RuntimeFoundationTests(unittest.TestCase):
                 title="CLI batch review plan",
                 input_path="sample.pdf",
                 output_dir=str(output_dir),
-                parser_command=("mineru", "-p", "sample.pdf", "-o", str(output_dir)),
+                parser_command=("python", "-c", "print('cli batch review parse ok')"),
             )
+            run_document_ingest(data_dir, ingest.id, timeout_seconds=10)
             register_document_artifacts(data_dir, ingest.id)
             candidates = generate_document_memory_candidates(data_dir, ingest.id, max_candidates=2).candidates
             env = {
                 "HERMES_DATA_DIR": str(data_dir),
                 "HERMES_LOG_DIR": str(root / "logs"),
                 "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "SONIC_HOST": "127.0.0.1",
+                "SONIC_PASSWORD": "secret",
             }
+            sonic_result = SonicResult(status="completed", channel="ingest", command="PUSH", payload={})
             with patch.dict(os.environ, env, clear=False):
-                with patch("src.hermes.cli.print_json") as queue_print_json:
-                    queue_code = run(["document", "parse", "memory-review-pending", "--ingest-id", ingest.id])
-                batch_args = ["document", "parse", "memory-review-batch", "--decision", "reject", "--note", "cli batch"]
-                for candidate in candidates:
-                    batch_args.extend(["--candidate-id", candidate.id])
-                with patch("src.hermes.cli.print_json") as batch_print_json:
-                    batch_code = run(batch_args)
+                with patch("src.hermes.document_pipeline.sonic_push", return_value=sonic_result):
+                    with patch("src.hermes.cli.print_json") as queue_print_json:
+                        queue_code = run(["document", "parse", "memory-review-pending", "--ingest-id", ingest.id])
+                    batch_args = [
+                        "document",
+                        "parse",
+                        "memory-review-batch",
+                        "--decision",
+                        "reject",
+                        "--note",
+                        "cli batch",
+                        "--resume-after-review",
+                        "--timeout-seconds",
+                        "10",
+                    ]
+                    for candidate in candidates:
+                        batch_args.extend(["--candidate-id", candidate.id])
+                    with patch("src.hermes.cli.print_json") as batch_print_json:
+                        batch_code = run(batch_args)
         self.assertEqual(queue_code, 0)
         self.assertEqual(batch_code, 0)
         self.assertEqual(queue_print_json.call_args.args[0]["document_memory_review_queue"].pending_count, 2)
         payload = batch_print_json.call_args.args[0]
         self.assertEqual(payload["document_memory_review_batch"].status, "completed")
         self.assertEqual(payload["document_memory_review_batch"].reviewed_count, 2)
+        self.assertEqual(payload["document_memory_review_batch"].workbench_run.status, "completed")
+        self.assertEqual(payload["document_memory_review_batch"].state.pipeline["obsidian_report"], "completed")
 
     def test_cli_document_source_refs_lists_source_refs(self):
         with tempfile.TemporaryDirectory() as tmp:
