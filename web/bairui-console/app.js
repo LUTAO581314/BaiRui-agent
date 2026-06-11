@@ -78,6 +78,7 @@ const state = {
   memoryCandidates: [],
   memoryReviews: [],
   memoryReviewResult: null,
+  documentActionResult: null,
   reports: [],
   sourceRefs: [],
   documentPlanDraft: { input_path: "", title: "", output_dir: "", backend: "", language: "", device: "cpu" },
@@ -1338,7 +1339,11 @@ function renderDocuments() {
           <p class="muted compact-copy">Creates a local ingest plan only. Parsing and memory writes still require explicit workflow and review steps.</p>
           ${renderProductError("documents")}
           ${renderProductError("doc-plan")}
+          ${renderProductError("doc-next")}
           ${renderProductError("doc-run")}
+          ${renderProductError("doc-command")}
+          ${renderProductError("doc-source-refs")}
+          ${renderProductError("doc-ingest-report")}
         </div>
         <hr class="rule" />
         <h2 class="panel-title">Ingest sessions</h2>
@@ -1369,6 +1374,7 @@ function renderDocuments() {
           <div class="top-gap">${renderWarnings(selected.blockers, selected.warnings)}</div>
           <h3 class="sub-title">Next actions</h3>
           ${renderActionList(selected.workbench?.next_actions || (selected.primary_action ? [selected.primary_action] : []))}
+          ${renderDocumentActionResult()}
           <div class="action-row top-gap">
             <button class="ghost-btn" type="button" data-document-action="source-refs">Generate Source Refs</button>
             <button class="ghost-btn" type="button" data-document-action="ingest-report">Generate Report</button>
@@ -1421,6 +1427,11 @@ function renderDocuments() {
       await runDocumentAction(button.dataset.documentAction);
     });
   });
+  el.body.querySelectorAll("[data-document-command]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await runDocumentCommand(button.dataset.documentCommand);
+    });
+  });
   el.body.querySelectorAll("[data-document-report]").forEach((button) => {
     button.addEventListener("click", async () => {
       await loadReports();
@@ -1438,6 +1449,7 @@ function renderDocuments() {
 async function runDocumentStep(path, key) {
   if (!state.selectedIngestId) return;
   const result = await runAction(key, () => api.post(path, { ingest_id: state.selectedIngestId, max_steps: 10 }), refreshScreenData);
+  state.documentActionResult = documentActionSummary(result, path);
   const status = result?.document_workbench_step?.status || result?.document_workbench_run?.status || "";
   if (status === "needs_review") await openDocumentMemoryReview();
 }
@@ -1452,6 +1464,7 @@ async function createDocumentPlan() {
   }
   state.errors.documents = "";
   const result = await runAction("doc-plan", () => api.post("/document/parse/ingest-plan", draft), refreshScreenData);
+  state.documentActionResult = documentActionSummary(result, "/document/parse/ingest-plan");
   state.selectedIngestId = result?.document_ingest?.id || state.selectedIngestId;
   state.documentPlanDraft = { input_path: "", title: "", output_dir: "", backend: "", language: "", device: "cpu" };
   await refreshScreenData();
@@ -1484,12 +1497,86 @@ async function runDocumentAction(action) {
   }
   if (!state.selectedIngestId) return;
   if (action === "source-refs") {
-    await runAction("doc-source-refs", () => api.post("/document/parse/source-refs", { ingest_id: state.selectedIngestId }), refreshScreenData);
+    const result = await runAction("doc-source-refs", () => api.post("/document/parse/source-refs", { ingest_id: state.selectedIngestId }), refreshScreenData);
+    state.documentActionResult = documentActionSummary(result, "/document/parse/source-refs");
     return;
   }
   if (action === "ingest-report") {
-    await runAction("doc-ingest-report", () => api.post("/document/parse/ingest-report", { ingest_id: state.selectedIngestId }), refreshScreenData);
+    const result = await runAction("doc-ingest-report", () => api.post("/document/parse/ingest-report", { ingest_id: state.selectedIngestId }), refreshScreenData);
+    state.documentActionResult = documentActionSummary(result, "/document/parse/ingest-report");
   }
+}
+
+async function runDocumentCommand(command) {
+  if (!command || !state.selectedIngestId) return;
+  if (command === "review-memory-candidate") {
+    await openDocumentMemoryReview();
+    return;
+  }
+  if (command === "done") {
+    state.screen = "reports";
+    await refreshScreenData();
+    return;
+  }
+  const path = documentCommandPath(command);
+  if (!path) return;
+  const result = await runAction("doc-command", () => api.post(path, documentCommandPayload(command)), refreshScreenData);
+  state.documentActionResult = documentActionSummary(result, path);
+  const status = result?.document_workbench_step?.status || result?.document_workbench_run?.status || result?.document_memory_candidate_generation?.status || "";
+  if (status === "needs_review") await openDocumentMemoryReview();
+}
+
+function documentCommandPath(command) {
+  return (
+    {
+      "run-ingest": "/document/parse/run-ingest",
+      "register-artifacts": "/document/parse/register-artifacts",
+      "index-artifacts": "/document/parse/index-artifacts",
+      "memory-candidates": "/document/parse/memory-candidates",
+      "source-refs": "/document/parse/source-refs",
+      "ingest-report": "/document/parse/ingest-report",
+    }[command] || ""
+  );
+}
+
+function documentCommandPayload(command) {
+  const payload = { ingest_id: state.selectedIngestId };
+  if (command === "index-artifacts") Object.assign(payload, { collection: "bairui", bucket: "documents" });
+  if (command === "memory-candidates") Object.assign(payload, { max_candidates: 20 });
+  return payload;
+}
+
+function documentActionSummary(result, path) {
+  if (!result) return null;
+  const payload =
+    result.document_workbench_step ||
+    result.document_workbench_run ||
+    result.document_ingest ||
+    result.document_pipeline ||
+    result.document_artifact_registration ||
+    result.document_index ||
+    result.document_memory_candidate_generation ||
+    result.document_source_refs ||
+    result.document_ingest_report ||
+    {};
+  return {
+    path,
+    status: payload.status || "completed",
+    detail: payload.detail || payload.title || "Document action completed.",
+  };
+}
+
+function renderDocumentActionResult() {
+  const result = state.documentActionResult;
+  if (!result) return "";
+  return `
+    <div class="document-action-result">
+      <div>
+        ${pill(result.status || "completed")}
+        <span class="chip mono">${escapeHtml(result.path || "")}</span>
+      </div>
+      <p>${escapeHtml(result.detail || "Document action completed.")}</p>
+    </div>`;
 }
 
 async function openDocumentMemoryReview() {
@@ -2648,7 +2735,20 @@ function renderWarnings(blockers = [], warnings = []) {
 
 function renderActionList(actions) {
   if (!actions.length) return `<div class="empty-state compact">No immediate next action.</div>`;
-  return `<div class="step-list">${actions.map((action) => `<div class="step-item"><div class="step-title"><span>${escapeHtml(action.label || action.command || action.id)}</span>${pill("partial", action.command || "action")}</div></div>`).join("")}</div>`;
+  return `<div class="step-list">${actions
+    .map(
+      (action) => `
+        <div class="step-item action-step">
+          <div class="step-title">
+            <span>${escapeHtml(action.label || action.command || action.id)}</span>
+            ${pill(action.command === "done" ? "ready" : "partial", action.command || "action")}
+          </div>
+          <button class="ghost-btn mini" type="button" data-document-command="${escapeHtml(action.command || "")}" ${!action.command ? "disabled" : ""}>
+            ${escapeHtml(action.command === "review-memory-candidate" ? "Open Review" : action.command === "done" ? "Open Reports" : "Run This Step")}
+          </button>
+        </div>`,
+    )
+    .join("")}</div>`;
 }
 
 function renderCountStrip(counts) {

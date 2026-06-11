@@ -829,6 +829,31 @@ h1 {
   background: rgba(103, 168, 255, 0.06);
 }
 
+.action-step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.document-action-result {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: var(--radius-sm);
+  background: rgba(53, 230, 199, 0.035);
+  padding: 9px;
+}
+
+.document-action-result p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .conversation-head,
 .message-titleline {
   display: flex;

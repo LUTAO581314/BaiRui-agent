@@ -759,6 +759,27 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn(".activation-operations", styles)
         self.assertIn(".operation-card", styles)
 
+    def test_documents_console_maps_next_actions_to_real_backend_contracts(self):
+        app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
+        styles = Path("web/bairui-console/styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("function runDocumentCommand", app_js)
+        self.assertIn("function documentCommandPath", app_js)
+        self.assertIn("function documentCommandPayload", app_js)
+        self.assertIn("function renderDocumentActionResult", app_js)
+        self.assertIn('data-document-command="${escapeHtml(action.command || "")}"', app_js)
+        self.assertIn('"run-ingest": "/document/parse/run-ingest"', app_js)
+        self.assertIn('"register-artifacts": "/document/parse/register-artifacts"', app_js)
+        self.assertIn('"index-artifacts": "/document/parse/index-artifacts"', app_js)
+        self.assertIn('"memory-candidates": "/document/parse/memory-candidates"', app_js)
+        self.assertIn('"source-refs": "/document/parse/source-refs"', app_js)
+        self.assertIn('"ingest-report": "/document/parse/ingest-report"', app_js)
+        self.assertIn('collection: "bairui"', app_js)
+        self.assertIn("Document path is required.", app_js)
+        self.assertIn("Parsing and memory writes still require explicit workflow and review steps.", app_js)
+        self.assertIn(".action-step", styles)
+        self.assertIn(".document-action-result", styles)
+
     def test_quickstart_and_deploy_docs_reference_console_demo_flow_and_readiness(self):
         readme = Path("README.md").read_text(encoding="utf-8")
         deployment = Path("docs/12-one-click-deployment.md").read_text(encoding="utf-8")
