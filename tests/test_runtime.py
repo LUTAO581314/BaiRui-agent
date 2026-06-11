@@ -995,6 +995,31 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("container_name: bairui-runtime", compose)
         self.assertIn("postgresql://bairui:", server_env)
 
+    def test_product_acceptance_script_documents_demo_scenarios_and_safety_gates(self):
+        readme = Path("README.md").read_text(encoding="utf-8")
+        doc = Path("docs/25-product-demo-acceptance.md").read_text(encoding="utf-8")
+        script = Path("scripts/product-acceptance.ps1").read_text(encoding="utf-8")
+
+        self.assertIn(".\\scripts\\product-acceptance.ps1", readme)
+        self.assertIn("python -m src.hermes demo flow", script)
+        self.assertIn("product_acceptance", script)
+        self.assertIn("research_task", script)
+        self.assertIn("document_knowledge_base", script)
+        self.assertIn("customer_draft", script)
+        self.assertIn("code_understanding", script)
+        self.assertIn("runtime_diagnostics", script)
+        self.assertIn("no_external_send", script)
+        self.assertIn("no_auto_memory_write", script)
+        self.assertIn("will_send -eq $false", script)
+        self.assertIn("will_write_long_term_memory -eq $false", script)
+        self.assertIn("event_id + target", script)
+        self.assertIn("artifacts\\product-acceptance.json", doc)
+        self.assertIn("Research task", doc)
+        self.assertIn("Document knowledge base", doc)
+        self.assertIn("Customer communication draft", doc)
+        self.assertIn("Code understanding", doc)
+        self.assertIn("Runtime diagnostics", doc)
+
     def test_avatar_engine_status_uses_advanced_runtime_contract(self):
         state = avatar_engine_status(load_settings())
         self.assertEqual(state.package, "pixi-live2d-display-advanced")

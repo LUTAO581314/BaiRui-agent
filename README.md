@@ -144,12 +144,18 @@ For Windows PowerShell verification:
 
 ```powershell
 .\scripts\smoke-test.ps1
+.\scripts\product-acceptance.ps1
 ```
 
 The smoke test runs the product closure demo flow in a temporary data directory.
 It verifies Command -> Report, Memory Review, Channels approval, CodeGraph, and
 the safety gates that prevent external sends and automatic long-term memory
 writes.
+
+The product acceptance script expands the same real backend flow into five
+demo scenarios: research task, document knowledge base, customer draft
+approval, code understanding, and runtime diagnostics. It can also write a JSON
+report with `-OutputPath artifacts\product-acceptance.json`.
 
 To seed only static walkthrough records before opening the console:
 
