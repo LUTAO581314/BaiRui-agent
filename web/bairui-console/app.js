@@ -1155,6 +1155,7 @@ function entityFields(entity) {
   if (entity.type === "memory") return [["Candidate", raw.candidate_type], ["Confidence", raw.confidence], ["Source", raw.source_path || raw.source?.source_ref], ["Created", raw.created_at]];
   if (entity.type === "channel") return [["Target", raw.target_id], ["Channel", raw.channel_type], ["Media", raw.media_kind], ["Review", raw.review_status || raw.status], ["Source", raw.source?.source_ref]];
   if (entity.type === "audit") return [["Action", raw.action], ["Resource", raw.resource_type], ["Reference", raw.resource_ref], ["Risk", raw.risk_level], ["Created", raw.created_at]];
+  if (entity.type === "code") return [["Kind", raw.kind || raw.type], ["Name", raw.name || raw.relative_path], ["Path", raw.path || raw.relative_path], ["Language", raw.language], ["Symbols", raw.symbol_count]];
   return [["Status", entity.status || raw.status], ["Reference", entity.ref || raw.id], ["Type", entity.type], ["Created", raw.created_at]];
 }
 
@@ -1214,8 +1215,10 @@ function renderEntityBody(entity) {
           ? raw.message_preview || raw.reason
           : entity.type === "report"
             ? raw.path
-            : entity.type === "audit"
-              ? JSON.stringify(raw.payload || {}, null, 2)
+          : entity.type === "audit"
+            ? JSON.stringify(raw.payload || {}, null, 2)
+            : entity.type === "code"
+              ? "CodeGraph reads source structure only. It does not write long-term memory."
               : JSON.stringify(raw, null, 2);
   if (!body) return "";
   return `<div class="entity-body"><span>${escapeHtml(entity.type === "report" ? "Location" : "Content")}</span><p>${escapeHtml(body)}</p></div>`;
@@ -1548,13 +1551,14 @@ function renderCodeGraph() {
       </section>
       <section class="panel pad">
         <h2 class="panel-title">Results</h2>
-        ${state.codegraphQuery ? renderTable(["type", "name", "kind", "path"], state.codegraphQuery.results || []) : `<div class="empty-state">Search results appear here after scanning.</div>`}
+        ${state.codegraphQuery ? renderCodeGraphResults(state.codegraphQuery.results || []) : `<div class="empty-state">Search results appear here after scanning.</div>`}
         <h3 class="sub-title">Impact</h3>
         <input class="field" id="codegraph-impact-path" placeholder="src/service/server.py" />
         <button class="ghost-btn top-gap" id="codegraph-impact" type="button">Analyze Impact</button>
-        ${state.codegraphImpact ? renderCountStrip({ files: state.codegraphImpact.files?.length || 0, symbols: state.codegraphImpact.symbols?.length || 0, imported_by: state.codegraphImpact.imported_by?.length || 0 }) : ""}
+        ${state.codegraphImpact ? renderCodeGraphImpact(state.codegraphImpact) : ""}
       </section>
-    </div>`;
+    </div>
+    ${state.selectedEntity?.type === "code" ? renderSelectedEntityPanel() : ""}`;
   document.getElementById("refresh-codegraph")?.addEventListener("click", refreshScreenData);
   document.getElementById("codegraph-register")?.addEventListener("click", async () => {
     await runAction("codegraph-register", () =>
@@ -1591,6 +1595,88 @@ function renderCodeGraph() {
     state.codegraphImpact = result?.codegraph_impact || state.codegraphImpact;
     render();
   });
+  bindCodeGraphCards();
+}
+
+function renderCodeGraphResults(results) {
+  if (!results.length) return `<div class="empty-state">No matching files or symbols.</div>`;
+  return `
+    <div class="audit-card-list">
+      ${results
+        .map(
+          (item, index) => `
+            <button class="object-card button-card" type="button" data-codegraph-result="${index}">
+              ${renderObjectCardInner(item, ["type", "name", "kind", "path"])}
+            </button>`,
+        )
+        .join("")}
+    </div>`;
+}
+
+function renderCodeGraphImpact(impact) {
+  const files = impact.files || [];
+  const symbols = impact.symbols || [];
+  return `
+    <div class="top-gap">
+      ${renderCountStrip({ files: files.length, symbols: symbols.length, imported_by: impact.imported_by?.length || 0 })}
+      <div class="audit-card-list top-gap">
+        ${files
+          .slice(0, 5)
+          .map(
+            (item, index) => `
+              <button class="object-card button-card" type="button" data-codegraph-impact-file="${index}">
+                ${renderObjectCardInner(item, ["relative_path", "language", "symbol_count", "import_count"])}
+              </button>`,
+          )
+          .join("")}
+        ${symbols
+          .slice(0, 5)
+          .map(
+            (item, index) => `
+              <button class="object-card button-card" type="button" data-codegraph-impact-symbol="${index}">
+                ${renderObjectCardInner(item, ["name", "kind", "path", "line"])}
+              </button>`,
+          )
+          .join("")}
+      </div>
+    </div>`;
+}
+
+function bindCodeGraphCards() {
+  el.body.querySelectorAll("[data-codegraph-result]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = state.codegraphQuery?.results?.[Number(button.dataset.codegraphResult)];
+      if (!item) return;
+      state.selectedEntity = codeEntity(item);
+      render();
+    });
+  });
+  el.body.querySelectorAll("[data-codegraph-impact-file]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = state.codegraphImpact?.files?.[Number(button.dataset.codegraphImpactFile)];
+      if (!item) return;
+      state.selectedEntity = codeEntity({ type: "file", ...item });
+      render();
+    });
+  });
+  el.body.querySelectorAll("[data-codegraph-impact-symbol]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = state.codegraphImpact?.symbols?.[Number(button.dataset.codegraphImpactSymbol)];
+      if (!item) return;
+      state.selectedEntity = codeEntity({ type: "symbol", ...item });
+      render();
+    });
+  });
+}
+
+function codeEntity(item) {
+  return {
+    type: "code",
+    title: item.name || item.relative_path || item.path || "Code entity",
+    status: "source_ready",
+    ref: item.id || item.file_id || item.path || item.relative_path || item.name,
+    raw: item,
+  };
 }
 
 function renderEvents() {
