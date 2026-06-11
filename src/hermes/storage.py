@@ -173,6 +173,31 @@ class DocumentIngestReport:
     created_at: str
 
 
+@dataclass(frozen=True)
+class ChannelApprovalRequest:
+    id: str
+    target_id: str
+    channel_type: str
+    media_kind: str
+    message_preview: str
+    attachment_path: str
+    status: str
+    reason: str
+    created_at: str
+
+
+@dataclass(frozen=True)
+class ChannelApprovalReview:
+    id: str
+    request_id: str
+    decision: str
+    status: str
+    reviewer_ref: str
+    note: str
+    will_send: bool
+    created_at: str
+
+
 def create_audit_event(
     data_dir: Path,
     action: str,
@@ -201,6 +226,88 @@ def create_audit_event(
 
 def list_audit_events(data_dir: Path, limit: int = 50) -> list[dict[str, Any]]:
     return _read_jsonl(data_dir / "audit.jsonl", limit=limit)
+
+
+def create_channel_approval_request(
+    data_dir: Path,
+    *,
+    target_id: str,
+    channel_type: str,
+    media_kind: str,
+    message_preview: str,
+    attachment_path: str = "",
+    reason: str = "owner_confirmation_required",
+) -> ChannelApprovalRequest:
+    request = ChannelApprovalRequest(
+        id=str(uuid.uuid4()),
+        target_id=target_id,
+        channel_type=channel_type,
+        media_kind=media_kind,
+        message_preview=message_preview,
+        attachment_path=attachment_path,
+        status="pending_review",
+        reason=reason,
+        created_at=utc_now(),
+    )
+    _append_jsonl(data_dir / "channel_approval_requests.jsonl", asdict(request))
+    create_audit_event(
+        data_dir,
+        "channel.approval_requested",
+        resource_type="channel_approval_request",
+        resource_ref=request.id,
+        risk_level="high",
+        payload={
+            "target_id": target_id,
+            "channel_type": channel_type,
+            "media_kind": media_kind,
+            "reason": reason,
+            "will_send": False,
+        },
+    )
+    return request
+
+
+def list_channel_approval_requests(data_dir: Path, limit: int = 50) -> list[dict[str, Any]]:
+    return _read_jsonl(data_dir / "channel_approval_requests.jsonl", limit=limit)
+
+
+def create_channel_approval_review(
+    data_dir: Path,
+    *,
+    request_id: str,
+    decision: str,
+    reviewer_ref: str,
+    note: str = "",
+) -> ChannelApprovalReview:
+    review = ChannelApprovalReview(
+        id=str(uuid.uuid4()),
+        request_id=request_id,
+        decision=decision,
+        status="reviewed",
+        reviewer_ref=reviewer_ref,
+        note=note,
+        will_send=False,
+        created_at=utc_now(),
+    )
+    _append_jsonl(data_dir / "channel_approval_reviews.jsonl", asdict(review))
+    create_audit_event(
+        data_dir,
+        "channel.approval_reviewed",
+        resource_type="channel_approval_request",
+        resource_ref=request_id,
+        risk_level="high",
+        payload={
+            "decision": decision,
+            "reviewer_ref": reviewer_ref,
+            "review_id": review.id,
+            "will_send": False,
+        },
+    )
+    return review
+
+
+def list_channel_approval_reviews(data_dir: Path, limit: int = 50) -> list[dict[str, Any]]:
+    return _read_jsonl(data_dir / "channel_approval_reviews.jsonl", limit=limit)
 
 
 def create_job(data_dir: Path, title: str, prompt: str, route: str = "general") -> Job:

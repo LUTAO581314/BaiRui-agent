@@ -180,8 +180,16 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             {
                 "id": "channels",
                 "title": "Channels",
-                "read": ("/channels/status", "/channels/targets", "/channels/diagnostics", "/events"),
-                "actions": ({"id": "plan_channel_send", "method": "POST", "path": "/channels/send", "schema": "channel_send"},),
+                "read": ("/channels/status", "/channels/targets", "/channels/diagnostics", "/channels/approvals", "/events"),
+                "actions": (
+                    {"id": "plan_channel_send", "method": "POST", "path": "/channels/send", "schema": "channel_send"},
+                    {
+                        "id": "review_channel_approval",
+                        "method": "POST",
+                        "path": "/channels/approvals/review",
+                        "schema": "channel_approval_review",
+                    },
+                ),
             },
             {
                 "id": "runtime_settings",
@@ -264,6 +272,13 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"name": "owner_confirmation", "type": "toggle", "required": True, "label": "Owner Confirmation"},
                 )
             },
+            "channel_approval_review": {
+                "fields": (
+                    {"name": "request_id", "type": "id", "required": True, "label": "Request ID"},
+                    {"name": "decision", "type": "segmented", "required": True, "label": "Decision", "options": ("approve", "reject")},
+                    {"name": "note", "type": "textarea", "required": False, "label": "Note"},
+                )
+            },
         },
         "api_groups": (
             {
@@ -304,7 +319,9 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"method": "GET", "path": "/channels/status"},
                     {"method": "GET", "path": "/channels/targets"},
                     {"method": "GET", "path": "/channels/diagnostics"},
+                    {"method": "GET", "path": "/channels/approvals"},
                     {"method": "POST", "path": "/channels/send"},
+                    {"method": "POST", "path": "/channels/approvals/review"},
                 ),
             },
             {
@@ -333,5 +350,8 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             "step_limit_reached",
             "approval_required",
             "unsupported_media",
+            "pending_review",
+            "reviewed",
+            "already_reviewed",
         ),
     }

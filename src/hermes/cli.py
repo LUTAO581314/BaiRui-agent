@@ -63,7 +63,15 @@ from .adapters.trendradar import (
     status as trendradar_status,
 )
 from .capabilities import collect_capabilities
-from .channels import as_payload as channel_payload, channel_status, channel_targets, diagnose_channel_targets, plan_channel_send
+from .channels import (
+    as_payload as channel_payload,
+    channel_status,
+    channel_targets,
+    diagnose_channel_targets,
+    list_channel_approvals,
+    plan_channel_send,
+    review_channel_approval,
+)
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
 from .document_pipeline import (
@@ -151,11 +159,18 @@ def build_parser() -> argparse.ArgumentParser:
     channels_subcommands.add_parser("status", help="Inspect outbound channel configuration")
     channels_subcommands.add_parser("targets", help="List configured outbound channel targets")
     channels_subcommands.add_parser("diagnostics", help="Explain target readiness and blockers")
+    channel_approvals = channels_subcommands.add_parser("approvals", help="List outbound send approval requests")
+    channel_approvals.add_argument("--pending", action="store_true")
     channel_send = channels_subcommands.add_parser("plan-send", help="Create an owner-approved outbound send plan")
     channel_send.add_argument("--target-id", required=True)
     channel_send.add_argument("--text", default="")
     channel_send.add_argument("--media-kind", default="text")
     channel_send.add_argument("--attachment-path", default="")
+    channel_review = channels_subcommands.add_parser("review-approval", help="Approve or reject one outbound send request")
+    channel_review.add_argument("--request-id", required=True)
+    channel_review.add_argument("--decision", choices=["approve", "reject"], required=True)
+    channel_review.add_argument("--reviewer-ref", default="owner")
+    channel_review.add_argument("--note", default="")
 
     memory_parser = subcommands.add_parser("memory", help="Operate the EverOS-backed memory adapter")
     memory_subcommands = memory_parser.add_subparsers(dest="memory_command")
@@ -478,6 +493,9 @@ def run(argv: list[str] | None = None) -> int:
         if channels_command == "diagnostics":
             print_json({"service": "bairui", "channel_diagnostics": tuple(diagnose_channel_targets(settings))})
             return 0
+        if channels_command == "approvals":
+            print_json({"service": "bairui", "channel_approvals": list_channel_approvals(settings, only_pending=args.pending)})
+            return 0
         if channels_command == "plan-send":
             result = plan_channel_send(
                 settings,
@@ -490,6 +508,18 @@ def run(argv: list[str] | None = None) -> int:
             )
             print_json({"service": "bairui", "channel_send": channel_payload(result)})
             return 0 if result.status == "approval_required" else 1
+        if channels_command == "review-approval":
+            result = review_channel_approval(
+                settings,
+                {
+                    "request_id": args.request_id,
+                    "decision": args.decision,
+                    "reviewer_ref": args.reviewer_ref,
+                    "note": args.note,
+                },
+            )
+            print_json({"service": "bairui", "channel_approval_review": channel_payload(result)})
+            return 0 if result.status == "reviewed" else 1
         parser.error(f"unknown channels command: {channels_command}")
         return 2
 

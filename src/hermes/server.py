@@ -41,7 +41,15 @@ from .adapters.sonic import (
 )
 from .adapters.trendradar import as_payload as trendradar_payload, status as trendradar_status
 from .capabilities import collect_capabilities
-from .channels import as_payload as channel_payload, channel_status, channel_targets, diagnose_channel_targets, plan_channel_send
+from .channels import (
+    as_payload as channel_payload,
+    channel_status,
+    channel_targets,
+    diagnose_channel_targets,
+    list_channel_approvals,
+    plan_channel_send,
+    review_channel_approval,
+)
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
 from .document_pipeline import (
@@ -188,6 +196,9 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path == "/channels/diagnostics":
             self._send({"service": PUBLIC_SERVICE, "channel_diagnostics": [channel_payload(item) for item in diagnose_channel_targets(settings)]})
             return
+        if self.path == "/channels/approvals":
+            self._send({"service": PUBLIC_SERVICE, "channel_approvals": list(list_channel_approvals(settings))})
+            return
         if self.path == "/memory/status":
             self._send({"service": PUBLIC_SERVICE, "memory": as_payload(everos_status(settings))})
             return
@@ -278,6 +289,26 @@ class HermesHandler(BaseHTTPRequestHandler):
             if result.status == "not_found":
                 status = 404
             self._send({"service": PUBLIC_SERVICE, "channel_send": channel_payload(result)}, status=status)
+            return
+
+        if self.path == "/channels/approvals/review":
+            request_id = str(payload.get("request_id", ""))
+            decision = str(payload.get("decision", ""))
+            if not request_id.strip():
+                self._send({"error": "invalid_request", "message": "request_id is required"}, status=400)
+                return
+            if not decision.strip():
+                self._send({"error": "invalid_request", "message": "decision is required"}, status=400)
+                return
+            result = review_channel_approval(settings, payload)
+            status = 200 if result.status == "reviewed" else 503
+            if result.status == "invalid_decision":
+                status = 400
+            if result.status == "not_found":
+                status = 404
+            if result.status == "already_reviewed":
+                status = 409
+            self._send({"service": PUBLIC_SERVICE, "channel_approval_review": channel_payload(result)}, status=status)
             return
 
         if self.path == "/memory/ingest":

@@ -66,7 +66,9 @@ The frontend reads:
 - `/channels/status`;
 - `/channels/targets`;
 - `/channels/diagnostics`;
+- `/channels/approvals`;
 - `/channels/send`;
+- `/channels/approvals/review`;
 - `/document/parse/session-list`;
 - `/document/parse/session-summary`;
 - `/document/parse/workbench-next`;

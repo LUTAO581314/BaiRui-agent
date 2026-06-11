@@ -7,7 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings
-from .storage import create_audit_event
+from .storage import (
+    create_audit_event,
+    create_channel_approval_request,
+    create_channel_approval_review,
+    list_channel_approval_requests,
+    list_channel_approval_reviews,
+)
 
 
 SUPPORTED_MEDIA_KINDS = ("text", "image", "video", "file")
@@ -59,6 +65,19 @@ class ChannelSendPlan:
     will_send: bool
     reason: str
     audit_event_id: str
+    approval_request_id: str
+
+
+@dataclass(frozen=True)
+class ChannelApprovalReviewResult:
+    status: str
+    request_id: str
+    decision: str
+    reviewer_ref: str
+    note: str
+    will_send: bool
+    reason: str
+    review_id: str
 
 
 def channel_status(settings: Settings) -> ChannelStatus:
@@ -160,6 +179,19 @@ def plan_channel_send(settings: Settings, payload: dict[str, Any]) -> ChannelSen
         status = "blocked"
         reason = "attachment_not_found"
 
+    approval_request_id = ""
+    if status == "approval_required":
+        approval = create_channel_approval_request(
+            settings.data_dir,
+            target_id=target_id,
+            channel_type=str((target or {}).get("channel_type", "")),
+            media_kind=media_kind,
+            message_preview=message[:160],
+            attachment_path=attachment_path,
+            reason=reason,
+        )
+        approval_request_id = approval.id
+
     audit = create_audit_event(
         settings.data_dir,
         "channel.send_planned" if status == "approval_required" else "channel.send_blocked",
@@ -173,6 +205,7 @@ def plan_channel_send(settings: Settings, payload: dict[str, Any]) -> ChannelSen
             "media_kind": media_kind,
             "reason": reason,
             "will_send": False,
+            "approval_request_id": approval_request_id,
         },
     )
     return ChannelSendPlan(
@@ -186,6 +219,85 @@ def plan_channel_send(settings: Settings, payload: dict[str, Any]) -> ChannelSen
         will_send=False,
         reason=reason,
         audit_event_id=audit.id,
+        approval_request_id=approval_request_id,
+    )
+
+
+def list_channel_approvals(settings: Settings, *, only_pending: bool = False) -> tuple[dict[str, Any], ...]:
+    requests = list_channel_approval_requests(settings.data_dir, limit=200)
+    reviews = list_channel_approval_reviews(settings.data_dir, limit=200)
+    reviewed_ids = {str(review.get("request_id", "")) for review in reviews}
+    rows: list[dict[str, Any]] = []
+    for request in requests:
+        request_id = str(request.get("id", ""))
+        current = dict(request)
+        current["review_status"] = "reviewed" if request_id in reviewed_ids else "pending_review"
+        if only_pending and current["review_status"] != "pending_review":
+            continue
+        rows.append(current)
+    return tuple(rows)
+
+
+def review_channel_approval(settings: Settings, payload: dict[str, Any]) -> ChannelApprovalReviewResult:
+    request_id = str(payload.get("request_id", "")).strip()
+    decision = str(payload.get("decision", "")).strip()
+    reviewer_ref = str(payload.get("reviewer_ref", "owner")).strip() or "owner"
+    note = str(payload.get("note", "")).strip()
+
+    if decision not in {"approve", "reject"}:
+        return ChannelApprovalReviewResult(
+            status="invalid_decision",
+            request_id=request_id,
+            decision=decision,
+            reviewer_ref=reviewer_ref,
+            note=note,
+            will_send=False,
+            reason="decision_must_be_approve_or_reject",
+            review_id="",
+        )
+
+    requests = {str(item.get("id", "")): item for item in list_channel_approval_requests(settings.data_dir, limit=200)}
+    if request_id not in requests:
+        return ChannelApprovalReviewResult(
+            status="not_found",
+            request_id=request_id,
+            decision=decision,
+            reviewer_ref=reviewer_ref,
+            note=note,
+            will_send=False,
+            reason="approval_request_not_found",
+            review_id="",
+        )
+
+    reviews = list_channel_approval_reviews(settings.data_dir, limit=200)
+    if any(str(review.get("request_id", "")) == request_id for review in reviews):
+        return ChannelApprovalReviewResult(
+            status="already_reviewed",
+            request_id=request_id,
+            decision=decision,
+            reviewer_ref=reviewer_ref,
+            note=note,
+            will_send=False,
+            reason="approval_request_already_reviewed",
+            review_id="",
+        )
+
+    review = create_channel_approval_review(
+        settings.data_dir,
+        request_id=request_id,
+        decision=decision,
+        reviewer_ref=reviewer_ref,
+        note=note,
+    )
+    return ChannelApprovalReviewResult(
+        status="reviewed",
+        request_id=request_id,
+        decision=decision,
+        reviewer_ref=reviewer_ref,
+        note=note,
+        will_send=False,
+        reason="review_recorded_without_external_dispatch",
+        review_id=review.id,
     )
 
 

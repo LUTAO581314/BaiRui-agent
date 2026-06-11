@@ -6,7 +6,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.hermes.capabilities import collect_capabilities
-from src.hermes.channels import channel_status, channel_targets, diagnose_channel_targets, plan_channel_send
+from src.hermes.channels import (
+    channel_status,
+    channel_targets,
+    diagnose_channel_targets,
+    list_channel_approvals,
+    plan_channel_send,
+    review_channel_approval,
+)
 from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
 from src.hermes.db import SCHEMA_SQL, database_status
@@ -29,6 +36,8 @@ from src.hermes.storage import (
     create_document_ingest,
     create_job,
     list_audit_events,
+    list_channel_approval_requests,
+    list_channel_approval_reviews,
     list_document_artifacts,
     list_document_index_runs,
     list_document_ingest_reports,
@@ -129,7 +138,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/channels/status", screens["channels"]["read"])
         self.assertIn("/channels/targets", screens["channels"]["read"])
         self.assertIn("/channels/diagnostics", screens["channels"]["read"])
+        self.assertIn("/channels/approvals", screens["channels"]["read"])
         self.assertIn("channel_send", contract["forms"])
+        self.assertIn("channel_approval_review", contract["forms"])
         self.assertIn("/document/parse/session-list", screens["document_ingest"]["read"])
         self.assertIn("/document/parse/session-summary", screens["document_ingest"]["read"])
         self.assertIn("document_ingest_plan", contract["forms"])
@@ -140,6 +151,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/events", operation_paths)
         self.assertIn("/channels/send", channel_paths)
         self.assertIn("/channels/diagnostics", channel_paths)
+        self.assertIn("/channels/approvals", channel_paths)
+        self.assertIn("/channels/approvals/review", channel_paths)
         self.assertIn("/document/parse/workbench-next", document_paths)
         self.assertIn("needs_review", contract["state_values"])
         self.assertIn("approval_required", contract["state_values"])
@@ -255,11 +268,64 @@ class RuntimeFoundationTests(unittest.TestCase):
                     {"target_id": "owner_review", "text": "approve this summary", "media_kind": "text"},
                 )
                 audit = list_audit_events(data_dir)
+                requests = list_channel_approval_requests(data_dir)
         self.assertEqual(result.status, "approval_required")
         self.assertFalse(result.will_send)
         self.assertEqual(result.reason, "owner_confirmation_required")
         self.assertEqual(audit[-1]["action"], "channel.send_planned")
         self.assertEqual(audit[-1]["payload"]["will_send"], False)
+        self.assertEqual(requests[-1]["status"], "pending_review")
+        self.assertEqual(result.approval_request_id, requests[-1]["id"])
+
+    def test_channel_approvals_list_and_review_do_not_send(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                plan = plan_channel_send(
+                    settings,
+                    {"target_id": "owner_review", "text": "approval queue item", "media_kind": "text"},
+                )
+                approvals = list_channel_approvals(settings, only_pending=True)
+                review = review_channel_approval(
+                    settings,
+                    {"request_id": plan.approval_request_id, "decision": "approve", "reviewer_ref": "owner", "note": "ok"},
+                )
+                after_review = list_channel_approvals(settings, only_pending=True)
+                reviews = list_channel_approval_reviews(data_dir)
+        self.assertEqual(len(approvals), 1)
+        self.assertEqual(approvals[0]["review_status"], "pending_review")
+        self.assertEqual(review.status, "reviewed")
+        self.assertFalse(review.will_send)
+        self.assertEqual(review.reason, "review_recorded_without_external_dispatch")
+        self.assertEqual(after_review, ())
+        self.assertEqual(reviews[-1]["decision"], "approve")
+        self.assertEqual(reviews[-1]["will_send"], False)
+
+    def test_channel_approval_review_rejects_duplicate_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                plan = plan_channel_send(
+                    settings,
+                    {"target_id": "owner_review", "text": "duplicate review item", "media_kind": "text"},
+                )
+                first = review_channel_approval(settings, {"request_id": plan.approval_request_id, "decision": "reject"})
+                second = review_channel_approval(settings, {"request_id": plan.approval_request_id, "decision": "approve"})
+        self.assertEqual(first.status, "reviewed")
+        self.assertEqual(second.status, "already_reviewed")
 
     def test_frontend_events_project_channel_send_plan(self):
         with tempfile.TemporaryDirectory() as tmp:

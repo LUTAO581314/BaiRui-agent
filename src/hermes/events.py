@@ -23,6 +23,8 @@ ACTION_EVENT_TYPES = {
     "chat.not_completed": "command.blocked",
     "channel.send_planned": "channel.send.approval_required",
     "channel.send_blocked": "channel.send.blocked",
+    "channel.approval_requested": "channel.approval.requested",
+    "channel.approval_reviewed": "channel.approval.reviewed",
     "database.migration": "system.changed",
 }
 

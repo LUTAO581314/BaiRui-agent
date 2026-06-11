@@ -321,7 +321,9 @@ Initial backend supplement should expose neutral `bairui` endpoints:
 - `GET /channels/status`
 - `GET /channels/targets`
 - `GET /channels/diagnostics`
+- `GET /channels/approvals`
 - `POST /channels/send`
+- `POST /channels/approvals/review`
 - `GET /events`
 
 Do not expose connector vendor names as product brands. Render them as channel
@@ -332,6 +334,9 @@ payloads, but it does not send them. Real external dispatch remains gated by
 owner confirmation, target configuration, and compliance review.
 It also exposes target diagnostics so the frontend can render exact blockers
 instead of guessing why a channel target is unavailable.
+Planned sends enter an approval queue. Reviews are recorded for audit and UI
+state, but they still do not dispatch to external channels until a later,
+compliance-reviewed sender is implemented.
 
 ### Settings
 
