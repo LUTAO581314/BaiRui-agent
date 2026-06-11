@@ -1003,6 +1003,8 @@ function renderMemory() {
         note: "Rejected from bairui console batch action.",
       }),
     );
+    await loadMemory();
+    render();
   });
   el.body.querySelectorAll("[data-review]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -1013,6 +1015,24 @@ function renderMemory() {
           reviewer_ref: "owner",
         }),
       );
+      await loadMemory();
+      state.selectedEntity = findResourceEntity("document_memory_candidate", button.dataset.candidate) || state.selectedEntity;
+      render();
+    });
+  });
+  el.body.querySelectorAll("[data-memory-source]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const candidate = state.memoryCandidates.find((item) => item.id === button.dataset.memorySource) || pending.find((item) => item.id === button.dataset.memorySource);
+      if (!candidate) return;
+      state.selectedEntity = { type: "memory", title: candidate.candidate_type, status: candidate.status, ref: candidate.id, raw: candidate };
+      render();
+    });
+  });
+  el.body.querySelectorAll("[data-memory-reports]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.selectedIngestId = button.dataset.memoryReports || state.selectedIngestId;
+      state.screen = "reports";
+      await refreshScreenData();
     });
   });
 }
@@ -1033,6 +1053,8 @@ function renderMemoryCandidate(candidate) {
       <div class="action-row">
         <button class="primary-btn" type="button" data-review="approve" data-candidate="${escapeHtml(candidate.id)}">Approve</button>
         <button class="ghost-btn" type="button" data-review="reject" data-candidate="${escapeHtml(candidate.id)}">Reject</button>
+        <button class="ghost-btn" type="button" data-memory-source="${escapeHtml(candidate.id)}">View Source</button>
+        <button class="ghost-btn" type="button" data-memory-reports="${escapeHtml(candidate.ingest_id || "")}">Open Reports</button>
       </div>
     </article>`;
 }
