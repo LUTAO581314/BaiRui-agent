@@ -850,6 +850,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         styles = Path("web/bairui-console/styles.css").read_text(encoding="utf-8")
 
         self.assertIn("function renderCommandResourceClosure", app_js)
+        self.assertIn("function promotionResourceSummary", app_js)
+        self.assertIn("function promotionNextAction", app_js)
         self.assertIn("function normalizeAgentPromotion", app_js)
         self.assertIn("function allPromotionRecords", app_js)
         self.assertIn("event_id + target idempotency", app_js)
@@ -857,11 +859,18 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("will_execute_external_action=false", app_js)
         self.assertIn("promotion_id", app_js)
         self.assertIn("source_ref", app_js)
+        self.assertIn("Open Reports", app_js)
+        self.assertIn("Open Review Queue", app_js)
+        self.assertIn("Open Channels", app_js)
+        self.assertIn("Owner must approve or reject before long-term memory write.", app_js)
+        self.assertIn("Owner must review the draft; will_send=false.", app_js)
         self.assertIn('promotion.duplicate ? "reused" : "created"', app_js)
         self.assertIn("memory/channel require owner review", app_js)
         self.assertIn(".command-resource-closure", styles)
         self.assertIn(".promotion-trace-strip", styles)
         self.assertIn(".promotion-result-main", styles)
+        self.assertIn(".promotion-result-head", styles)
+        self.assertIn(".promotion-result-meta", styles)
 
     def test_activation_console_renders_guided_steps_and_safety_boundaries(self):
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")

@@ -1279,11 +1279,45 @@ function renderPromotionAction(event, target, label) {
   const promotion = promotionForEventTarget(event.id, target);
   const resource = promotion?.created_resource || {};
   if (resource.id) {
-    const viewLabel =
-      target === "memory_review" ? "Review Memory" : target === "channel_draft" ? "Review Draft" : target === "job" ? "View Task" : "View Report";
+    const viewLabel = promotionNextAction(promotion).button;
     return `<button class="ghost-btn mini is-linked" type="button" data-open-promotion="${escapeHtml(resource.type)}" data-resource-id="${escapeHtml(resource.id)}">${escapeHtml(viewLabel)}</button>`;
   }
   return `<button class="ghost-btn mini" type="button" data-promote-event="${escapeHtml(event.id)}" data-promote-target="${escapeHtml(target)}">${escapeHtml(label)}</button>`;
+}
+
+function promotionResourceSummary(promotion) {
+  const resource = promotion?.created_resource || {};
+  const type = resource.type || promotion?.resource_type || "resource";
+  const label =
+    {
+      job: "Task",
+      report: "Report",
+      document_memory_candidate: "Memory candidate",
+      channel_approval_request: "Channel draft",
+    }[type] || type;
+  const reviewRequired = resource.review_required || promotion?.review_required;
+  const screen = promotionScreenFor(type);
+  return {
+    label,
+    type,
+    screen,
+    status: resource.status || promotion?.resource_status || promotion?.status || "planned",
+    resource_id: resource.id || promotion?.resource_id || "",
+    review_required: Boolean(reviewRequired),
+    safety: reviewRequired ? "owner review required" : "no external action",
+    source_ref: resource.source?.source_ref || promotion?.source?.source_ref || promotion?.event_id || "",
+    promotion_id: promotion?.promotion_id || promotion?.id || "",
+    duplicate: Boolean(promotion?.duplicate),
+  };
+}
+
+function promotionNextAction(promotion) {
+  const summary = promotionResourceSummary(promotion);
+  if (summary.type === "job") return { button: "Open Dashboard", detail: "Task is local and traceable from Dashboard." };
+  if (summary.type === "report") return { button: "Open Reports", detail: "Report draft is ready for review with source reference." };
+  if (summary.type === "document_memory_candidate") return { button: "Open Review Queue", detail: "Owner must approve or reject before long-term memory write." };
+  if (summary.type === "channel_approval_request") return { button: "Open Channels", detail: "Owner must review the draft; will_send=false." };
+  return { button: "Open Entity", detail: "Open the entity detail card and inspect source trace." };
 }
 
 function promotionForEventTarget(eventId, target) {
@@ -1303,18 +1337,26 @@ function renderPromotionResults(eventId) {
       ${results
         .map((promotion) => {
           const resource = promotion.created_resource || {};
+          const summary = promotionResourceSummary(promotion);
+          const next = promotionNextAction(promotion);
           return `
             <div class="promotion-result">
               <div class="promotion-result-main">
-                ${pill(resource.status || promotion.status || "planned")}
-                <span class="chip">${escapeHtml(promotion.target)}</span>
-                <span class="chip">${escapeHtml(promotion.duplicate ? "reused" : "created")}</span>
-                <span class="chip">${escapeHtml(resource.review_required ? "owner_review" : "no_external_action")}</span>
-                <span class="chip mono">${escapeHtml(shortId(resource.id))}</span>
-                <span class="chip mono">src ${escapeHtml(shortId(resource.source?.source_ref || ""))}</span>
-                <span class="chip mono">promotion ${escapeHtml(shortId(promotion.promotion_id || ""))}</span>
+                <div class="promotion-result-head">
+                  ${pill(summary.status)}
+                  <strong>${escapeHtml(summary.label)}</strong>
+                  <span class="chip">${escapeHtml(promotion.duplicate ? "reused" : "created")}</span>
+                  <span class="chip">${escapeHtml(summary.safety)}</span>
+                </div>
+                <p>${escapeHtml(next.detail)}</p>
+                <div class="promotion-result-meta">
+                  <span class="chip mono">resource ${escapeHtml(shortId(summary.resource_id))}</span>
+                  <span class="chip mono">src ${escapeHtml(shortId(summary.source_ref))}</span>
+                  <span class="chip mono">promotion ${escapeHtml(shortId(summary.promotion_id))}</span>
+                  <span class="chip">screen ${escapeHtml(summary.screen)}</span>
+                </div>
               </div>
-              <button class="ghost-btn mini" type="button" data-open-promotion="${escapeHtml(resource.type)}" data-resource-id="${escapeHtml(resource.id)}">View</button>
+              <button class="ghost-btn mini" type="button" data-open-promotion="${escapeHtml(resource.type)}" data-resource-id="${escapeHtml(resource.id)}">${escapeHtml(next.button)}</button>
             </div>`;
         })
         .join("")}
@@ -1340,20 +1382,24 @@ function renderAgentPromotionLedger() {
           .map((promotion) => {
             const resource = promotion.created_resource || {};
             const source = resource.source || promotion.source || {};
+            const summary = promotionResourceSummary(promotion);
+            const next = promotionNextAction(promotion);
             return `
               <div class="promotion-ledger-row">
                 <div class="promotion-ledger-main">
                   <div class="agent-meta">
-                    ${pill(resource.status || promotion.resource_status || promotion.status || "planned")}
+                    ${pill(summary.status)}
+                    <span class="chip">${escapeHtml(summary.label)}</span>
                     <span class="chip">${escapeHtml(promotion.target || source.target || "")}</span>
-                    <span class="chip">${escapeHtml(resource.review_required || promotion.review_required ? "owner_review" : "no_external_action")}</span>
-                    <span class="chip mono">event ${escapeHtml(shortId(source.source_ref || promotion.event_id || ""))}</span>
-                    <span class="chip mono">promotion ${escapeHtml(shortId(promotion.promotion_id || ""))}</span>
+                    <span class="chip">${escapeHtml(summary.safety)}</span>
+                    <span class="chip">${escapeHtml(summary.duplicate ? "reused" : "created")}</span>
+                    <span class="chip mono">event ${escapeHtml(shortId(summary.source_ref))}</span>
+                    <span class="chip mono">promotion ${escapeHtml(shortId(summary.promotion_id))}</span>
                   </div>
-                  <strong>${escapeHtml(resource.type || promotion.resource_type || "resource")} ${escapeHtml(shortId(resource.id || promotion.resource_id || ""))}</strong>
-                  <p>${escapeHtml(promotion.detail || "Promotion recorded for owner review.")}</p>
+                  <strong>${escapeHtml(summary.label)} ${escapeHtml(shortId(summary.resource_id))}</strong>
+                  <p>${escapeHtml(next.detail)} ${escapeHtml(promotion.detail || "Promotion recorded for owner review.")}</p>
                 </div>
-                <button class="ghost-btn mini" type="button" data-open-promotion="${escapeHtml(resource.type || promotion.resource_type || "")}" data-resource-id="${escapeHtml(resource.id || promotion.resource_id || "")}">View</button>
+                <button class="ghost-btn mini" type="button" data-open-promotion="${escapeHtml(resource.type || promotion.resource_type || "")}" data-resource-id="${escapeHtml(resource.id || promotion.resource_id || "")}">${escapeHtml(next.button)}</button>
               </div>`;
           })
           .join("")}

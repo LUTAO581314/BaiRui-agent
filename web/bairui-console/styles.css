@@ -1005,9 +1005,9 @@ h1 {
 }
 
 .promotion-result {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   border: 1px solid color-mix(in srgb, var(--accent-2) 32%, var(--line));
   border-radius: var(--radius-sm);
@@ -1016,10 +1016,31 @@ h1 {
 }
 
 .promotion-result-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.promotion-result-head,
+.promotion-result-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  min-width: 0;
+  align-items: center;
+}
+
+.promotion-result-head strong {
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.promotion-result-main p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .promotion-ledger {
