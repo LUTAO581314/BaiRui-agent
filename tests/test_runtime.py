@@ -924,6 +924,32 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn(".event-timeline", styles)
         self.assertIn(".event-evidence-card", styles)
 
+    def test_entity_cards_are_typed_traceable_product_objects(self):
+        app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
+        styles = Path("web/bairui-console/styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("function entityOverview", app_js)
+        self.assertIn("function renderEntityOverview", app_js)
+        self.assertIn("function entityClass", app_js)
+        self.assertIn("function entityLifecycleStage", app_js)
+        self.assertIn("function entityOwnerGate", app_js)
+        self.assertIn("function entityTraceLabel", app_js)
+        self.assertIn("function renderEntityAuditEvidence", app_js)
+        self.assertIn("function entityAuditMatches", app_js)
+        self.assertIn("task object", app_js)
+        self.assertIn("deliverable object", app_js)
+        self.assertIn("review candidate", app_js)
+        self.assertIn("approval draft", app_js)
+        self.assertIn("source structure", app_js)
+        self.assertIn("will_send=false", app_js)
+        self.assertIn("no memory write", app_js)
+        self.assertIn("visual state only", app_js)
+        self.assertIn('data-entity-action="open-codegraph"', app_js)
+        self.assertIn('data-entity-action="open-reports"', app_js)
+        self.assertIn(".entity-overview-grid", styles)
+        self.assertIn(".entity-audit-evidence", styles)
+        self.assertIn(".entity-audit-list", styles)
+
     def test_quickstart_and_deploy_docs_reference_console_demo_flow_and_readiness(self):
         readme = Path("README.md").read_text(encoding="utf-8")
         deployment = Path("docs/12-one-click-deployment.md").read_text(encoding="utf-8")

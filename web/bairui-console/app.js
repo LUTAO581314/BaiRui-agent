@@ -1875,6 +1875,7 @@ function renderEntity() {
 function renderEntityCard(entity, heading = "Entity card") {
   const raw = entity.raw || {};
   const fields = entityFields(entity);
+  const overview = entityOverview(entity);
   return `
     <section class="panel pad entity-card selected-entity-panel">
       <div class="entity-card-head">
@@ -1889,11 +1890,13 @@ function renderEntityCard(entity, heading = "Entity card") {
         </div>
         <div class="entity-mark">${escapeHtml(entityIcon(entity.type))}</div>
       </div>
+      ${renderEntityOverview(overview)}
       <div class="entity-field-grid">
         ${fields.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "-")}</strong></div>`).join("")}
       </div>
       ${renderEntitySourceChain(entity)}
       ${renderEntitySafety(entity)}
+      ${renderEntityAuditEvidence(entity)}
       ${renderEntityBody(entity)}
       ${renderEntityActions(entity)}
     </section>`;
@@ -1905,23 +1908,89 @@ function entityFields(entity) {
   if (entity.type === "report") return [["Status", raw.status], ["Source", raw.source_type || raw.source?.source_type || "document"], ["Reference", raw.source_ref || raw.source?.source_ref || raw.ingest_id], ["Path", raw.path]];
   if (entity.type === "memory") return [["Candidate", raw.candidate_type], ["Confidence", raw.confidence], ["Source", raw.source_path || raw.source?.source_ref], ["Created", raw.created_at]];
   if (entity.type === "channel") return [["Target", raw.target_id], ["Channel", raw.channel_type], ["Media", raw.media_kind], ["Review", raw.review_status || raw.status], ["Source", raw.source?.source_ref]];
+  if (entity.type === "source") return [["Provider", raw.provider], ["Source type", raw.source_type], ["Source ref", raw.source_ref || raw.id], ["Confidence", raw.confidence], ["Title", raw.title]];
   if (entity.type === "audit") return [["Action", raw.action], ["Resource", raw.resource_type], ["Reference", raw.resource_ref], ["Risk", raw.risk_level], ["Created", raw.created_at]];
   if (entity.type === "code") return [["Kind", raw.kind || raw.type], ["Name", raw.name || raw.relative_path], ["Path", raw.path || raw.relative_path], ["Language", raw.language], ["Repo", raw.repo_name || raw.repo_id], ["Scan", raw.scan_id], ["Symbols", raw.symbol_count]];
+  if (entity.type === "avatar") return [["State", raw.state || raw.status], ["Motion", raw.motion], ["Lip sync", raw.lip_sync === true ? "true" : "false"], ["External action", "false"]];
   return [["Status", entity.status || raw.status], ["Reference", entity.ref || raw.id], ["Type", entity.type], ["Created", raw.created_at]];
+}
+
+function entityOverview(entity) {
+  return {
+    class: entityClass(entity),
+    stage: entityLifecycleStage(entity),
+    owner_gate: entityOwnerGate(entity),
+    trace: entityTraceLabel(entity),
+  };
+}
+
+function renderEntityOverview(overview) {
+  return `
+    <div class="entity-overview-grid">
+      <div><span>Object class</span><strong>${escapeHtml(overview.class)}</strong></div>
+      <div><span>Lifecycle</span><strong>${escapeHtml(overview.stage)}</strong></div>
+      <div><span>Owner gate</span><strong>${escapeHtml(overview.owner_gate)}</strong></div>
+      <div><span>Trace</span><strong>${escapeHtml(overview.trace)}</strong></div>
+    </div>`;
+}
+
+function entityClass(entity) {
+  const labels = {
+    job: "task object",
+    report: "deliverable object",
+    memory: "review candidate",
+    channel: "approval draft",
+    source: "evidence source",
+    code: "source structure",
+    audit: "audit evidence",
+    avatar: "state object",
+  };
+  return labels[entity.type] || "runtime object";
+}
+
+function entityLifecycleStage(entity) {
+  const raw = entity.raw || {};
+  if (entity.type === "memory") return raw.status === "approved" ? "approved" : raw.status === "rejected" ? "rejected" : "review pending";
+  if (entity.type === "channel") return raw.review_status || raw.status || "approval pending";
+  if (entity.type === "report") return raw.status || "draft";
+  if (entity.type === "code") return raw.scan_id ? "indexed" : "source selected";
+  if (entity.type === "audit") return eventStatus(raw).label;
+  if (entity.type === "avatar") return raw.state || raw.status || "state visible";
+  return raw.status || entity.status || "recorded";
+}
+
+function entityOwnerGate(entity) {
+  const raw = entity.raw || {};
+  if (entity.type === "channel") return raw.will_send === true ? "unsafe external send" : "will_send=false";
+  if (entity.type === "memory") return raw.status === "approved" ? "owner approved" : "owner review required";
+  if (entity.type === "code") return "no memory write";
+  if (entity.type === "avatar") return "visual state only";
+  if (entity.type === "audit") return eventNeedsApproval(raw) ? "review evidence" : "audit recorded";
+  return "traceable local action";
+}
+
+function entityTraceLabel(entity) {
+  const raw = entity.raw || {};
+  if (entityAuditMatches(entity).length) return `${entityAuditMatches(entity).length} audit links`;
+  if (raw.source || raw.source_ref || raw.ingest_id || raw.promotion_id) return "source chain visible";
+  if (entity.ref || raw.id || raw.path) return "local reference";
+  return "trace pending";
 }
 
 function renderEntitySourceChain(entity) {
   const raw = entity.raw || {};
   const source = raw.source || {};
-  if (!source.source_ref && !raw.source_ref && !raw.ingest_id && !raw.promotion_id) return "";
+  if (!source.source_ref && !raw.source_ref && !raw.ingest_id && !raw.promotion_id && !raw.resource_ref && !raw.repo_id && !raw.scan_id) return "";
   const rows = [
     ["Source type", source.source_type || raw.source_type || "local_record"],
-    ["Source ref", source.source_ref || raw.source_ref || raw.ingest_id || ""],
+    ["Source ref", source.source_ref || raw.source_ref || raw.ingest_id || raw.resource_ref || ""],
     ["Session", source.session_id || ""],
     ["Agent", source.agent_id || ""],
     ["Role", source.role || ""],
     ["Target", source.target || ""],
     ["Promotion", raw.promotion_id || ""],
+    ["Repo", raw.repo_name || raw.repo_id || ""],
+    ["Scan", raw.scan_id || ""],
   ].filter(([, value]) => value !== "");
   return `
     <div class="source-chain">
@@ -1955,6 +2024,44 @@ function renderEntitySafety(entity) {
     </div>`;
 }
 
+function renderEntityAuditEvidence(entity) {
+  const matches = entityAuditMatches(entity).slice(-4).reverse();
+  if (!matches.length) return "";
+  return `
+    <div class="entity-audit-evidence">
+      <div class="source-chain-title">
+        <span>Audit evidence</span>
+        ${pill("ready", `${matches.length} linked`)}
+      </div>
+      <div class="entity-audit-list">
+        ${matches
+          .map(
+            (event) => `
+              <div>
+                ${pill(eventStatus(event).status, eventStatus(event).label)}
+                <strong>${escapeHtml(event.action || "audit.event")}</strong>
+                <span>${escapeHtml(shortId(event.resource_ref || event.id))}</span>
+              </div>`,
+          )
+          .join("")}
+      </div>
+    </div>`;
+}
+
+function entityAuditMatches(entity) {
+  const raw = entity.raw || {};
+  const refs = new Set(
+    [entity.ref, raw.id, raw.path, raw.source_ref, raw.ingest_id, raw.resource_ref, raw.repo_id, raw.scan_id, raw.promotion_id]
+      .filter(Boolean)
+      .map((value) => String(value)),
+  );
+  return (state.audit || []).filter((event) => {
+    if (String(event.resource_type || "") === entity.type && refs.has(String(event.resource_ref || ""))) return true;
+    const payload = event.payload || {};
+    return [payload.id, payload.path, payload.source_ref, payload.ingest_id, payload.repo_id, payload.scan_id, payload.promotion_id].some((value) => refs.has(String(value || "")));
+  });
+}
+
 function renderEntityBody(entity) {
   const raw = entity.raw || {};
   const body =
@@ -1966,11 +2073,15 @@ function renderEntityBody(entity) {
           ? raw.message_preview || raw.reason
           : entity.type === "report"
             ? raw.path
-          : entity.type === "audit"
-            ? JSON.stringify(raw.payload || {}, null, 2)
-            : entity.type === "code"
-              ? "CodeGraph reads source structure only. It does not write long-term memory."
-              : JSON.stringify(raw, null, 2);
+            : entity.type === "source"
+              ? raw.excerpt || raw.title || raw.source_ref
+              : entity.type === "audit"
+                ? JSON.stringify(raw.payload || {}, null, 2)
+                : entity.type === "code"
+                  ? "CodeGraph reads source structure only. It does not write long-term memory."
+                  : entity.type === "avatar"
+                    ? raw.text || raw.motion || "Avatar state is visible only and cannot trigger external actions."
+                    : JSON.stringify(raw, null, 2);
   if (!body) return "";
   return `<div class="entity-body"><span>${escapeHtml(entity.type === "report" ? "Location" : "Content")}</span><p>${escapeHtml(body)}</p></div>`;
 }
@@ -1992,10 +2103,19 @@ function renderEntityActions(entity) {
       </div>`;
   }
   if (entity.type === "report" && raw.path) {
-    return `<div class="entity-actions"><button class="ghost-btn" type="button" data-entity-action="inspect-path" data-entity-id="${escapeHtml(raw.path)}">Inspect Path</button></div>`;
+    return `<div class="entity-actions"><button class="ghost-btn" type="button" data-entity-action="inspect-path" data-entity-id="${escapeHtml(raw.path)}">Inspect Path</button><button class="ghost-btn" type="button" data-entity-action="open-reports">Open Reports</button></div>`;
   }
   if (entity.type === "job") {
     return `<div class="entity-actions"><button class="ghost-btn" type="button" data-entity-action="open-events" data-entity-id="${escapeHtml(raw.id)}">View Events</button></div>`;
+  }
+  if (entity.type === "source") {
+    return `<div class="entity-actions"><button class="ghost-btn" type="button" data-entity-action="open-reports">Open Reports</button></div>`;
+  }
+  if (entity.type === "code") {
+    return `<div class="entity-actions"><button class="ghost-btn" type="button" data-entity-action="open-codegraph">Open CodeGraph</button></div>`;
+  }
+  if (entity.type === "audit") {
+    return `<div class="entity-actions"><button class="ghost-btn" type="button" data-entity-action="open-events">Open Events</button></div>`;
   }
   return "";
 }
@@ -2044,6 +2164,16 @@ async function runEntityAction(action, id) {
     await refreshScreenData();
     return;
   }
+  if (action === "open-reports") {
+    state.screen = "reports";
+    await refreshScreenData();
+    return;
+  }
+  if (action === "open-codegraph") {
+    state.screen = "codegraph";
+    await refreshScreenData();
+    return;
+  }
   if (action === "inspect-path") {
     state.selectedEntity = { type: "report", title: "Report path", status: "source_ready", ref: id, raw: { path: id } };
     render();
@@ -2051,7 +2181,7 @@ async function runEntityAction(action, id) {
 }
 
 function entityIcon(type) {
-  return ({ job: "T", report: "R", memory: "M", channel: "C", source: "S" }[type] || "E");
+  return ({ job: "T", report: "R", memory: "M", channel: "C", source: "S", code: "CG", audit: "A", avatar: "AV" }[type] || "E");
 }
 
 function renderSelectedEntityPanel() {
