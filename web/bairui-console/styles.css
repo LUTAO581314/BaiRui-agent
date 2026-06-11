@@ -1151,6 +1151,15 @@ h1 {
   padding: 10px;
 }
 
+.demo-flow-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  background: rgba(53, 230, 199, 0.034);
+}
+
 .review-card p {
   margin: 0;
   color: var(--text);

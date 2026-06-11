@@ -84,6 +84,7 @@ const state = {
   activationProbe: null,
   activationAction: null,
   demoSeed: null,
+  demoFlow: null,
   selectedEntity: null,
   selectedStep: "brand_lock",
   loading: new Set(),
@@ -510,8 +511,10 @@ function renderDashboard() {
   setScreenHead("Dashboard", "operational truth");
   el.actions.innerHTML = `
     <button class="primary-btn" id="seed-demo-data" type="button">Seed Demo</button>
+    <button class="primary-btn" id="run-demo-flow" type="button">Run Demo Flow</button>
     <button class="ghost-btn" id="create-sample-job" type="button">Create Job</button>`;
   const demo = state.demoSeed?.demo_seed;
+  const demoFlow = state.demoFlow?.demo_flow;
   el.body.innerHTML = `
     <div class="grid three">
       <section class="panel pad">
@@ -535,12 +538,14 @@ function renderDashboard() {
       <div class="conversation-head">
         <div>
           <h2 class="panel-title">Demo walkthrough</h2>
-          <p class="muted compact-copy">Create safe local data for product demos: task, draft report, memory review item, and channel approval draft.</p>
+          <p class="muted compact-copy">Seed safe records or run the real product closure flow across Command, Reports, Memory Review, Channels, and CodeGraph.</p>
         </div>
-        ${pill(demo?.status || "ready", demo?.status || "not seeded")}
+        ${pill(demoFlow?.status || demo?.status || "ready", demoFlow?.status || demo?.status || "not run")}
       </div>
       ${renderDemoSeedState(demo)}
+      ${renderDemoFlowState(demoFlow)}
       ${state.errors["demo-seed"] ? `<p class="error-text">${escapeHtml(state.errors["demo-seed"])}</p>` : ""}
+      ${state.errors["demo-flow"] ? `<p class="error-text">${escapeHtml(state.errors["demo-flow"])}</p>` : ""}
     </section>
     <div class="grid two top-gap">
       <section class="panel pad">
@@ -571,9 +576,53 @@ function renderDashboard() {
     }
     await refresh();
   });
+  document.getElementById("run-demo-flow")?.addEventListener("click", async () => {
+    const result = await runAction("demo-flow", () => api.post("/demo/flow", { force_seed: false }), refresh);
+    state.demoFlow = result || state.demoFlow;
+    if (result?.demo_flow?.reports?.latest) {
+      const report = result.demo_flow.reports.latest;
+      state.selectedEntity = { type: "report", title: report.title, status: report.status, ref: report.id, raw: report };
+    }
+    await refresh();
+  });
   document.getElementById("create-sample-job")?.addEventListener("click", async () => {
     await runAction("job", () => api.post("/jobs", { title: "Frontend console check", prompt: "Inspect bairui dashboard state", route: "operations" }));
   });
+}
+
+function renderDemoFlowState(flow) {
+  if (!flow) {
+    return `<div class="empty-state top-gap">Run Demo Flow to verify the full product path with real backend contracts and safe approval gates.</div>`;
+  }
+  const checkpoints = flow.checkpoints || {};
+  const counts = {
+    checkpoints: Object.values(checkpoints).filter(Boolean).length,
+    reports: flow.reports?.count || 0,
+    channel_reviews: flow.channel?.review_count || 0,
+    memory_reviews: flow.memory?.review_count || 0,
+    code_results: flow.codegraph?.query?.results?.length || 0,
+  };
+  return `
+    <div class="demo-flow-panel top-gap">
+      <div class="conversation-head">
+        <div>
+          <h3 class="sub-title">Product closure flow</h3>
+          <p class="muted compact-copy">Command -> report, memory review, channel approval, CodeGraph query, and audit marker.</p>
+        </div>
+        ${pill(flow.status || "partial")}
+      </div>
+      ${renderCountStrip(counts)}
+      <div class="agent-meta top-gap">
+        ${Object.entries(checkpoints)
+          .map(([key, ok]) => pill(ok ? "ready" : "blocked", `${key}=${ok ? "true" : "false"}`))
+          .join("")}
+      </div>
+      <div class="agent-meta top-gap">
+        ${pill(flow.channel?.plan?.will_send === false ? "ready" : "blocked", "will_send=false")}
+        ${pill(flow.memory?.will_write_long_term_memory === false ? "ready" : "blocked", "will_write_memory=false")}
+        <span class="chip">contract-bound</span>
+      </div>
+    </div>`;
 }
 
 function renderDemoSeedState(demo) {

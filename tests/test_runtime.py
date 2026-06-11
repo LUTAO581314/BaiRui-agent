@@ -175,8 +175,12 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/audit", screens["dashboard"]["read"])
         self.assertIn("/events", screens["dashboard"]["read"])
         self.assertIn("/demo/seed", {action["path"] for action in screens["dashboard"]["actions"]})
+        self.assertIn("/demo/flow", {action["path"] for action in screens["dashboard"]["actions"]})
         self.assertFalse(contract["forms"]["demo_seed"]["safety"]["will_send"])
         self.assertFalse(contract["forms"]["demo_seed"]["safety"]["will_write_long_term_memory"])
+        self.assertFalse(contract["forms"]["demo_flow"]["safety"]["will_send"])
+        self.assertFalse(contract["forms"]["demo_flow"]["safety"]["will_write_long_term_memory"])
+        self.assertTrue(contract["forms"]["demo_flow"]["safety"]["uses_real_contracts"])
         self.assertIn("document_ingest", screens)
         self.assertIn("channels", screens)
         self.assertIn("avatar", screens)
@@ -195,6 +199,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("job_create", contract["forms"])
         self.assertGreaterEqual(len(contract["activation_flow"]), 7)
         self.assertIn("/jobs", operation_paths)
+        self.assertIn("/demo/flow", operation_paths)
         self.assertIn("/audit", operation_paths)
         self.assertIn("/events", operation_paths)
         self.assertIn("/channels/send", channel_paths)
@@ -637,6 +642,36 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(payload["status"], "completed")
         self.assertTrue(payload["checkpoints"]["no_external_send"])
         self.assertTrue(payload["checkpoints"]["no_auto_memory_write"])
+
+    def test_demo_flow_http_endpoint_runs_safe_product_closure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_CODEGRAPH_ROOT": str(root / "codegraph"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, _, body = _http_post(server.server_port, "/demo/flow")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        payload = json.loads(body.decode("utf-8"))["demo_flow"]
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["status"], "completed")
+        self.assertTrue(payload["checkpoints"]["command_session"])
+        self.assertTrue(payload["checkpoints"]["channel_review_recorded"])
+        self.assertTrue(payload["checkpoints"]["codegraph_query_ready"])
+        self.assertFalse(payload["channel"]["plan"]["will_send"])
+        self.assertFalse(payload["memory"]["will_write_long_term_memory"])
 
     def test_console_static_assets_are_served_by_backend(self):
         with tempfile.TemporaryDirectory() as tmp:

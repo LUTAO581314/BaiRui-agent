@@ -173,6 +173,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 "actions": (
                     {"id": "create_job", "method": "POST", "path": "/jobs", "schema": "job_create"},
                     {"id": "seed_demo_data", "method": "POST", "path": "/demo/seed", "schema": "demo_seed"},
+                    {"id": "run_demo_flow", "method": "POST", "path": "/demo/flow", "schema": "demo_flow"},
                 ),
             },
             {
@@ -296,6 +297,17 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 },
                 "fields": (
                     {"name": "force", "type": "toggle", "required": False, "label": "Create Another Demo Set"},
+                ),
+            },
+            "demo_flow": {
+                "safety": {
+                    "will_send": False,
+                    "will_write_long_term_memory": False,
+                    "uses_real_contracts": True,
+                },
+                "fields": (
+                    {"name": "workspace", "type": "path", "required": False, "label": "Optional CodeGraph Workspace"},
+                    {"name": "force_seed", "type": "toggle", "required": False, "label": "Create Another Demo Seed"},
                 ),
             },
             "agent_session_create": {
@@ -451,6 +463,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"method": "GET", "path": "/jobs"},
                     {"method": "POST", "path": "/jobs"},
                     {"method": "POST", "path": "/demo/seed"},
+                    {"method": "POST", "path": "/demo/flow"},
                     {"method": "GET", "path": "/audit"},
                     {"method": "GET", "path": "/events", "content_type": "text/event-stream"},
                     {"method": "GET", "path": "/platform/heartbeat"},

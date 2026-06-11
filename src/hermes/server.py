@@ -83,6 +83,7 @@ from .codegraph import (
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
 from .demo import seed_demo_data
+from .demo_flow import run_demo_flow
 from .document_pipeline import (
     build_document_ingest_session_summary,
     build_document_workbench_state,
@@ -332,6 +333,15 @@ class HermesHandler(BaseHTTPRequestHandler):
             result = seed_demo_data(settings, force=bool(payload.get("force", False)))
             status = 201 if result["status"] == "completed" else 200
             self._send({"service": PUBLIC_SERVICE, "demo_seed": result}, status=status)
+            return
+
+        if self.path == "/demo/flow":
+            result = run_demo_flow(
+                settings,
+                workspace=str(payload.get("workspace", "")),
+                force_seed=bool(payload.get("force_seed", False)),
+            )
+            self._send({"service": PUBLIC_SERVICE, "demo_flow": result}, status=200 if result["status"] == "completed" else 207)
             return
 
         if self.path == "/obsidian/reports":
