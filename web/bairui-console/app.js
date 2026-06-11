@@ -1131,6 +1131,7 @@ function renderDocuments() {
           selected
             ? `
           ${renderCountStrip(selected.counts || {})}
+          ${renderDocumentResourceRoutes(selected)}
           <h3 class="sub-title">Latest report</h3>
           ${
             selected.report
@@ -1223,6 +1224,10 @@ async function runDocumentAction(action) {
     await refreshScreenData();
     return;
   }
+  if (action === "open-source-refs") {
+    await openDocumentSourceRefs();
+    return;
+  }
   if (!state.selectedIngestId) return;
   if (action === "source-refs") {
     await runAction("doc-source-refs", () => api.post("/document/parse/source-refs", { ingest_id: state.selectedIngestId }), refreshScreenData);
@@ -1236,6 +1241,44 @@ async function runDocumentAction(action) {
 async function openDocumentMemoryReview() {
   state.screen = "memory";
   await refreshScreenData();
+}
+
+async function openDocumentSourceRefs() {
+  await loadReports();
+  const source = state.sourceRefs.find((item) => item.metadata?.ingest_id === state.selectedIngestId);
+  if (source) {
+    state.selectedEntity = {
+      type: "source",
+      title: source.title,
+      status: source.confidence,
+      ref: source.source_ref || source.id,
+      raw: source,
+    };
+  }
+  state.screen = "reports";
+  render();
+}
+
+function renderDocumentResourceRoutes(session) {
+  const counts = session.counts || {};
+  const pending = session.review_queue?.pending_count || 0;
+  const hasReport = Boolean(session.report);
+  const hasSources = Number(counts.source_refs || 0) > 0;
+  return `
+    <div class="document-routes">
+      <button class="document-route" type="button" data-document-action="open-memory" ${!pending ? "disabled" : ""}>
+        <span>Memory review</span>
+        ${pill(pending ? "needs_review" : "ready", pending ? `${pending} pending` : "clear")}
+      </button>
+      <button class="document-route" type="button" data-document-action="open-reports" ${!hasReport ? "disabled" : ""}>
+        <span>Report</span>
+        ${pill(hasReport ? "ready" : "partial", hasReport ? "available" : "not generated")}
+      </button>
+      <button class="document-route" type="button" data-document-action="open-source-refs" ${!hasSources ? "disabled" : ""}>
+        <span>Source refs</span>
+        ${pill(hasSources ? "ready" : "partial", `${counts.source_refs || 0} refs`)}
+      </button>
+    </div>`;
 }
 
 function renderMemory() {

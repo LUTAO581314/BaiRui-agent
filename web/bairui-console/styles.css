@@ -875,6 +875,43 @@ h1 {
   line-height: 1.45;
 }
 
+.document-routes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 14px;
+}
+
+.document-route {
+  min-height: 74px;
+  display: grid;
+  gap: 8px;
+  align-content: center;
+  justify-items: start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+  padding: 10px;
+  cursor: pointer;
+}
+
+.document-route:not(:disabled):hover,
+.document-route:not(:disabled):focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: rgba(53, 230, 199, 0.055);
+}
+
+.document-route:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.document-route > span:first-child {
+  font-weight: 650;
+  font-size: 12px;
+}
+
 .selected-entity-panel {
   border-color: color-mix(in srgb, var(--accent) 36%, var(--line));
 }
@@ -1334,6 +1371,7 @@ h1 {
   .activation-evidence,
   .agent-layout,
   .documents-layout,
+  .document-routes,
   .channels-layout,
   .graph-layout,
   .grid.three,
