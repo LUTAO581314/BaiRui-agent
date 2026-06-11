@@ -91,6 +91,7 @@ from .codegraph import (
 )
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
+from .demo import seed_demo_data
 from .document_pipeline import (
     build_document_ingest_session_summary,
     build_document_workbench_state,
@@ -170,6 +171,10 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands.add_parser("heartbeat", help="Print the platform heartbeat payload")
     subcommands.add_parser("paths", help="Print runtime paths and key configuration")
     subcommands.add_parser("runtime-readiness", help="Print unified vendor runtime readiness")
+    demo_parser = subcommands.add_parser("demo", help="Create demo data for local product walkthroughs")
+    demo_subcommands = demo_parser.add_subparsers(dest="demo_command")
+    demo_seed = demo_subcommands.add_parser("seed", help="Seed demo jobs, reports, memory candidates, and channel approvals")
+    demo_seed.add_argument("--force", action="store_true", help="Create another demo set even if demo data already exists")
 
     channels_parser = subcommands.add_parser("channels", help="Operate governed outbound channel plans")
     channels_subcommands = channels_parser.add_subparsers(dest="channels_command")
@@ -534,6 +539,14 @@ def run(argv: list[str] | None = None) -> int:
     if command == "runtime-readiness":
         print_json({"service": "bairui", "runtime_readiness": collect_runtime_readiness(settings)})
         return 0
+
+    if command == "demo":
+        demo_command = args.demo_command or "seed"
+        if demo_command == "seed":
+            print_json({"service": "bairui", "demo_seed": seed_demo_data(settings, force=args.force)})
+            return 0
+        parser.error(f"unknown demo command: {demo_command}")
+        return 2
 
     if command == "codegraph":
         codegraph_command = args.codegraph_command or "status"

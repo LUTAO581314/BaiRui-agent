@@ -23,6 +23,7 @@ from src.hermes.codegraph import codegraph_impact, codegraph_overview, codegraph
 from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
 from src.hermes.db import SCHEMA_SQL, database_status
+from src.hermes.demo import seed_demo_data
 from src.hermes.document_pipeline import build_document_ingest_session_summary, build_document_workbench_state, create_document_ingest_report, create_document_source_refs, execute_document_workbench_next, generate_document_memory_candidates, index_document_artifacts, list_document_ingest_session_summaries, list_pending_document_memory_reviews, register_document_artifacts, review_document_memory_candidate, review_document_memory_candidates_batch, run_document_ingest, run_document_workbench_until_blocked
 from src.hermes.events import audit_event_to_frontend_event, build_sse_frame, list_frontend_events
 from src.hermes.frontend_contract import build_frontend_contract
@@ -333,6 +334,31 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(reports[-1]["id"], report["created_resource"]["id"])
         self.assertEqual(candidates[-1]["id"], memory["created_resource"]["id"])
         self.assertEqual(approvals[-1]["id"], channel["created_resource"]["id"])
+
+    def test_demo_seed_creates_walkthrough_resources_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                first = seed_demo_data(settings)
+                second = seed_demo_data(settings)
+                jobs = list_jobs(settings.data_dir)
+                reports = list_reports(settings.data_dir)
+                candidates = list_document_memory_candidates(settings.data_dir)
+                approvals = list_channel_approval_requests(settings.data_dir)
+
+        self.assertEqual(first["status"], "completed")
+        self.assertEqual(second["status"], "skipped")
+        self.assertEqual(jobs[-1]["title"], "Demo research task")
+        self.assertEqual(reports[-1]["title"], "Demo onboarding report")
+        self.assertEqual(candidates[-1]["candidate_type"], "customer_preference")
+        self.assertEqual(approvals[-1]["target_id"], "owner_review")
+        self.assertFalse(first["audit_marker"]["payload"]["will_send"])
+        self.assertFalse(first["audit_marker"]["payload"]["will_write_long_term_memory"])
 
     def test_console_static_assets_are_served_by_backend(self):
         with tempfile.TemporaryDirectory() as tmp:

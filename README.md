@@ -119,8 +119,22 @@ python -m src.hermes document parse session-summary --ingest-id <ingest_id>
 python -m src.hermes document parse workbench-next --ingest-id <ingest_id>
 python -m src.hermes document parse workbench-run-until-blocked --ingest-id <ingest_id>
 python -m src.hermes runtime-readiness
+python -m src.hermes demo seed
 python -m src.hermes serve
 ```
+
+## Local Demo Walkthrough
+
+Seed safe demo data before opening the console:
+
+```bash
+python -m src.hermes demo seed
+python -m src.hermes serve
+```
+
+Then open `/console`. The demo seed creates one job, one draft report, one memory
+candidate, and one channel approval draft. It does not send external messages or
+write long-term memory.
 
 ## Multi-Agent Command Boundary
 
