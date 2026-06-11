@@ -181,7 +181,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             {
                 "id": "reports",
                 "title": "Reports",
-                "read": ("/document/ingest-reports", "/source-refs"),
+                "read": ("/reports", "/document/ingest-reports", "/source-refs"),
                 "actions": ({"id": "write_report", "method": "POST", "path": "/obsidian/reports", "schema": "report_write"},),
             },
             {
@@ -426,6 +426,15 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"method": "GET", "path": "/channels/approvals"},
                     {"method": "POST", "path": "/channels/send"},
                     {"method": "POST", "path": "/channels/approvals/review"},
+                ),
+            },
+            {
+                "id": "reports",
+                "stability": "stable",
+                "endpoints": (
+                    {"method": "GET", "path": "/reports"},
+                    {"method": "GET", "path": "/document/ingest-reports"},
+                    {"method": "POST", "path": "/obsidian/reports"},
                 ),
             },
             {

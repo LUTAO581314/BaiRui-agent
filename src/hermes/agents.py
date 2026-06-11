@@ -8,7 +8,14 @@ from typing import Any
 
 from .config import Settings
 from .model_gateway import ChatResult, complete_chat
-from .storage import create_audit_event, utc_now
+from .storage import (
+    create_audit_event,
+    create_channel_approval_request,
+    create_document_memory_candidate,
+    create_job,
+    create_report_record,
+    utc_now,
+)
 
 
 @dataclass(frozen=True)
@@ -203,15 +210,25 @@ def promote_agent_event(settings: Settings, event_id: str, target: str) -> dict[
         return {"status": "not_found", "detail": f"agent event not found: {event_id}"}
     if target not in {"job", "report", "memory_review", "channel_draft"}:
         return {"status": "invalid_target", "detail": "target must be job, report, memory_review, or channel_draft"}
+    if not _event_text(event).strip():
+        return {"status": "invalid_request", "detail": "agent event has no promotable content"}
+
+    created = _create_promotion_resource(settings, event, target)
     create_audit_event(
         settings.data_dir,
-        "agent.event_promotion_planned",
-        resource_type="agent_event",
-        resource_ref=event_id,
+        "agent.event_promoted",
+        resource_type=created["type"],
+        resource_ref=str(created["id"]),
         risk_level="medium" if target in {"memory_review", "channel_draft"} else "low",
-        payload={"target": target, "will_execute_external_action": False},
+        payload={"target": target, "event_id": event_id, "will_execute_external_action": False},
     )
-    return {"status": "planned", "detail": f"promotion to {target} recorded for owner review", "target": target, "will_execute_external_action": False}
+    return {
+        "status": "planned",
+        "detail": f"promotion to {target} recorded for owner review",
+        "target": target,
+        "created_resource": created,
+        "will_execute_external_action": False,
+    }
 
 
 def _agent_reply(settings: Settings, agent: AgentProfile, prompt: str) -> ChatResult:
@@ -224,6 +241,66 @@ def _agent_reply(settings: Settings, agent: AgentProfile, prompt: str) -> ChatRe
         )
     system = f"You are the bairui {agent.role} agent. Permission: {agent.permission}. Do not claim external actions were executed."
     return complete_chat(settings, prompt, system=system)
+
+
+def _create_promotion_resource(settings: Settings, event: dict[str, Any], target: str) -> dict[str, Any]:
+    content = _event_text(event)
+    event_id = str(event.get("id", ""))
+    agent_id = str(event.get("agent_id", "agent"))
+    role = str(event.get("role", agent_id))
+    title = f"Agent {role} {target.replace('_', ' ')}"
+    if target == "job":
+        job = create_job(settings.data_dir, title=title, prompt=_promotion_body(event), route=role or "general")
+        return {"type": "job", "id": job.id, "status": job.status, "path": "", "review_required": False}
+    if target == "report":
+        report = create_report_record(
+            settings.data_dir,
+            title=title,
+            body=_promotion_body(event),
+            source_type="agent_event",
+            source_ref=event_id,
+            status="draft",
+        )
+        return {"type": "report", "id": report.id, "status": report.status, "path": report.path, "review_required": False}
+    if target == "memory_review":
+        candidate = create_document_memory_candidate(
+            settings.data_dir,
+            ingest_id=f"agent-session-{str(event.get('session_id', 'unknown'))[:8]}",
+            artifact_id=event_id,
+            source_path=f"agent_event:{event_id}",
+            candidate_type="agent_event",
+            text=content,
+            confidence=0.5,
+            reason="agent_event_promotion_requires_owner_review",
+        )
+        return {"type": "document_memory_candidate", "id": candidate.id, "status": candidate.status, "path": "", "review_required": True}
+    approval = create_channel_approval_request(
+        settings.data_dir,
+        target_id="owner_review",
+        channel_type="personal_chat",
+        media_kind="text",
+        message_preview=content[:160],
+        reason="agent_event_channel_draft_requires_owner_review",
+    )
+    return {"type": "channel_approval_request", "id": approval.id, "status": approval.status, "path": "", "review_required": True}
+
+
+def _event_text(event: dict[str, Any]) -> str:
+    return str(event.get("content") or event.get("error") or "").strip()
+
+
+def _promotion_body(event: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            f"Source event: {event.get('id', '')}",
+            f"Session: {event.get('session_id', '')}",
+            f"Agent: {event.get('agent_id', '')}",
+            f"Role: {event.get('role', '')}",
+            f"Status: {event.get('status', '')}",
+            "",
+            _event_text(event),
+        ]
+    )
 
 
 def _create_event(

@@ -1050,7 +1050,7 @@ async function loadMemory() {
 
 async function loadReports() {
   const [reports, refs] = await Promise.all([
-    safe(() => api.get("/document/ingest-reports").then((data) => data.document_ingest_reports || []), state.reports, "reports"),
+    safe(() => api.get("/reports").then((data) => data.reports || []), state.reports, "reports"),
     safe(() => api.get("/source-refs").then((data) => data.source_refs || []), state.sourceRefs, "source-refs"),
   ]);
   state.reports = reports || [];

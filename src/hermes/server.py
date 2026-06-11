@@ -112,6 +112,7 @@ from .storage import (
     list_document_memory_candidates,
     list_document_memory_reviews,
     list_jobs,
+    list_reports,
     list_source_refs,
     write_obsidian_report,
 )
@@ -226,6 +227,9 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/document/ingest-reports":
             self._send({"service": PUBLIC_SERVICE, "document_ingest_reports": list_document_ingest_reports(settings.data_dir)})
+            return
+        if self.path == "/reports":
+            self._send({"service": PUBLIC_SERVICE, "reports": list_reports(settings.data_dir)})
             return
         if self.path == "/document/artifacts":
             self._send({"service": PUBLIC_SERVICE, "document_artifacts": list_document_artifacts(settings.data_dir)})

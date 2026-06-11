@@ -52,6 +52,7 @@ from src.hermes.storage import (
     list_document_memory_candidates,
     list_document_memory_reviews,
     list_jobs,
+    list_reports,
     list_source_refs,
     write_obsidian_report,
 )
@@ -296,6 +297,42 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(statuses["operator"], "completed")
         self.assertEqual(promotion["status"], "planned")
         self.assertFalse(promotion["will_execute_external_action"])
+
+    def test_agent_event_promotions_create_reviewable_resources(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "",
+                "BAIRUI_MODEL_API_KEY": "",
+                "BAIRUI_MODEL_NAME": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                session = create_agent_session(settings, "ops", ("operator",))
+                run_agent_round(settings, session.id, "promote this")
+                event = list_agent_events(settings, session_id=session.id)[-1]
+                job = promote_agent_event(settings, event["id"], "job")
+                report = promote_agent_event(settings, event["id"], "report")
+                memory = promote_agent_event(settings, event["id"], "memory_review")
+                channel = promote_agent_event(settings, event["id"], "channel_draft")
+
+                jobs = list_jobs(settings.data_dir)
+                reports = list_reports(settings.data_dir)
+                candidates = list_document_memory_candidates(settings.data_dir)
+                approvals = list_channel_approval_requests(settings.data_dir)
+
+        self.assertEqual(job["created_resource"]["type"], "job")
+        self.assertEqual(report["created_resource"]["type"], "report")
+        self.assertEqual(memory["created_resource"]["type"], "document_memory_candidate")
+        self.assertTrue(memory["created_resource"]["review_required"])
+        self.assertEqual(channel["created_resource"]["type"], "channel_approval_request")
+        self.assertTrue(channel["created_resource"]["review_required"])
+        self.assertEqual(jobs[-1]["id"], job["created_resource"]["id"])
+        self.assertEqual(reports[-1]["id"], report["created_resource"]["id"])
+        self.assertEqual(candidates[-1]["id"], memory["created_resource"]["id"])
+        self.assertEqual(approvals[-1]["id"], channel["created_resource"]["id"])
 
     def test_console_static_assets_are_served_by_backend(self):
         with tempfile.TemporaryDirectory() as tmp:

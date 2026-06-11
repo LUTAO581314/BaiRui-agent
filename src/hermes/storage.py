@@ -174,6 +174,17 @@ class DocumentIngestReport:
 
 
 @dataclass(frozen=True)
+class ReportRecord:
+    id: str
+    title: str
+    path: str
+    status: str
+    source_type: str
+    source_ref: str
+    created_at: str
+
+
+@dataclass(frozen=True)
 class ChannelApprovalRequest:
     id: str
     target_id: str
@@ -679,6 +690,65 @@ def create_document_ingest_report_record(
 
 def list_document_ingest_reports(data_dir: Path, limit: int = 50) -> list[dict[str, Any]]:
     return _read_jsonl(data_dir / "document_ingest_reports.jsonl", limit=limit)
+
+
+def create_report_record(
+    data_dir: Path,
+    *,
+    title: str,
+    body: str,
+    source_type: str,
+    source_ref: str,
+    status: str = "draft",
+) -> ReportRecord:
+    now = datetime.now(timezone.utc)
+    folder = data_dir / "reports"
+    folder.mkdir(parents=True, exist_ok=True)
+    report = ReportRecord(
+        id=str(uuid.uuid4()),
+        title=title.strip() or "bairui Report",
+        path="",
+        status=status,
+        source_type=source_type,
+        source_ref=source_ref,
+        created_at=now.isoformat(),
+    )
+    path = folder / f"{now.strftime('%Y%m%d-%H%M%S')}-{_slug(report.title)}-{report.id[:8]}.md"
+    content = "\n".join(
+        [
+            "---",
+            f"title: {report.title}",
+            "type: bairui_report",
+            f"status: {status}",
+            f"source_type: {source_type}",
+            f"source_ref: {source_ref}",
+            f"created_at: {now.isoformat()}",
+            "brand: bairui",
+            "---",
+            "",
+            f"# {report.title}",
+            "",
+            body.strip(),
+            "",
+        ]
+    )
+    path.write_text(content, encoding="utf-8")
+    stored = ReportRecord(**{**asdict(report), "path": str(path)})
+    _append_jsonl(data_dir / "reports.jsonl", asdict(stored))
+    create_audit_event(
+        data_dir,
+        "report.created",
+        resource_type="report",
+        resource_ref=stored.id,
+        payload={"title": stored.title, "source_type": source_type, "source_ref": source_ref, "path": stored.path},
+    )
+    return stored
+
+
+def list_reports(data_dir: Path, limit: int = 50) -> list[dict[str, Any]]:
+    generic_reports = _read_jsonl(data_dir / "reports.jsonl", limit=limit)
+    ingest_reports = _read_jsonl(data_dir / "document_ingest_reports.jsonl", limit=limit)
+    return (generic_reports + ingest_reports)[-limit:]
 
 
 def _file_sha256(path: Path) -> str:
