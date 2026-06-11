@@ -71,6 +71,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             "Show missing_config, partial, blocked, and needs_review states honestly.",
             "Never expose runtime secrets in frontend JavaScript, reports, or setup screens.",
             "Activation must be a complete guided flow, not a single optimistic button.",
+            "Keep code structure indexing separate from long-term memory; CodeGraph reads source structure and never auto-promotes memory.",
         ),
         "activation_flow": (
             {
@@ -213,8 +214,20 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     "/search/status",
                     "/index/status",
                     "/avatar/status",
+                    "/codegraph/status",
                 ),
                 "actions": (),
+            },
+            {
+                "id": "codegraph",
+                "title": "CodeGraph",
+                "read": ("/codegraph/status", "/codegraph/repos", "/codegraph/overview"),
+                "actions": (
+                    {"id": "register_code_repo", "method": "POST", "path": "/codegraph/repos/register", "schema": "codegraph_repo_register"},
+                    {"id": "scan_code_repo", "method": "POST", "path": "/codegraph/repos/scan", "schema": "codegraph_repo_scan"},
+                    {"id": "query_codegraph", "method": "POST", "path": "/codegraph/query", "schema": "codegraph_query"},
+                    {"id": "impact_codegraph", "method": "POST", "path": "/codegraph/impact", "schema": "codegraph_impact"},
+                ),
             },
         ),
         "forms": {
@@ -310,6 +323,30 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"name": "lip_sync", "type": "toggle", "required": False, "label": "Lip Sync"},
                 )
             },
+            "codegraph_repo_register": {
+                "fields": (
+                    {"name": "path", "type": "directory_path", "required": True, "label": "Repository Path"},
+                    {"name": "name", "type": "text", "required": False, "label": "Display Name"},
+                )
+            },
+            "codegraph_repo_scan": {
+                "fields": (
+                    {"name": "repo_id", "type": "id", "required": False, "label": "Repo ID"},
+                )
+            },
+            "codegraph_query": {
+                "fields": (
+                    {"name": "query", "type": "text", "required": True, "label": "Query"},
+                    {"name": "repo_id", "type": "id", "required": False, "label": "Repo ID"},
+                    {"name": "limit", "type": "number", "required": False, "label": "Limit"},
+                )
+            },
+            "codegraph_impact": {
+                "fields": (
+                    {"name": "path", "type": "file_path", "required": True, "label": "File Path"},
+                    {"name": "repo_id", "type": "id", "required": False, "label": "Repo ID"},
+                )
+            },
         },
         "api_groups": (
             {
@@ -377,6 +414,21 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"method": "GET", "path": "/search/status"},
                     {"method": "GET", "path": "/voice/asr/status"},
                     {"method": "GET", "path": "/avatar/status"},
+                    {"method": "GET", "path": "/codegraph/status"},
+                ),
+            },
+            {
+                "id": "codegraph",
+                "stability": "experimental",
+                "memory_boundary": "separate_source_structure_index",
+                "endpoints": (
+                    {"method": "GET", "path": "/codegraph/status"},
+                    {"method": "GET", "path": "/codegraph/repos"},
+                    {"method": "GET", "path": "/codegraph/overview"},
+                    {"method": "POST", "path": "/codegraph/repos/register"},
+                    {"method": "POST", "path": "/codegraph/repos/scan"},
+                    {"method": "POST", "path": "/codegraph/query"},
+                    {"method": "POST", "path": "/codegraph/impact"},
                 ),
             },
         ),

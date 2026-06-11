@@ -87,6 +87,8 @@ Internal frontend source reference:
 - [bairui Frontend Source UI Integration](docs/20-bairui-frontend-source-ui-integration.md)
 - [Backend Contract Freeze For Frontend](docs/21-backend-contract-freeze-for-frontend.md)
 - [bairui Frontend Design And Source UI Modification](docs/22-bairui-frontend-design-and-source-ui-modification.md)
+- [bairui Avatar Runtime Backend Integration](docs/23-bairui-avatar-runtime-backend-integration.md)
+- [bairui Frontend Screens And UI Design](docs/24-bairui-frontend-screens-and-ui-design.md)
 
 ## CLI Entry Point
 
@@ -102,6 +104,11 @@ python -m src.hermes channels diagnostics
 python -m src.hermes channels approvals --pending
 python -m src.hermes channels plan-send --target-id owner_review --text "Review this update"
 python -m src.hermes channels review-approval --request-id <request_id> --decision approve
+python -m src.hermes codegraph status
+python -m src.hermes codegraph register --path . --name bairui-source
+python -m src.hermes codegraph scan --repo-id <repo_id>
+python -m src.hermes codegraph query --query "build_frontend_contract"
+python -m src.hermes codegraph impact --path src/hermes/server.py
 python -m src.hermes memory status
 python -m src.hermes memory search --query "owner preferences"
 python -m src.hermes voice asr status
@@ -119,11 +126,23 @@ python -m src.hermes serve
 
 - `GET /frontend/contract`
 - `python -m src.hermes frontend-contract`
+- `GET /console`
 
 The contract lists stable bairui product surfaces, including activation,
-dashboard, command, documents, memory review, reports, and runtime settings.
+dashboard, command, documents, memory review, reports, CodeGraph, and runtime settings.
 It also includes the complete activation steps, renderable action forms, status
 values, and premium sci-fi UI design tokens.
+
+## CodeGraph Boundary
+
+CodeGraph is a local source-structure index for repositories, files, symbols,
+imports, and impact analysis. It helps AI understand code layout without mixing
+source code into long-term memory.
+
+- CodeGraph stores code structure under `BAIRUI_CODEGRAPH_ROOT`.
+- Long-term memory and report notes remain separate.
+- CodeGraph does not auto-promote facts into memory.
+- CodeGraph actions are audited and read source structure only.
 
 ## Deployment
 

@@ -11,6 +11,7 @@ from .adapters.searxng import status as searxng_status
 from .adapters.sonic import status as sonic_status
 from .adapters.trendradar import status as trendradar_status
 from .config import Settings
+from .codegraph import codegraph_status
 
 
 READY_STATES = {"configured"}
@@ -46,6 +47,7 @@ def collect_runtime_readiness(settings: Settings) -> dict[str, object]:
     searxng = searxng_status(settings)
     sonic = sonic_status(settings)
     avatar = avatar_engine_status(settings)
+    codegraph = codegraph_status(settings)
 
     items = (
         RuntimeReadinessItem("everos_memory", everos.status, True, everos.detail, everos.source_path, everos.license),
@@ -56,6 +58,7 @@ def collect_runtime_readiness(settings: Settings) -> dict[str, object]:
         RuntimeReadinessItem("searxng_metasearch", searxng.status, False, searxng.detail, searxng.source, searxng.license),
         RuntimeReadinessItem("sonic_local_index", sonic.status, False, sonic.detail, sonic.source, sonic.license),
         RuntimeReadinessItem("bairui_avatar_runtime", avatar.status, False, avatar.detail, avatar.source, avatar.license),
+        RuntimeReadinessItem("bairui_codegraph", codegraph.status, False, codegraph.detail, codegraph.root, "owned"),
     )
 
     blockers = tuple(f"{item.name}: {item.detail}" for item in items if item.required_for_usable and item.status in BLOCKING_STATES)

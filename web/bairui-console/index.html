@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>bairui Console</title>
+    <link rel="stylesheet" href="/console/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <header class="topbar">
+        <div class="brand-lock">
+          <div class="brand-mark" aria-hidden="true">b</div>
+          <div>
+            <div class="brand-name">bairui</div>
+            <div class="brand-subtitle">industrial agent console</div>
+          </div>
+        </div>
+        <div class="topbar-status" id="topbar-status">
+          <span class="status-pill is-loading">loading</span>
+        </div>
+      </header>
+
+      <nav class="left-rail" id="left-rail" aria-label="bairui navigation"></nav>
+
+      <main class="workbench">
+        <section class="screen-head">
+          <div>
+            <p class="eyebrow" id="screen-kicker">Activation</p>
+            <h1 id="screen-title">Activation</h1>
+          </div>
+          <div class="screen-actions" id="screen-actions"></div>
+        </section>
+
+        <section class="screen-body" id="screen-body"></section>
+      </main>
+
+      <aside class="detail-drawer" id="detail-drawer">
+        <div class="drawer-header">
+          <span class="drawer-kicker">detail</span>
+          <button class="icon-btn" id="drawer-close" type="button" title="Close detail" aria-label="Close detail">x</button>
+        </div>
+        <div id="drawer-content" class="drawer-content"></div>
+      </aside>
+
+      <section class="command-bar" aria-label="command console">
+        <div class="command-meta" id="command-meta">contract pending</div>
+        <label class="command-input-wrap">
+          <span class="sr-only">Command</span>
+          <input id="global-command" type="text" placeholder="Ask bairui or target an agent..." />
+        </label>
+        <button class="primary-btn" id="global-command-send" type="button">Run</button>
+      </section>
+
+      <section class="avatar-dock" id="avatar-dock" aria-label="Avatar state">
+        <div class="avatar-core" aria-hidden="true"></div>
+        <div>
+          <div class="avatar-name">bairui avatar</div>
+          <div class="avatar-state" id="avatar-state">idle</div>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="/console/app.js"></script>
+  </body>
+</html>

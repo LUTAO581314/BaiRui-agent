@@ -51,6 +51,69 @@ create table if not exists source_refs (
 
 create index if not exists idx_source_refs_source on source_refs (source_type, source_ref);
 create index if not exists idx_source_refs_provider on source_refs (provider);
+
+create table if not exists codegraph_repos (
+    id text primary key,
+    name text not null,
+    root_path text not null,
+    status text not null,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+);
+
+create table if not exists codegraph_scans (
+    id text primary key,
+    repo_id text not null,
+    status text not null,
+    file_count integer not null default 0,
+    symbol_count integer not null default 0,
+    import_count integer not null default 0,
+    skipped_count integer not null default 0,
+    detail text not null,
+    created_at timestamptz not null
+);
+
+create table if not exists codegraph_files (
+    id text primary key,
+    scan_id text not null,
+    repo_id text not null,
+    path text not null,
+    relative_path text not null,
+    language text not null,
+    size_bytes bigint not null default 0,
+    sha256 text not null,
+    symbol_count integer not null default 0,
+    import_count integer not null default 0
+);
+
+create table if not exists codegraph_symbols (
+    id text primary key,
+    scan_id text not null,
+    repo_id text not null,
+    file_id text not null,
+    name text not null,
+    qualname text not null,
+    kind text not null,
+    language text not null,
+    path text not null,
+    line_start integer not null default 0,
+    line_end integer not null default 0,
+    parent text not null default ''
+);
+
+create table if not exists codegraph_imports (
+    id text primary key,
+    scan_id text not null,
+    repo_id text not null,
+    file_id text not null,
+    source_path text not null,
+    module text not null,
+    name text not null,
+    line integer not null default 0
+);
+
+create index if not exists idx_codegraph_symbols_repo_name on codegraph_symbols (repo_id, name);
+create index if not exists idx_codegraph_files_repo_path on codegraph_files (repo_id, relative_path);
 """
 
 

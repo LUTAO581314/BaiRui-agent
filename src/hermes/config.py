@@ -65,6 +65,8 @@ class Settings:
     avatar_default_model: str
     avatar_engine_package: str
     avatar_engine_version: str
+    codegraph_root: Path
+    codegraph_max_file_bytes: int
 
     @property
     def has_database(self) -> bool:
@@ -130,9 +132,11 @@ def load_settings() -> Settings:
         avatar_default_model=os.getenv("BAIRUI_AVATAR_DEFAULT_MODEL", ""),
         avatar_engine_package=os.getenv("BAIRUI_AVATAR_ENGINE_PACKAGE", "pixi-live2d-display-advanced"),
         avatar_engine_version=os.getenv("BAIRUI_AVATAR_ENGINE_VERSION", "^1.1.0"),
+        codegraph_root=Path(os.getenv("BAIRUI_CODEGRAPH_ROOT", "./data/codegraph")),
+        codegraph_max_file_bytes=int(os.getenv("BAIRUI_CODEGRAPH_MAX_FILE_BYTES", "300000")),
     )
 
 
 def ensure_runtime_dirs(settings: Settings) -> None:
-    for path in (settings.data_dir, settings.log_dir, settings.obsidian_vault_dir, settings.everos_memory_root, settings.avatar_assets_dir):
+    for path in (settings.data_dir, settings.log_dir, settings.obsidian_vault_dir, settings.everos_memory_root, settings.avatar_assets_dir, settings.codegraph_root):
         path.mkdir(parents=True, exist_ok=True)

@@ -1,7 +1,10 @@
 ﻿import json
 import os
 import tempfile
+import threading
 import unittest
+from http.client import HTTPConnection
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,6 +18,7 @@ from src.hermes.channels import (
     plan_channel_send,
     review_channel_approval,
 )
+from src.hermes.codegraph import codegraph_impact, codegraph_overview, codegraph_status, query_codegraph, register_codegraph_repo, scan_codegraph_repo
 from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
 from src.hermes.db import SCHEMA_SQL, database_status
@@ -32,7 +36,7 @@ from src.hermes.license import load_license, sign_license_payload
 from src.hermes.model_gateway import build_chat_payload, complete_chat
 from src.hermes.platform import HEARTBEAT_PROTOCOL_VERSION, build_platform_heartbeat
 from src.hermes.runtime_readiness import collect_runtime_readiness
-from src.hermes.server import PUBLIC_SERVICE
+from src.hermes.server import HermesHandler, PUBLIC_SERVICE
 from src.hermes.storage import (
     create_document_ingest,
     create_job,
@@ -50,6 +54,18 @@ from src.hermes.storage import (
     list_source_refs,
     write_obsidian_report,
 )
+
+
+def _http_get(port: int, path: str) -> tuple[int, dict[str, str], bytes]:
+    connection = HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        connection.request("GET", path)
+        response = connection.getresponse()
+        body = response.read()
+        headers = {key.lower(): value for key, value in response.getheaders()}
+        return response.status, headers, body
+    finally:
+        connection.close()
 
 
 class RuntimeFoundationTests(unittest.TestCase):
@@ -101,6 +117,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("jobs_api", names)
         self.assertIn("model_gateway", names)
         self.assertIn("bairui_avatar_runtime", names)
+        self.assertIn("bairui_codegraph", names)
 
     def test_frontend_contract_lists_stable_product_surfaces(self):
         contract = build_frontend_contract(load_settings(), "test-version")
@@ -109,6 +126,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         document_paths = {endpoint["path"] for endpoint in api_groups["document_workbench"]["endpoints"]}
         operation_paths = {endpoint["path"] for endpoint in api_groups["operations"]["endpoints"]}
         channel_paths = {endpoint["path"] for endpoint in api_groups["channels"]["endpoints"]}
+        codegraph_paths = {endpoint["path"] for endpoint in api_groups["codegraph"]["endpoints"]}
         serialized = json.dumps(contract, ensure_ascii=False)
         forbidden = (
             "Hermes",
@@ -162,9 +180,119 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/avatar/status", {endpoint["path"] for endpoint in api_groups["avatar"]["endpoints"]})
         self.assertIn("/avatar/manifest", screens["avatar"]["read"])
         self.assertIn("/document/parse/workbench-next", document_paths)
+        self.assertIn("codegraph", screens)
+        self.assertIn("/codegraph/status", screens["codegraph"]["read"])
+        self.assertIn("codegraph_repo_register", contract["forms"])
+        self.assertIn("/codegraph/query", codegraph_paths)
         self.assertIn("needs_review", contract["state_values"])
         self.assertIn("approval_required", contract["state_values"])
         self.assertIn("speaking", contract["state_values"])
+
+    def test_codegraph_scans_source_structure_without_memory_promotion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            package = repo / "src" / "demo"
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text("", encoding="utf-8")
+            (package / "service.py").write_text(
+                "\n".join(
+                    [
+                        "import json",
+                        "from pathlib import Path",
+                        "",
+                        "class Worker:",
+                        "    def run(self):",
+                        "        return Path('.')",
+                        "",
+                        "def helper():",
+                        "    return json.dumps({'ok': True})",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_CODEGRAPH_ROOT": str(root / "codegraph"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                registered = register_codegraph_repo(settings, str(repo), name="demo")
+                scan = scan_codegraph_repo(settings, registered.id)
+                overview = codegraph_overview(settings, repo_id=registered.id)
+                query = query_codegraph(settings, "helper", repo_id=registered.id)
+                impact = codegraph_impact(settings, "service.py", repo_id=registered.id)
+                status = codegraph_status(settings)
+
+        self.assertEqual(registered.name, "demo")
+        self.assertEqual(scan["status"], "completed")
+        self.assertGreaterEqual(scan["scan"]["file_count"], 2)
+        self.assertTrue(any(symbol["name"] == "Worker" for symbol in overview["top_symbols"]))
+        self.assertTrue(any(result["name"] == "helper" for result in query["results"]))
+        self.assertEqual(impact["status"], "completed")
+        self.assertIn("does not write long-term memory", status.memory_boundary)
+
+    def test_cli_codegraph_register_scan_and_query(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "app.py").write_text("def boot():\n    return 'ok'\n", encoding="utf-8")
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_CODEGRAPH_ROOT": str(root / "codegraph"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["codegraph", "register", "--path", str(repo), "--name", "demo"])
+                    repo_id = print_json.call_args.args[0]["codegraph_repo"]["id"]
+                with patch("src.hermes.cli.print_json") as print_json:
+                    scan_code = run(["codegraph", "scan", "--repo-id", repo_id])
+                    scan_payload = print_json.call_args.args[0]
+                with patch("src.hermes.cli.print_json") as print_json:
+                    query_code = run(["codegraph", "query", "--query", "boot", "--repo-id", repo_id])
+                    query_payload = print_json.call_args.args[0]
+        self.assertEqual(code, 0)
+        self.assertEqual(scan_code, 0)
+        self.assertEqual(scan_payload["codegraph_scan"]["status"], "completed")
+        self.assertEqual(query_code, 0)
+        self.assertEqual(query_payload["codegraph_query"]["results"][0]["name"], "boot")
+
+    def test_console_static_assets_are_served_by_backend(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    html_status, html_headers, html_body = _http_get(server.server_port, "/console")
+                    js_status, js_headers, js_body = _http_get(server.server_port, "/console/app.js")
+                    css_status, css_headers, css_body = _http_get(server.server_port, "/console/styles.css")
+                    escape_status, _, escape_body = _http_get(server.server_port, "/console/../README.md")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        self.assertEqual(html_status, 200)
+        self.assertIn("text/html", html_headers["content-type"])
+        self.assertIn(b"bairui Console", html_body)
+        self.assertEqual(js_status, 200)
+        self.assertIn("text/javascript", js_headers["content-type"])
+        self.assertIn(b"/frontend/contract", js_body)
+        self.assertEqual(css_status, 200)
+        self.assertIn("text/css", css_headers["content-type"])
+        self.assertEqual(escape_status, 403)
+        self.assertIn(b"forbidden", escape_body)
 
     def test_avatar_engine_status_uses_advanced_runtime_contract(self):
         state = avatar_engine_status(load_settings())

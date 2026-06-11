@@ -79,6 +79,16 @@ from .channels import (
     plan_channel_send,
     review_channel_approval,
 )
+from .codegraph import (
+    as_payload as codegraph_payload,
+    codegraph_impact,
+    codegraph_overview,
+    codegraph_status,
+    list_codegraph_repos,
+    query_codegraph,
+    register_codegraph_repo,
+    scan_codegraph_repo,
+)
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
 from .document_pipeline import (
@@ -274,6 +284,25 @@ def build_parser() -> argparse.ArgumentParser:
     index_query.add_argument("--limit", type=int, default=10)
     index_query.add_argument("--offset", type=int, default=0)
     index_query.add_argument("--lang", default="")
+
+    codegraph_parser = subcommands.add_parser("codegraph", help="Operate local source structure index")
+    codegraph_subcommands = codegraph_parser.add_subparsers(dest="codegraph_command")
+    codegraph_subcommands.add_parser("status", help="Inspect local code structure index status")
+    codegraph_subcommands.add_parser("repos", help="List registered source repositories")
+    codegraph_register = codegraph_subcommands.add_parser("register", help="Register a local source repository")
+    codegraph_register.add_argument("--path", required=True)
+    codegraph_register.add_argument("--name", default="")
+    codegraph_scan = codegraph_subcommands.add_parser("scan", help="Scan a registered source repository")
+    codegraph_scan.add_argument("--repo-id", default="")
+    codegraph_overview_parser = codegraph_subcommands.add_parser("overview", help="Summarize the latest code graph scan")
+    codegraph_overview_parser.add_argument("--repo-id", default="")
+    codegraph_query_parser = codegraph_subcommands.add_parser("query", help="Search files and symbols in the latest code graph scan")
+    codegraph_query_parser.add_argument("--query", required=True)
+    codegraph_query_parser.add_argument("--repo-id", default="")
+    codegraph_query_parser.add_argument("--limit", type=int, default=20)
+    codegraph_impact_parser = codegraph_subcommands.add_parser("impact", help="Estimate file-level impact from imports and symbols")
+    codegraph_impact_parser.add_argument("--path", required=True)
+    codegraph_impact_parser.add_argument("--repo-id", default="")
 
     voice_parser = subcommands.add_parser("voice", help="Operate voice runtime adapters")
     voice_subcommands = voice_parser.add_subparsers(dest="voice_command")
@@ -505,6 +534,41 @@ def run(argv: list[str] | None = None) -> int:
     if command == "runtime-readiness":
         print_json({"service": "bairui", "runtime_readiness": collect_runtime_readiness(settings)})
         return 0
+
+    if command == "codegraph":
+        codegraph_command = args.codegraph_command or "status"
+        if codegraph_command == "status":
+            print_json({"service": "bairui", "codegraph": codegraph_payload(codegraph_status(settings))})
+            return 0
+        if codegraph_command == "repos":
+            print_json({"service": "bairui", "codegraph_repos": list_codegraph_repos(settings)})
+            return 0
+        if codegraph_command == "register":
+            try:
+                repo = register_codegraph_repo(settings, args.path, name=args.name)
+            except ValueError as exc:
+                print_json({"service": "bairui", "error": "invalid_request", "message": str(exc)})
+                return 1
+            print_json({"service": "bairui", "codegraph_repo": codegraph_payload(repo)})
+            return 0
+        if codegraph_command == "scan":
+            result = scan_codegraph_repo(settings, args.repo_id)
+            print_json({"service": "bairui", "codegraph_scan": result})
+            return 0 if result["status"] == "completed" else 1
+        if codegraph_command == "overview":
+            result = codegraph_overview(settings, repo_id=args.repo_id)
+            print_json({"service": "bairui", "codegraph": result})
+            return 0
+        if codegraph_command == "query":
+            result = query_codegraph(settings, args.query, repo_id=args.repo_id, limit=args.limit)
+            print_json({"service": "bairui", "codegraph_query": result})
+            return 0 if result["status"] in {"completed", "empty"} else 1
+        if codegraph_command == "impact":
+            result = codegraph_impact(settings, args.path, repo_id=args.repo_id)
+            print_json({"service": "bairui", "codegraph_impact": result})
+            return 0 if result["status"] != "not_found" else 1
+        parser.error(f"unknown codegraph command: {codegraph_command}")
+        return 2
 
     if command == "channels":
         channels_command = args.channels_command or "status"

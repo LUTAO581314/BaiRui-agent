@@ -12,6 +12,7 @@ from .adapters.searxng import status as searxng_status
 from .adapters.sonic import status as sonic_status
 from .adapters.trendradar import status as trendradar_status
 from .config import Settings
+from .codegraph import codegraph_status
 from .db import database_status
 from .license import load_license
 
@@ -43,6 +44,7 @@ def collect_capabilities(settings: Settings) -> list[dict[str, str]]:
     searxng = searxng_status(settings)
     sonic = sonic_status(settings)
     avatar = avatar_engine_status(settings)
+    codegraph = codegraph_status(settings)
     caps = [
         Capability("health_api", "ready", "HTTP health endpoint is available"),
         Capability("readiness_api", "ready", "HTTP readiness endpoint is available"),
@@ -109,6 +111,13 @@ def collect_capabilities(settings: Settings) -> list[dict[str, str]]:
             avatar.detail,
             source=avatar.source,
             license=avatar.license,
+        ),
+        Capability(
+            "bairui_codegraph",
+            codegraph.status,
+            codegraph.detail,
+            source=codegraph.root,
+            license="owned",
         ),
     ]
     return [asdict(cap) for cap in caps]

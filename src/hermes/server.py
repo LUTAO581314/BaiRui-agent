@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 from dataclasses import asdict
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import unquote
@@ -52,6 +53,16 @@ from .channels import (
     list_channel_approvals,
     plan_channel_send,
     review_channel_approval,
+)
+from .codegraph import (
+    as_payload as codegraph_payload,
+    codegraph_impact,
+    codegraph_overview,
+    codegraph_status,
+    list_codegraph_repos,
+    query_codegraph,
+    register_codegraph_repo,
+    scan_codegraph_repo,
 )
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
@@ -142,6 +153,12 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path == "/version":
             self._send({"service": PUBLIC_SERVICE, "version": __version__})
             return
+        if self.path in {"/console", "/console/"}:
+            self._send_console_asset("index.html")
+            return
+        if self.path.startswith("/console/"):
+            self._send_console_asset(self.path.removeprefix("/console/"))
+            return
         if self.path == "/capabilities":
             self._send({"service": PUBLIC_SERVICE, "capabilities": collect_capabilities(settings)})
             return
@@ -231,6 +248,15 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/index/status":
             self._send({"service": PUBLIC_SERVICE, "index": sonic_payload(sonic_status(settings))})
+            return
+        if self.path == "/codegraph/status":
+            self._send({"service": PUBLIC_SERVICE, "codegraph": codegraph_payload(codegraph_status(settings))})
+            return
+        if self.path == "/codegraph/repos":
+            self._send({"service": PUBLIC_SERVICE, "codegraph_repos": list_codegraph_repos(settings)})
+            return
+        if self.path == "/codegraph/overview":
+            self._send({"service": PUBLIC_SERVICE, "codegraph": codegraph_overview(settings)})
             return
 
         self._send({"error": "not_found", "path": self.path}, status=404)
@@ -474,6 +500,43 @@ class HermesHandler(BaseHTTPRequestHandler):
                 ),
             )
             self._send({"service": PUBLIC_SERVICE, "voice_asr": funasr_payload(result)}, status=200 if result.status == "completed" else 503)
+            return
+
+        if self.path == "/codegraph/repos/register":
+            repo_path = str(payload.get("path", ""))
+            if not repo_path.strip():
+                self._send({"error": "invalid_request", "message": "path is required"}, status=400)
+                return
+            try:
+                repo = register_codegraph_repo(settings, repo_path, name=str(payload.get("name", "")))
+            except ValueError as exc:
+                self._send({"error": "invalid_request", "message": str(exc)}, status=400)
+                return
+            self._send({"service": PUBLIC_SERVICE, "codegraph_repo": codegraph_payload(repo)}, status=201)
+            return
+
+        if self.path == "/codegraph/repos/scan":
+            repo_id = str(payload.get("repo_id", ""))
+            result = scan_codegraph_repo(settings, repo_id)
+            status = 200 if result["status"] == "completed" else 404
+            if result["status"] == "missing_source":
+                status = 503
+            self._send({"service": PUBLIC_SERVICE, "codegraph_scan": result}, status=status)
+            return
+
+        if self.path == "/codegraph/query":
+            result = query_codegraph(settings, str(payload.get("query", "")), repo_id=str(payload.get("repo_id", "")), limit=int(payload.get("limit", 20)))
+            status = 200 if result["status"] in {"completed", "empty"} else 400
+            self._send({"service": PUBLIC_SERVICE, "codegraph_query": result}, status=status)
+            return
+
+        if self.path == "/codegraph/impact":
+            target_path = str(payload.get("path", ""))
+            if not target_path.strip():
+                self._send({"error": "invalid_request", "message": "path is required"}, status=400)
+                return
+            result = codegraph_impact(settings, target_path, repo_id=str(payload.get("repo_id", "")))
+            self._send({"service": PUBLIC_SERVICE, "codegraph_impact": result}, status=200 if result["status"] != "not_found" else 404)
             return
 
         if self.path == "/document/parse/ingest-plan":
@@ -772,6 +835,29 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         body = path.read_bytes()
         content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_console_asset(self, asset_ref: str) -> None:
+        root = Path(__file__).resolve().parents[2] / "web" / "bairui-console"
+        path = (root / unquote(asset_ref)).resolve()
+        try:
+            path.relative_to(root.resolve())
+        except ValueError:
+            self._send({"error": "forbidden", "path": asset_ref}, status=403)
+            return
+        if not path.exists() or not path.is_file():
+            self._send({"error": "not_found", "path": asset_ref}, status=404)
+            return
+        body = path.read_bytes()
+        content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+        if path.suffix == ".js":
+            content_type = "text/javascript; charset=utf-8"
+        if path.suffix in {".html", ".css"}:
+            content_type = f"{content_type}; charset=utf-8"
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
