@@ -899,6 +899,31 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn(".settings-boundary-list", styles)
         self.assertIn(".settings-next-actions", styles)
 
+    def test_events_console_surfaces_audit_timeline_and_safety_evidence(self):
+        app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
+        styles = Path("web/bairui-console/styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('auditFilter: "all"', app_js)
+        self.assertIn("function renderEventSummary", app_js)
+        self.assertIn("function renderEventSafetyBoundary", app_js)
+        self.assertIn("function renderEventFilters", app_js)
+        self.assertIn("function renderEventTimeline", app_js)
+        self.assertIn("function renderEventEvidence", app_js)
+        self.assertIn("function renderLiveEventList", app_js)
+        self.assertIn("function filteredAuditTimeline", app_js)
+        self.assertIn("function eventNeedsApproval", app_js)
+        self.assertIn("Events combines SSE live messages with /audit records", app_js)
+        self.assertIn("will_send=false", app_js)
+        self.assertIn("will_write_long_term_memory", app_js)
+        self.assertIn('new EventSource("/events")', app_js)
+        self.assertIn('api.get("/audit")', app_js)
+        self.assertIn('data-audit-filter', app_js)
+        self.assertIn('data-audit-open="${escapeHtml(event.id)}"', app_js)
+        self.assertIn(".event-command-center", styles)
+        self.assertIn(".event-safety-grid", styles)
+        self.assertIn(".event-timeline", styles)
+        self.assertIn(".event-evidence-card", styles)
+
     def test_quickstart_and_deploy_docs_reference_console_demo_flow_and_readiness(self):
         readme = Path("README.md").read_text(encoding="utf-8")
         deployment = Path("docs/12-one-click-deployment.md").read_text(encoding="utf-8")

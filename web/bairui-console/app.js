@@ -102,6 +102,7 @@ const state = {
   activationAction: null,
   demoSeed: null,
   demoFlow: null,
+  auditFilter: "all",
   selectedEntity: null,
   selectedStep: "brand_lock",
   loading: new Set(),
@@ -3110,19 +3111,240 @@ function codeEntity(item) {
 
 function renderEvents() {
   setScreenHead("Events", "audit timeline");
-  const frontendEvents = state.events.map((event) => ({
-    type: event.type,
-    id: shortId(event.id),
-    action: event.data?.action || "",
-    resource_type: event.data?.resource_type || "",
-  }));
+  el.actions.innerHTML = `
+    <button class="primary-btn" id="refresh-events" type="button">Refresh Audit</button>
+    <button class="ghost-btn" id="events-open-settings" type="button">Open Settings</button>
+    <button class="ghost-btn" id="events-open-command" type="button">Open Command</button>`;
+  const rows = filteredAuditTimeline();
   el.body.innerHTML = `
-    <div class="grid two">
-      <section class="panel pad"><h2 class="panel-title">Live events</h2>${renderTable(["type", "id", "action", "resource_type"], frontendEvents)}</section>
-      <section class="panel pad"><h2 class="panel-title">Audit fallback</h2>${renderAuditCards(state.audit.slice(-20).reverse())}</section>
+    <section class="panel pad event-command-center">
+      <div class="conversation-head">
+        <div>
+          <h2 class="panel-title">Audit command center</h2>
+          <p class="muted compact-copy">Events combines SSE live messages with /audit records so every generated resource, approval, blocked send, memory review, and runtime action remains traceable.</p>
+        </div>
+        ${pill(state.events.length ? "ready" : "partial", state.events.length ? "live" : "audit fallback")}
+      </div>
+      ${renderEventSummary()}
+      ${renderEventSafetyBoundary()}
+    </section>
+    <div class="event-layout">
+      <section class="panel pad">
+        <div class="conversation-head">
+          <h2 class="panel-title">Timeline</h2>
+          ${pill(state.auditFilter || "all")}
+        </div>
+        ${renderEventFilters()}
+        ${renderEventTimeline(rows)}
+      </section>
+      <section class="panel pad">
+        <h2 class="panel-title">Selected evidence</h2>
+        ${renderEventEvidence()}
+        <h3 class="sub-title">Live stream</h3>
+        ${renderLiveEventList()}
+      </section>
     </div>
     ${state.selectedEntity?.type === "audit" ? renderSelectedEntityPanel() : ""}`;
+  document.getElementById("refresh-events")?.addEventListener("click", async () => {
+    state.audit = await safe(() => api.get("/audit").then((data) => data.audit || []), state.audit, "audit");
+    render();
+  });
+  document.getElementById("events-open-settings")?.addEventListener("click", async () => {
+    state.screen = "settings";
+    await refreshScreenData();
+  });
+  document.getElementById("events-open-command")?.addEventListener("click", async () => {
+    state.screen = "command";
+    await refreshScreenData();
+  });
+  el.body.querySelectorAll("[data-audit-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.auditFilter = button.dataset.auditFilter || "all";
+      render();
+    });
+  });
   bindAuditCards();
+}
+
+function renderEventSummary() {
+  const counts = eventSummaryCounts();
+  return renderCountStrip({
+    audit: state.audit.length,
+    live: state.events.length,
+    approvals: counts.approvals,
+    resources: counts.resources,
+    blocked: counts.blocked,
+    high_risk: counts.highRisk,
+  });
+}
+
+function renderEventSafetyBoundary() {
+  return `
+    <div class="event-safety-grid">
+      <div><span>External send</span><strong>review only</strong><p>Channel events must keep will_send=false until a future approved sender exists.</p></div>
+      <div><span>Long-term memory</span><strong>owner approval</strong><p>Memory candidates and reviews stay visible before any durable memory write.</p></div>
+      <div><span>Resource chain</span><strong>audit linked</strong><p>Jobs, reports, channels, documents, code, and avatar state changes carry resource references.</p></div>
+      <div><span>Failure handling</span><strong>no fake success</strong><p>Blocked or missing_config events remain visible so the operator knows the next repair step.</p></div>
+    </div>`;
+}
+
+function renderEventFilters() {
+  const filters = [
+    ["all", "All"],
+    ["approval", "Approvals"],
+    ["resource", "Resources"],
+    ["memory", "Memory"],
+    ["channel", "Channels"],
+    ["system", "System"],
+    ["blocked", "Blocked"],
+  ];
+  return `
+    <div class="event-filter-row">
+      ${filters.map(([id, label]) => `<button class="ghost-btn mini ${state.auditFilter === id ? "active" : ""}" type="button" data-audit-filter="${id}">${escapeHtml(label)}</button>`).join("")}
+    </div>`;
+}
+
+function renderEventTimeline(rows) {
+  if (!rows.length) return `<div class="empty-state top-gap">No audit evidence for this filter yet. Run Demo Flow, create a command session, or review a channel draft.</div>`;
+  return `
+    <div class="event-timeline top-gap">
+      ${rows
+        .map(
+          (event) => `
+            <button class="event-row button-card" type="button" data-audit-open="${escapeHtml(event.id)}">
+              <span class="event-rail-dot"></span>
+              <div class="event-row-main">
+                <div class="agent-meta">
+                  ${pill(event.status, event.label)}
+                  <span class="chip">${escapeHtml(event.resource_type || "runtime")}</span>
+                  <span class="chip mono">${escapeHtml(shortId(event.resource_ref || event.id))}</span>
+                </div>
+                <strong>${escapeHtml(event.action || event.type || "audit.event")}</strong>
+                <p>${escapeHtml(event.detail)}</p>
+              </div>
+              <time>${escapeHtml(formatEventTime(event.created_at || event.ts))}</time>
+            </button>`,
+        )
+        .join("")}
+    </div>`;
+}
+
+function renderEventEvidence() {
+  const selected = state.selectedEntity?.type === "audit" ? state.selectedEntity.raw : latestAuditEvent();
+  if (!selected) return `<div class="empty-state">Select an event to inspect payload, resource reference, and safety flags.</div>`;
+  const payload = selected.payload || {};
+  const safety = {
+    will_send: payload.will_send === true ? "true" : "false",
+    will_write_long_term_memory: payload.will_write_long_term_memory === true ? "true" : "false",
+    approval_required: eventNeedsApproval(selected) ? "true" : "false",
+  };
+  return `
+    <div class="event-evidence-card">
+      <div class="agent-meta">
+        ${pill(eventStatus(selected).status, eventStatus(selected).label)}
+        <span class="chip">${escapeHtml(selected.resource_type || "runtime")}</span>
+        <span class="chip mono">${escapeHtml(shortId(selected.resource_ref || selected.id))}</span>
+      </div>
+      <h3>${escapeHtml(selected.action || "audit.event")}</h3>
+      ${renderObjectCardInner(safety, ["will_send", "will_write_long_term_memory", "approval_required"])}
+      <pre class="mono muted code-block top-gap">${escapeHtml(JSON.stringify(payload, null, 2))}</pre>
+    </div>`;
+}
+
+function renderLiveEventList() {
+  const live = state.events.slice(-8).reverse();
+  if (!live.length) return `<div class="empty-state compact">SSE stream has not received live messages in this browser session. /audit remains the durable source.</div>`;
+  return `
+    <div class="live-event-list">
+      ${live
+        .map(
+          (event) => `
+            <div>
+              ${pill(event.type || "event")}
+              <span>${escapeHtml(event.data?.action || event.type || "runtime event")}</span>
+            </div>`,
+        )
+        .join("")}
+    </div>`;
+}
+
+function filteredAuditTimeline() {
+  return state.audit
+    .slice()
+    .reverse()
+    .map(normalizeAuditEvent)
+    .filter((event) => eventMatchesFilter(event, state.auditFilter));
+}
+
+function normalizeAuditEvent(event) {
+  const status = eventStatus(event);
+  return {
+    ...event,
+    status: status.status,
+    label: status.label,
+    detail: eventDetail(event),
+  };
+}
+
+function eventSummaryCounts() {
+  return (state.audit || []).reduce(
+    (counts, event) => {
+      if (eventNeedsApproval(event)) counts.approvals += 1;
+      if (["job", "report", "memory", "channel", "document", "codegraph", "avatar"].includes(event.resource_type)) counts.resources += 1;
+      if (eventStatus(event).status === "blocked") counts.blocked += 1;
+      if (event.risk_level === "high") counts.highRisk += 1;
+      return counts;
+    },
+    { approvals: 0, resources: 0, blocked: 0, highRisk: 0 },
+  );
+}
+
+function eventStatus(event) {
+  const action = String(event?.action || "");
+  const payload = event?.payload || {};
+  if (action.includes("blocked") || payload.status === "blocked" || payload.status === "failed") return { status: "blocked", label: "blocked" };
+  if (eventNeedsApproval(event)) return { status: "approval_required", label: "review" };
+  if (action.includes("reviewed") || action.includes("created") || action.includes("finished") || action.includes("promoted")) return { status: "ready", label: "recorded" };
+  return { status: event?.risk_level === "high" ? "approval_required" : "partial", label: event?.risk_level || "trace" };
+}
+
+function eventNeedsApproval(event) {
+  const action = String(event?.action || "");
+  const payload = event?.payload || {};
+  return action.includes("approval") || action.includes("send_planned") || payload.will_send === false || payload.will_write_long_term_memory === false || event?.risk_level === "high";
+}
+
+function eventMatchesFilter(event, filter = "all") {
+  if (filter === "all") return true;
+  const action = String(event.action || "");
+  const resource = String(event.resource_type || "");
+  if (filter === "approval") return eventNeedsApproval(event);
+  if (filter === "resource") return ["job", "report", "memory", "channel", "document", "codegraph", "avatar"].includes(resource);
+  if (filter === "blocked") return event.status === "blocked";
+  if (filter === "system") return ["runtime", "database", "avatar"].includes(resource) || action.includes("system") || action.includes("database");
+  return resource.includes(filter) || action.includes(filter);
+}
+
+function eventDetail(event) {
+  const payload = event?.payload || {};
+  return firstNonEmpty(
+    payload.title,
+    payload.summary,
+    payload.reason,
+    payload.status,
+    payload.note,
+    event.resource_ref ? `${event.resource_type || "resource"} ${event.resource_ref}` : "",
+    "Audit evidence recorded.",
+  );
+}
+
+function formatEventTime(value) {
+  if (!value) return "time pending";
+  return String(value).replace("T", " ").replace("Z", "");
+}
+
+function latestAuditEvent() {
+  return state.audit[state.audit.length - 1] || null;
 }
 
 function renderRuntimeDiagnostics() {
