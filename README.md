@@ -85,6 +85,7 @@ Internal frontend source reference:
 - [Vendor Runtime Integration](docs/18-vendor-runtime-integration.md)
 - [Brand And Trademark Fields](docs/19-brand-and-trademark-fields.md)
 - [bairui Frontend Source UI Integration](docs/20-bairui-frontend-source-ui-integration.md)
+- [Backend Contract Freeze For Frontend](docs/21-backend-contract-freeze-for-frontend.md)
 
 ## CLI Entry Point
 
