@@ -696,15 +696,16 @@ async function openPromotionResource(resourceType, resourceId) {
   const promotion = Object.values(state.promotionResults)
     .flat()
     .find((item) => String(item.created_resource?.id || "") === String(resourceId));
-  state.selectedEntity =
-    entity ||
-    {
-      type: resourceType,
+  state.selectedEntity = enrichPromotionEntity(
+    entity || {
+      type: entityTypeForResource(resourceType),
       title: resourceType,
       status: promotion?.created_resource?.status || "created",
       ref: resourceId,
-      raw: { id: resourceId, source: promotion?.created_resource?.source || {}, promotion_id: promotion?.promotion_id || "" },
-    };
+      raw: { id: resourceId },
+    },
+    promotion,
+  );
   state.screen = target;
   render();
 }
@@ -728,6 +729,33 @@ function findResourceEntity(resourceType, resourceId) {
     channel_approval_request: state.channelApprovals.map((item) => ({ type: "channel", title: item.media_kind, status: item.review_status || item.status, ref: item.id, raw: item })),
   };
   return (collections[resourceType] || []).find((item) => String(item.ref) === String(resourceId) || String(item.raw?.id) === String(resourceId));
+}
+
+function entityTypeForResource(resourceType) {
+  return (
+    {
+      document_memory_candidate: "memory",
+      channel_approval_request: "channel",
+    }[resourceType] || resourceType
+  );
+}
+
+function enrichPromotionEntity(entity, promotion) {
+  if (!promotion?.created_resource) return entity;
+  const source = promotion.created_resource.source || {};
+  return {
+    ...entity,
+    status: entity.status || promotion.created_resource.status || promotion.status,
+    ref: entity.ref || promotion.created_resource.id,
+    raw: {
+      ...(entity.raw || {}),
+      source: entity.raw?.source || source,
+      promotion_id: entity.raw?.promotion_id || promotion.promotion_id || "",
+      promotion_status: promotion.status || "",
+      promotion_duplicate: Boolean(promotion.duplicate),
+      will_execute_external_action: promotion.will_execute_external_action === true,
+    },
+  };
 }
 
 function renderDocuments() {
@@ -958,6 +986,8 @@ function renderEntityCard(entity, heading = "Entity card") {
       <div class="entity-field-grid">
         ${fields.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "-")}</strong></div>`).join("")}
       </div>
+      ${renderEntitySourceChain(entity)}
+      ${renderEntitySafety(entity)}
       ${renderEntityBody(entity)}
       ${renderEntityActions(entity)}
     </section>`;
@@ -970,6 +1000,51 @@ function entityFields(entity) {
   if (entity.type === "memory") return [["Candidate", raw.candidate_type], ["Confidence", raw.confidence], ["Source", raw.source_path || raw.source?.source_ref], ["Created", raw.created_at]];
   if (entity.type === "channel") return [["Target", raw.target_id], ["Channel", raw.channel_type], ["Media", raw.media_kind], ["Review", raw.review_status || raw.status], ["Source", raw.source?.source_ref]];
   return [["Status", entity.status || raw.status], ["Reference", entity.ref || raw.id], ["Type", entity.type], ["Created", raw.created_at]];
+}
+
+function renderEntitySourceChain(entity) {
+  const raw = entity.raw || {};
+  const source = raw.source || {};
+  if (!source.source_ref && !raw.source_ref && !raw.ingest_id && !raw.promotion_id) return "";
+  const rows = [
+    ["Source type", source.source_type || raw.source_type || "local_record"],
+    ["Source ref", source.source_ref || raw.source_ref || raw.ingest_id || ""],
+    ["Session", source.session_id || ""],
+    ["Agent", source.agent_id || ""],
+    ["Role", source.role || ""],
+    ["Target", source.target || ""],
+    ["Promotion", raw.promotion_id || ""],
+  ].filter(([, value]) => value !== "");
+  return `
+    <div class="source-chain">
+      <div class="source-chain-title">
+        <span>Source chain</span>
+        ${pill(source.status || raw.promotion_status || "traceable")}
+      </div>
+      <div class="source-chain-grid">
+        ${rows.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(shortId(String(value)))}</strong></div>`).join("")}
+      </div>
+    </div>`;
+}
+
+function renderEntitySafety(entity) {
+  const raw = entity.raw || {};
+  const reviewState = raw.review_status || raw.status || entity.status || "";
+  const needsReview = entity.type === "memory" || entity.type === "channel" || ["pending_review", "approval_required", "needs_review"].includes(reviewState);
+  const willExternal = raw.will_execute_external_action === true || raw.will_send === true;
+  if (!needsReview && !willExternal && !raw.promotion_id) return "";
+  const safety = {
+    review: needsReview ? "owner review required" : "review not required",
+    external: willExternal ? "external action possible" : "will_execute_external_action=false",
+    duplicate: raw.promotion_duplicate ? "reused existing resource" : raw.promotion_id ? "created once" : "",
+  };
+  return `
+    <div class="safety-strip">
+      ${Object.entries(safety)
+        .filter(([, value]) => value)
+        .map(([key, value]) => `<span class="chip ${key === "external" && willExternal ? "danger-chip" : ""}">${escapeHtml(value)}</span>`)
+        .join("")}
+    </div>`;
 }
 
 function renderEntityBody(entity) {
