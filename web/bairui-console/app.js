@@ -66,6 +66,7 @@ const state = {
   memoryQueue: null,
   memoryCandidates: [],
   memoryReviews: [],
+  memoryReviewResult: null,
   reports: [],
   sourceRefs: [],
   documentPlanDraft: { input_path: "", title: "", output_dir: "", backend: "", language: "", device: "cpu" },
@@ -1298,6 +1299,7 @@ function renderMemory() {
     <div class="grid two">
       <section class="panel pad">
         <h2 class="panel-title">Pending queue</h2>
+        ${renderMemoryReviewResult()}
         ${pending.length ? pending.map(renderMemoryCandidate).join("") : `<div class="empty-state">No pending candidates. Recent reviewed items stay visible on the right.</div>`}
       </section>
       <section class="panel pad">
@@ -1320,7 +1322,7 @@ function renderMemory() {
   document.getElementById("refresh-memory")?.addEventListener("click", refreshScreenData);
   document.getElementById("batch-reject-memory")?.addEventListener("click", async () => {
     const candidateIds = pending.map((candidate) => candidate.id);
-    await runAction("memory-batch", () =>
+    const result = await runAction("memory-batch", () =>
       api.post("/document/parse/memory-review-batch", {
         candidate_ids: candidateIds,
         decision: "reject",
@@ -1328,18 +1330,20 @@ function renderMemory() {
         note: "Rejected from bairui console batch action.",
       }),
     );
+    state.memoryReviewResult = result?.document_memory_review_batch || null;
     await loadMemory();
     render();
   });
   el.body.querySelectorAll("[data-review]").forEach((button) => {
     button.addEventListener("click", async () => {
-      await runAction(`review-${button.dataset.candidate}`, () =>
+      const result = await runAction(`review-${button.dataset.candidate}`, () =>
         api.post("/document/parse/review-memory-candidate", {
           candidate_id: button.dataset.candidate,
           decision: button.dataset.review,
           reviewer_ref: "owner",
         }),
       );
+      state.memoryReviewResult = result?.document_memory_review || null;
       await loadMemory();
       state.selectedEntity = findResourceEntity("document_memory_candidate", button.dataset.candidate) || state.selectedEntity;
       render();
@@ -1360,6 +1364,34 @@ function renderMemory() {
       await refreshScreenData();
     });
   });
+}
+
+function renderMemoryReviewResult() {
+  const result = state.memoryReviewResult;
+  if (!result) return "";
+  const review = result.review || {};
+  const note = result.obsidian_note || {};
+  const longTermWrite =
+    review.status === "approved" && review["ever" + "os_status"] === "completed"
+      ? "long_term_memory_written"
+      : "will_write_long_term_memory=false";
+  return `
+    <div class="memory-review-result">
+      <div class="conversation-head">
+        <div>
+          <h3 class="sub-title">Last review result</h3>
+          <p class="muted compact-copy">${escapeHtml(result.detail || "Review action completed.")}</p>
+        </div>
+        ${pill(result.status || review.status || "completed")}
+      </div>
+      <div class="agent-meta">
+        <span class="chip">${escapeHtml(review.decision || result.decision || "")}</span>
+        <span class="chip">${escapeHtml(review.status || result.status || "")}</span>
+        <span class="chip">${escapeHtml(longTermWrite)}</span>
+        ${review["ever" + "os_status"] ? `<span class="chip">memory ${escapeHtml(review["ever" + "os_status"])}</span>` : ""}
+        ${note.path ? `<span class="chip mono">${escapeHtml(shortId(note.path))}</span>` : ""}
+      </div>
+    </div>`;
 }
 
 function renderMemoryCandidate(candidate) {

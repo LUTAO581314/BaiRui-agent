@@ -1118,6 +1118,16 @@ h1 {
   background: rgba(255, 255, 255, 0.026);
 }
 
+.memory-review-result {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  border-radius: var(--radius-sm);
+  background: rgba(53, 230, 199, 0.038);
+  padding: 10px;
+}
+
 .review-card p {
   margin: 0;
   color: var(--text);
