@@ -1639,7 +1639,9 @@ function renderMemory() {
     <div class="grid two">
       <section class="panel pad">
         <h2 class="panel-title">Pending queue</h2>
+        ${renderMemoryQueueSummary(queue, pending)}
         ${renderMemoryReviewResult()}
+        ${renderProductError("memory-batch")}
         ${pending.length ? pending.map(renderMemoryCandidate).join("") : `<div class="empty-state">No pending candidates. Recent reviewed items stay visible on the right.</div>`}
       </section>
       <section class="panel pad">
@@ -1654,7 +1656,7 @@ function renderMemory() {
       </section>
       <section class="panel pad">
         <h2 class="panel-title">Safety boundary</h2>
-        <div class="empty-state">Memory candidates are not written as long-term memory until an owner review action returns an approved state.</div>
+        ${renderMemorySafetyPanel()}
       </section>
     </div>
     ${state.selectedEntity?.type === "memory" ? renderSelectedEntityPanel() : ""}`;
@@ -1734,7 +1736,52 @@ function renderMemoryReviewResult() {
     </div>`;
 }
 
+function renderMemoryQueueSummary(queue, pending) {
+  const counts = {
+    pending: pending.length,
+    reviewed: queue?.reviewed_count || 0,
+    total_candidates: (queue?.reviewed_count || 0) + pending.length,
+  };
+  return `
+    <div class="memory-queue-summary">
+      ${renderCountStrip(counts)}
+      <div class="agent-meta">
+        ${pill(pending.length ? "needs_review" : "ready", pending.length ? "owner review required" : "queue clear")}
+        <span class="chip">single approve/reject</span>
+        <span class="chip">batch reject only</span>
+        <span class="chip">source trace visible</span>
+      </div>
+    </div>`;
+}
+
+function renderMemorySafetyPanel() {
+  return `
+    <div class="memory-safety-grid">
+      <div>
+        <span>Approval gate</span>
+        <strong>Explicit owner action</strong>
+        <p>Approve or reject calls the real review API. No candidate is silently written into long-term memory.</p>
+      </div>
+      <div>
+        <span>Batch action</span>
+        <strong>Reject only</strong>
+        <p>The bulk button only rejects pending candidates. It does not approve or write memory in bulk.</p>
+      </div>
+      <div>
+        <span>Write status</span>
+        <strong>will_write_long_term_memory=false</strong>
+        <p>The result card shows when a review did not perform a long-term memory write.</p>
+      </div>
+      <div>
+        <span>Source</span>
+        <strong>Ingest trace</strong>
+        <p>Each candidate keeps ingest id, source path, confidence, and report navigation visible.</p>
+      </div>
+    </div>`;
+}
+
 function renderMemoryCandidate(candidate) {
+  const source = [candidate.ingest_id ? `ingest ${shortId(candidate.ingest_id)}` : "", candidate.source_path || "", candidate.reason || ""].filter(Boolean);
   return `
     <article class="review-card">
       <div class="step-title">
@@ -1742,11 +1789,21 @@ function renderMemoryCandidate(candidate) {
         ${pill(candidate.status || "pending_review")}
       </div>
       <p>${escapeHtml(candidate.text || "")}</p>
-      <div class="agent-meta">
-        <span class="chip mono">${escapeHtml(shortId(candidate.id))}</span>
-        <span class="chip">${escapeHtml(candidate.confidence ?? "")}</span>
-        <span class="chip">${escapeHtml(candidate.source_path || "")}</span>
+      <div class="memory-source-strip">
+        <div>
+          <span>Candidate</span>
+          <strong class="mono">${escapeHtml(shortId(candidate.id))}</strong>
+        </div>
+        <div>
+          <span>Confidence</span>
+          <strong>${escapeHtml(candidate.confidence ?? "")}</strong>
+        </div>
+        <div>
+          <span>Source trace</span>
+          <strong>${escapeHtml(source.join(" | ") || "source pending")}</strong>
+        </div>
       </div>
+      ${renderProductError(`review-${candidate.id}`)}
       <div class="action-row">
         <button class="primary-btn" type="button" data-review="approve" data-candidate="${escapeHtml(candidate.id)}">Approve</button>
         <button class="ghost-btn" type="button" data-review="reject" data-candidate="${escapeHtml(candidate.id)}">Reject</button>

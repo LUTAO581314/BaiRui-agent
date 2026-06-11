@@ -780,6 +780,26 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn(".action-step", styles)
         self.assertIn(".document-action-result", styles)
 
+    def test_memory_review_console_keeps_owner_review_and_source_trace_visible(self):
+        app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
+        styles = Path("web/bairui-console/styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("function renderMemoryQueueSummary", app_js)
+        self.assertIn("function renderMemorySafetyPanel", app_js)
+        self.assertIn("source trace visible", app_js)
+        self.assertIn("batch reject only", app_js)
+        self.assertIn("will_write_long_term_memory=false", app_js)
+        self.assertIn('decision: "reject"', app_js)
+        self.assertIn('data-review="approve"', app_js)
+        self.assertIn('data-review="reject"', app_js)
+        self.assertIn('data-memory-source="${escapeHtml(candidate.id)}"', app_js)
+        self.assertIn('data-memory-reports="${escapeHtml(candidate.ingest_id || "")}"', app_js)
+        self.assertIn('/document/parse/memory-review-batch', app_js)
+        self.assertIn('/document/parse/review-memory-candidate', app_js)
+        self.assertIn(".memory-queue-summary", styles)
+        self.assertIn(".memory-source-strip", styles)
+        self.assertIn(".memory-safety-grid", styles)
+
     def test_quickstart_and_deploy_docs_reference_console_demo_flow_and_readiness(self):
         readme = Path("README.md").read_text(encoding="utf-8")
         deployment = Path("docs/12-one-click-deployment.md").read_text(encoding="utf-8")
