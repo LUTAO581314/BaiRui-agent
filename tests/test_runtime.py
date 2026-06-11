@@ -301,6 +301,47 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(query_code, 0)
         self.assertEqual(query_payload["codegraph_query"]["results"][0]["name"], "boot")
 
+    def test_codegraph_overview_http_supports_repo_filter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_a = root / "repo-a"
+            repo_b = root / "repo-b"
+            repo_a.mkdir()
+            repo_b.mkdir()
+            (repo_a / "alpha.py").write_text("def alpha():\n    return 'a'\n", encoding="utf-8")
+            (repo_b / "beta.py").write_text("def beta():\n    return 'b'\n", encoding="utf-8")
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_CODEGRAPH_ROOT": str(root / "codegraph"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    _, _, register_a_body = _http_post(server.server_port, "/codegraph/repos/register", {"path": str(repo_a), "name": "alpha"})
+                    _, _, register_b_body = _http_post(server.server_port, "/codegraph/repos/register", {"path": str(repo_b), "name": "beta"})
+                    repo_a_id = json.loads(register_a_body.decode("utf-8"))["codegraph_repo"]["id"]
+                    repo_b_id = json.loads(register_b_body.decode("utf-8"))["codegraph_repo"]["id"]
+                    scan_a_status, _, _ = _http_post(server.server_port, "/codegraph/repos/scan", {"repo_id": repo_a_id})
+                    overview_status, _, overview_body = _http_get(server.server_port, f"/codegraph/overview?repo_id={repo_a_id}")
+                    empty_status, _, empty_body = _http_get(server.server_port, f"/codegraph/overview?repo_id={repo_b_id}")
+                    overview = json.loads(overview_body.decode("utf-8"))["codegraph"]
+                    empty = json.loads(empty_body.decode("utf-8"))["codegraph"]
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        self.assertEqual(scan_a_status, 200)
+        self.assertEqual(overview_status, 200)
+        self.assertEqual(empty_status, 200)
+        self.assertEqual(overview["status"], "ready")
+        self.assertEqual(overview["scan"]["repo_id"], repo_a_id)
+        self.assertEqual(empty["status"], "empty")
+
     def test_agents_roster_and_round_keep_permissions_visible(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = {

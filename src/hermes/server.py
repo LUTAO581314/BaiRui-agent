@@ -6,7 +6,7 @@ from dataclasses import asdict
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlparse
 
 from . import __version__
 from .agents import (
@@ -304,8 +304,10 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path == "/codegraph/repos":
             self._send({"service": PUBLIC_SERVICE, "codegraph_repos": list_codegraph_repos(settings)})
             return
-        if self.path == "/codegraph/overview":
-            self._send({"service": PUBLIC_SERVICE, "codegraph": codegraph_overview(settings)})
+        if self.path == "/codegraph/overview" or self.path.startswith("/codegraph/overview?"):
+            query = parse_qs(urlparse(self.path).query)
+            repo_id = str((query.get("repo_id") or [""])[0])
+            self._send({"service": PUBLIC_SERVICE, "codegraph": codegraph_overview(settings, repo_id=repo_id)})
             return
 
         self._send({"error": "not_found", "path": self.path}, status=404)

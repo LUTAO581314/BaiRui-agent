@@ -77,6 +77,8 @@ const state = {
   channelApprovalReviews: [],
   codegraph: null,
   codegraphRepos: [],
+  selectedCodegraphRepoId: "",
+  codegraphOverview: null,
   codegraphQuery: null,
   codegraphImpact: null,
   activationProbe: null,
@@ -1504,7 +1506,7 @@ function entityFields(entity) {
   if (entity.type === "memory") return [["Candidate", raw.candidate_type], ["Confidence", raw.confidence], ["Source", raw.source_path || raw.source?.source_ref], ["Created", raw.created_at]];
   if (entity.type === "channel") return [["Target", raw.target_id], ["Channel", raw.channel_type], ["Media", raw.media_kind], ["Review", raw.review_status || raw.status], ["Source", raw.source?.source_ref]];
   if (entity.type === "audit") return [["Action", raw.action], ["Resource", raw.resource_type], ["Reference", raw.resource_ref], ["Risk", raw.risk_level], ["Created", raw.created_at]];
-  if (entity.type === "code") return [["Kind", raw.kind || raw.type], ["Name", raw.name || raw.relative_path], ["Path", raw.path || raw.relative_path], ["Language", raw.language], ["Symbols", raw.symbol_count]];
+  if (entity.type === "code") return [["Kind", raw.kind || raw.type], ["Name", raw.name || raw.relative_path], ["Path", raw.path || raw.relative_path], ["Language", raw.language], ["Repo", raw.repo_name || raw.repo_id], ["Scan", raw.scan_id], ["Symbols", raw.symbol_count]];
   return [["Status", entity.status || raw.status], ["Reference", entity.ref || raw.id], ["Type", entity.type], ["Created", raw.created_at]];
 }
 
@@ -2045,14 +2047,41 @@ function renderSettings() {
 function renderCodeGraph() {
   setScreenHead("CodeGraph", "source structure index");
   el.actions.innerHTML = `<button class="ghost-btn" id="refresh-codegraph" type="button">Refresh</button>`;
+  const selectedRepo = selectedCodegraphRepo();
+  const overview = state.codegraphOverview || {};
+  const scan = overview.scan || {};
+  const files = overview.files || overview.top_files || [];
+  const symbols = overview.symbols || overview.top_symbols || [];
+  const imports = overview.imports || [];
+  const counts = overview.counts || {};
   el.body.innerHTML = `
+    <section class="panel pad codegraph-boundary">
+      <div class="conversation-head">
+        <div>
+          <h2 class="panel-title">Source boundary</h2>
+          <p class="muted compact-copy">${escapeHtml(state.codegraph?.codegraph?.memory_boundary || "CodeGraph indexes source structure only; it does not write long-term memory.")}</p>
+        </div>
+        ${pill(state.codegraph?.codegraph?.status || "missing_config")}
+      </div>
+      ${renderCountStrip({ repos: state.codegraphRepos.length, files: counts.files ?? files.length, symbols: counts.symbols ?? symbols.length, imports: counts.imports ?? imports.length })}
+    </section>
     <div class="channels-layout">
       <section class="panel pad">
-        <h2 class="panel-title">Status</h2>
-        ${pill(state.codegraph?.codegraph?.status || "ready")}
-        <p class="muted">${escapeHtml(state.codegraph?.codegraph?.memory_boundary || "Code structure stays separate from long-term memory.")}</p>
+        <h2 class="panel-title">Repositories</h2>
+        <label class="form-label">Active repository</label>
+        <select class="field" id="codegraph-repo-select">
+          ${
+            state.codegraphRepos.length
+              ? state.codegraphRepos.map((repo) => `<option value="${escapeHtml(repo.id)}" ${repo.id === selectedRepo?.id ? "selected" : ""}>${escapeHtml(repo.name || repo.root_path || repo.id)}</option>`).join("")
+              : `<option value="">No repository</option>`
+          }
+        </select>
         <h3 class="sub-title">Repos</h3>
-        ${state.codegraphRepos.map((repo) => renderObjectCard(repo, ["name", "status", "root_path"])).join("") || `<div class="empty-state">No source repository registered yet.</div>`}
+        ${
+          state.codegraphRepos
+            .map((repo) => `<button class="object-card button-card" type="button" data-codegraph-repo="${escapeHtml(repo.id)}">${renderObjectCardInner(repo, ["name", "status", "root_path"])}</button>`)
+            .join("") || `<div class="empty-state">No source repository registered yet.</div>`
+        }
       </section>
       <section class="panel pad">
         <h2 class="panel-title">Register and scan</h2>
@@ -2062,8 +2091,10 @@ function renderCodeGraph() {
         <input class="field" id="codegraph-name" placeholder="bairui-source" />
         <div class="action-row top-gap">
           <button class="primary-btn" id="codegraph-register" type="button">Register</button>
-          <button class="ghost-btn" id="codegraph-scan" type="button" ${!state.codegraphRepos.length ? "disabled" : ""}>Scan Latest</button>
+          <button class="ghost-btn" id="codegraph-scan" type="button" ${!selectedRepo ? "disabled" : ""}>Scan Selected</button>
         </div>
+        <h3 class="sub-title">Latest scan</h3>
+        ${renderCodeGraphOverview(scan, files, symbols, imports)}
         <h3 class="sub-title">Query</h3>
         <input class="field" id="codegraph-query-text" placeholder="function, class, route, file" />
         <button class="ghost-btn top-gap" id="codegraph-query" type="button">Search</button>
@@ -2079,20 +2110,37 @@ function renderCodeGraph() {
     </div>
     ${state.selectedEntity?.type === "code" ? renderSelectedEntityPanel() : ""}`;
   document.getElementById("refresh-codegraph")?.addEventListener("click", refreshScreenData);
+  document.getElementById("codegraph-repo-select")?.addEventListener("change", async (event) => {
+    state.selectedCodegraphRepoId = event.target.value;
+    await loadCodeGraph();
+    render();
+  });
+  el.body.querySelectorAll("[data-codegraph-repo]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.selectedCodegraphRepoId = button.dataset.codegraphRepo;
+      await loadCodeGraph();
+      render();
+    });
+  });
   document.getElementById("codegraph-register")?.addEventListener("click", async () => {
-    await runAction("codegraph-register", () =>
+    const result = await runAction("codegraph-register", () =>
       api.post("/codegraph/repos/register", {
         path: document.getElementById("codegraph-path").value,
         name: document.getElementById("codegraph-name").value,
       }),
     );
+    if (result?.codegraph_repo?.id) state.selectedCodegraphRepoId = result.codegraph_repo.id;
+    await loadCodeGraph();
+    render();
   });
   document.getElementById("codegraph-scan")?.addEventListener("click", async () => {
-    const repo = state.codegraphRepos[state.codegraphRepos.length - 1];
+    const repo = selectedCodegraphRepo();
     await runAction("codegraph-scan", () => api.post("/codegraph/repos/scan", { repo_id: repo?.id || "" }));
+    await loadCodeGraph();
+    render();
   });
   document.getElementById("codegraph-query")?.addEventListener("click", async () => {
-    const repo = state.codegraphRepos[state.codegraphRepos.length - 1];
+    const repo = selectedCodegraphRepo();
     const result = await runAction("codegraph-query", () =>
       api.post("/codegraph/query", {
         query: document.getElementById("codegraph-query-text").value,
@@ -2104,7 +2152,7 @@ function renderCodeGraph() {
     render();
   });
   document.getElementById("codegraph-impact")?.addEventListener("click", async () => {
-    const repo = state.codegraphRepos[state.codegraphRepos.length - 1];
+    const repo = selectedCodegraphRepo();
     const result = await runAction("codegraph-impact", () =>
       api.post("/codegraph/impact", {
         path: document.getElementById("codegraph-impact-path").value,
@@ -2115,6 +2163,37 @@ function renderCodeGraph() {
     render();
   });
   bindCodeGraphCards();
+}
+
+function selectedCodegraphRepo() {
+  return state.codegraphRepos.find((repo) => repo.id === state.selectedCodegraphRepoId) || state.codegraphRepos[state.codegraphRepos.length - 1] || null;
+}
+
+function renderCodeGraphOverview(scan, files, symbols, imports) {
+  if (!scan?.id) return `<div class="empty-state">No scan recorded for the selected repository. Register a repo, then scan it before querying.</div>`;
+  return `
+    <div class="source-chain">
+      <div class="source-chain-title">
+        <span>Scan ${escapeHtml(shortId(scan.id))}</span>
+        ${pill(scan.status || "completed")}
+      </div>
+      <div class="source-chain-grid">
+        <div><span>Files</span><strong>${escapeHtml(scan.file_count ?? files.length)}</strong></div>
+        <div><span>Symbols</span><strong>${escapeHtml(scan.symbol_count ?? symbols.length)}</strong></div>
+        <div><span>Imports</span><strong>${escapeHtml(scan.import_count ?? imports.length)}</strong></div>
+      </div>
+    </div>
+    <div class="audit-card-list top-gap">
+      ${files
+        .slice(0, 3)
+        .map(
+          (item, index) => `
+            <button class="object-card button-card" type="button" data-codegraph-overview-file="${index}">
+              ${renderObjectCardInner(item, ["relative_path", "language", "symbol_count", "import_count"])}
+            </button>`,
+        )
+        .join("")}
+    </div>`;
 }
 
 function renderCodeGraphResults(results) {
@@ -2162,6 +2241,15 @@ function renderCodeGraphImpact(impact) {
 }
 
 function bindCodeGraphCards() {
+  el.body.querySelectorAll("[data-codegraph-overview-file]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const overviewFiles = state.codegraphOverview?.files || state.codegraphOverview?.top_files || [];
+      const item = overviewFiles[Number(button.dataset.codegraphOverviewFile)];
+      if (!item) return;
+      state.selectedEntity = codeEntity({ type: "file", ...item });
+      render();
+    });
+  });
   el.body.querySelectorAll("[data-codegraph-result]").forEach((button) => {
     button.addEventListener("click", () => {
       const item = state.codegraphQuery?.results?.[Number(button.dataset.codegraphResult)];
@@ -2189,12 +2277,14 @@ function bindCodeGraphCards() {
 }
 
 function codeEntity(item) {
+  const repo = selectedCodegraphRepo();
+  const scan = state.codegraphOverview?.scan || {};
   return {
     type: "code",
     title: item.name || item.relative_path || item.path || "Code entity",
     status: "source_ready",
     ref: item.id || item.file_id || item.path || item.relative_path || item.name,
-    raw: item,
+    raw: { ...item, repo_id: item.repo_id || repo?.id || "", repo_name: repo?.name || "", scan_id: item.scan_id || scan.id || "" },
   };
 }
 
@@ -2506,12 +2596,20 @@ async function loadRuntimeStatus() {
 }
 
 async function loadCodeGraph() {
-  const [codegraph, repos] = await Promise.all([
+  const [codegraph, repos, overview] = await Promise.all([
     safe(() => api.get("/codegraph/status"), state.codegraph, "codegraph-status"),
     safe(() => api.get("/codegraph/repos").then((data) => data.codegraph_repos || []), state.codegraphRepos, "codegraph-repos"),
+    safe(() => {
+      const repoId = state.selectedCodegraphRepoId ? `?repo_id=${encodeURIComponent(state.selectedCodegraphRepoId)}` : "";
+      return api.get(`/codegraph/overview${repoId}`).then((data) => data.codegraph || null);
+    }, state.codegraphOverview, "codegraph-overview"),
   ]);
   state.codegraph = codegraph;
   state.codegraphRepos = repos || [];
+  if (!state.selectedCodegraphRepoId && state.codegraphRepos.length) {
+    state.selectedCodegraphRepoId = state.codegraphRepos[state.codegraphRepos.length - 1].id;
+  }
+  state.codegraphOverview = overview;
 }
 
 function connectEvents() {

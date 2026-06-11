@@ -920,6 +920,11 @@ h1 {
   margin-bottom: 14px;
 }
 
+.codegraph-boundary {
+  margin-bottom: 14px;
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+}
+
 .mini-card {
   display: grid;
   gap: 8px;
