@@ -81,6 +81,7 @@ from .codegraph import (
     scan_codegraph_repo,
 )
 from .config import ensure_runtime_dirs, load_settings
+from .config_status import build_config_status
 from .db import database_status, run_migrations
 from .demo import seed_demo_data
 from .demo_flow import run_demo_flow
@@ -183,6 +184,9 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/frontend/contract":
             self._send({"service": "bairui", "frontend_contract": build_frontend_contract(settings, __version__)})
+            return
+        if self.path == "/config/status":
+            self._send({"service": PUBLIC_SERVICE, "config_status": build_config_status(settings)})
             return
         if self.path == "/runtime/readiness":
             self._send({"service": PUBLIC_SERVICE, "runtime_readiness": collect_runtime_readiness(settings)})

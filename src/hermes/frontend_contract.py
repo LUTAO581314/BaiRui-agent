@@ -155,6 +155,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             {"id": "health", "method": "GET", "path": "/health", "purpose": "service liveness"},
             {"id": "ready", "method": "GET", "path": "/ready", "purpose": "deployment readiness"},
             {"id": "capabilities", "method": "GET", "path": "/capabilities", "purpose": "capability list"},
+            {"id": "config_status", "method": "GET", "path": "/config/status", "purpose": "safe configuration diagnostics"},
             {"id": "runtime_readiness", "method": "GET", "path": "/runtime/readiness", "purpose": "runtime blockers and warnings"},
             {"id": "platform_heartbeat", "method": "GET", "path": "/platform/heartbeat", "purpose": "platform heartbeat payload"},
         ),
@@ -252,6 +253,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 "title": "Settings",
                 "read": (
                     "/memory/status",
+                    "/config/status",
                     "/voice/asr/status",
                     "/document/parse/status",
                     "/intel/status",

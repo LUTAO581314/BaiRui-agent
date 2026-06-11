@@ -22,6 +22,7 @@ from src.hermes.channels import (
 from src.hermes.codegraph import codegraph_impact, codegraph_overview, codegraph_status, query_codegraph, register_codegraph_repo, scan_codegraph_repo
 from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
+from src.hermes.config_status import build_config_status
 from src.hermes.db import SCHEMA_SQL, database_status
 from src.hermes.demo import seed_demo_data
 from src.hermes.demo_flow import run_demo_flow
@@ -720,6 +721,72 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn(".product-error", styles)
         self.assertIn(".error-guide-grid", styles)
 
+    def test_config_status_reports_paths_without_secret_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "memory-vault"),
+                "MINERU_OUTPUT_DIR": str(root / "document-output"),
+                "BAIRUI_AVATAR_ASSETS_DIR": str(root / "avatar-assets"),
+                "BAIRUI_CODEGRAPH_ROOT": str(root / "codegraph"),
+                "BAIRUI_MODEL_BASE_URL": "https://models.example.test/v1",
+                "BAIRUI_MODEL_API_KEY": "super-secret-key",
+                "BAIRUI_MODEL_NAME": "bairui-demo-model",
+                "BAIRUI_LICENSE_SECRET": "license-secret",
+                "HERMES_DATABASE_URL": "postgresql://bairui:db-secret@localhost/bairui",
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "BAIRUI_CHANNEL_TARGETS_JSON": '[{"id":"owner","label":"Owner","channel_type":"personal_chat"}]',
+            }
+            for path in ("data", "logs", "memory-vault", "document-output", "avatar-assets", "codegraph"):
+                (root / path).mkdir(parents=True)
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                payload = build_config_status(settings)
+
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertIn(payload["status"], {"ready", "partial", "blocked"})
+        self.assertIn("secrets are reported only as configured or missing", payload["secret_policy"])
+        self.assertNotIn("super-secret-key", raw)
+        self.assertNotIn("license-secret", raw)
+        self.assertNotIn("db-secret", raw)
+        items = {item["id"]: item for item in payload["items"]}
+        self.assertEqual(items["model_gateway"]["fields"]["api_key"], "configured")
+        self.assertEqual(items["database"]["fields"]["database_url"], "configured")
+        self.assertEqual(items["channel_targets"]["fields"]["will_send"], False)
+        self.assertIn("codegraph", items["codegraph_root"]["fields"]["path"])
+
+    def test_config_status_http_endpoint_is_secret_safe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "https://models.example.test/v1",
+                "BAIRUI_MODEL_API_KEY": "http-secret-key",
+                "BAIRUI_MODEL_NAME": "bairui-demo-model",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, _, body = _http_get(server.server_port, "/config/status")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        payload = json.loads(body.decode("utf-8"))
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["service"], "bairui")
+        self.assertIn("config_status", payload)
+        self.assertNotIn("http-secret-key", raw)
+        self.assertIn("api_key", raw)
+
     def test_command_console_composer_maps_to_agent_contracts(self):
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
         styles = Path("web/bairui-console/styles.css").read_text(encoding="utf-8")
@@ -896,23 +963,36 @@ class RuntimeFoundationTests(unittest.TestCase):
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
         styles = Path("web/bairui-console/styles.css").read_text(encoding="utf-8")
 
+        contract = build_frontend_contract(load_settings(), "test")
+        status_paths = {item["path"] for item in contract["status_sources"]}
+        settings_screen = next(screen for screen in contract["screens"] if screen["id"] == "runtime_settings")
+        self.assertIn("/config/status", status_paths)
+        self.assertIn("/config/status", settings_screen["read"])
         self.assertIn("function renderSettingsGateGrid", app_js)
         self.assertIn("function renderSettingsReadinessList", app_js)
         self.assertIn("function renderSettingsRuntimeMatrix", app_js)
         self.assertIn("function renderSettingsConfigBoundary", app_js)
+        self.assertIn("function renderSettingsConfigCenter", app_js)
+        self.assertIn("function renderSettingsConfigFields", app_js)
         self.assertIn("function renderSettingsNextActions", app_js)
         self.assertIn("function customerSafeRuntimeText", app_js)
         self.assertIn("Settings is the operator view for /health, /ready, /runtime/readiness", app_js)
+        self.assertIn("Read-only configuration diagnostics for model API, data paths, document output, channel targets, Avatar assets, CodeGraph, database, and license. Secrets never echo.", app_js)
         self.assertIn("no external send, no automatic long-term memory write, no dangerous operation without review", app_js)
         self.assertIn("license status only; secrets never echo", app_js)
         self.assertIn("will_send=false", app_js)
         self.assertIn('api.get("/health")', app_js)
         self.assertIn('api.get("/ready")', app_js)
+        self.assertIn('api.get("/config/status")', app_js)
         self.assertIn('api.get("/runtime/readiness")', app_js)
         self.assertIn('api.get("/platform/heartbeat")', app_js)
         self.assertIn('api.get("/license")', app_js)
+        self.assertIn('renderProductError("config-status")', app_js)
         self.assertIn('renderProductError("settings-refresh")', app_js)
         self.assertIn(".settings-gate-grid", styles)
+        self.assertIn(".settings-config-center", styles)
+        self.assertIn(".settings-config-fields", styles)
+        self.assertIn(".settings-secret-policy", styles)
         self.assertIn(".settings-runtime-matrix", styles)
         self.assertIn(".settings-boundary-list", styles)
         self.assertIn(".settings-next-actions", styles)

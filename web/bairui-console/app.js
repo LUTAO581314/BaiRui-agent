@@ -52,6 +52,7 @@ const state = {
   readiness: null,
   platform: null,
   license: null,
+  configStatus: null,
   capabilities: [],
   jobs: [],
   audit: [],
@@ -2766,12 +2767,23 @@ function renderSettings() {
     <section class="panel pad top-gap">
       <div class="conversation-head">
         <div>
+          <h2 class="panel-title">Configuration center</h2>
+          <p class="muted compact-copy">Read-only configuration diagnostics for model API, data paths, document output, channel targets, Avatar assets, CodeGraph, database, and license. Secrets never echo.</p>
+        </div>
+        ${pill(state.configStatus?.config_status?.status || "partial")}
+      </div>
+      ${renderSettingsConfigCenter()}
+    </section>
+    <section class="panel pad top-gap">
+      <div class="conversation-head">
+        <div>
           <h2 class="panel-title">Runtime adapter matrix</h2>
           <p class="muted compact-copy">Each row is backed by a real status endpoint or readiness item. Optional runtimes may stay partial without blocking local demo flow.</p>
         </div>
         ${pill(readiness.status || "partial")}
       </div>
       ${renderSettingsRuntimeMatrix()}
+      ${renderProductError("config-status")}
       ${renderProductError("settings-refresh")}
       ${renderProductError("memory-status")}
       ${renderProductError("voice-status")}
@@ -2793,6 +2805,46 @@ function renderSettings() {
     state.screen = "events";
     await refreshScreenData();
   });
+}
+
+function renderSettingsConfigCenter() {
+  const config = state.configStatus?.config_status || {};
+  const items = config.items || [];
+  if (!items.length) {
+    return `<div class="empty-state top-gap">Configuration diagnostics are not loaded yet. Refresh Settings to call /config/status.</div>`;
+  }
+  return `
+    <div class="settings-config-center">
+      ${items
+        .map(
+          (item) => `
+            <div class="settings-config-card">
+              <div class="agent-meta">
+                ${pill(item.status || "missing_config")}
+                <span class="chip">${escapeHtml(item.id || "config")}</span>
+              </div>
+              <strong>${escapeHtml(item.label || item.id)}</strong>
+              <p>${escapeHtml(item.detail || "")}</p>
+              ${renderSettingsConfigFields(item.fields || {})}
+            </div>`,
+        )
+        .join("")}
+    </div>
+    <div class="settings-secret-policy">
+      ${pill("ready", "no secret echo")}
+      <span>${escapeHtml(config.secret_policy || "Secrets are never returned to the frontend.")}</span>
+    </div>`;
+}
+
+function renderSettingsConfigFields(fields) {
+  const entries = Object.entries(fields || {});
+  if (!entries.length) return "";
+  return `
+    <div class="settings-config-fields">
+      ${entries
+        .map(([key, value]) => `<div><span>${escapeHtml(key)}</span><strong>${escapeHtml(value)}</strong></div>`)
+        .join("")}
+    </div>`;
 }
 
 function renderSettingsGateGrid() {
@@ -3639,11 +3691,12 @@ async function safe(fn, fallback, key = "") {
 }
 
 async function refresh() {
-  const [contract, health, ready, readiness, capabilities, jobs, audit, avatarStatus, avatarManifest, platform, license] = await Promise.all([
+  const [contract, health, ready, readiness, configStatus, capabilities, jobs, audit, avatarStatus, avatarManifest, platform, license] = await Promise.all([
     safe(() => api.get("/frontend/contract").then((data) => data.frontend_contract), state.contract),
     safe(() => api.get("/health"), state.health),
     safe(() => api.get("/ready"), state.ready),
     safe(() => api.get("/runtime/readiness"), state.readiness),
+    safe(() => api.get("/config/status"), state.configStatus),
     safe(() => api.get("/capabilities").then((data) => data.capabilities || []), state.capabilities),
     safe(() => api.get("/jobs").then((data) => data.jobs || []), state.jobs),
     safe(() => api.get("/audit").then((data) => data.audit || []), state.audit),
@@ -3652,7 +3705,7 @@ async function refresh() {
     safe(() => api.get("/platform/heartbeat"), state.platform),
     safe(() => api.get("/license"), state.license),
   ]);
-  Object.assign(state, { contract, health, ready, readiness, capabilities, jobs, audit, avatarStatus, avatarManifest, platform, license });
+  Object.assign(state, { contract, health, ready, readiness, configStatus, capabilities, jobs, audit, avatarStatus, avatarManifest, platform, license });
   await refreshScreenData();
   render();
 }
@@ -3810,7 +3863,8 @@ async function submitAgentCommand(promptText, options = {}) {
 }
 
 async function loadRuntimeStatus() {
-  const [memory, voice, document, intel, simulation, search, index, codegraph] = await Promise.all([
+  const [configStatus, memory, voice, document, intel, simulation, search, index, codegraph] = await Promise.all([
+    safe(() => api.get("/config/status"), state.configStatus, "config-status"),
     safe(() => api.get("/memory/status"), state.runtimeStatus.memory, "memory-status"),
     safe(() => api.get("/voice/asr/status"), state.runtimeStatus.voice, "voice-status"),
     safe(() => api.get("/document/parse/status"), state.runtimeStatus.document, "document-status"),
@@ -3820,6 +3874,7 @@ async function loadRuntimeStatus() {
     safe(() => api.get("/index/status"), state.runtimeStatus.index, "index-status"),
     safe(() => api.get("/codegraph/status"), state.runtimeStatus.codegraph, "codegraph-status"),
   ]);
+  state.configStatus = configStatus;
   state.runtimeStatus = { memory, voice, document, intel, simulation, search, index, codegraph };
 }
 
