@@ -15,10 +15,13 @@ from .agents import (
     create_agent_session,
     get_agent,
     list_agent_events,
+    list_agent_events_page,
     list_agent_sessions,
     list_agents,
     promote_agent_event,
+    retry_agent_event,
     run_agent_round,
+    update_agent_session,
 )
 from .adapters.everos import (
     add_memory,
@@ -378,7 +381,22 @@ class HermesHandler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/agents/session/") and self.path.endswith("/events"):
             session_id = self.path.removeprefix("/agents/session/").removesuffix("/events").strip("/")
-            self._send({"service": PUBLIC_SERVICE, "agent_events": list_agent_events(settings, session_id=session_id)})
+            result = list_agent_events_page(
+                settings,
+                session_id=session_id,
+                limit=int(payload.get("limit", 50)),
+                offset=int(payload.get("offset", 0)),
+            )
+            self._send({"service": PUBLIC_SERVICE, "agent_events": result["events"], "agent_events_page": result})
+            return
+
+        if self.path.startswith("/agents/session/") and self.path.endswith("/title"):
+            session_id = self.path.removeprefix("/agents/session/").removesuffix("/title").strip("/")
+            result = update_agent_session(settings, session_id, title=str(payload.get("title", "")))
+            status = 200 if result["status"] == "completed" else 400
+            if result["status"] == "not_found":
+                status = 404
+            self._send({"service": PUBLIC_SERVICE, "agent_session_update": result}, status=status)
             return
 
         if self.path.startswith("/agents/session/") and self.path.endswith("/promote"):
@@ -387,6 +405,16 @@ class HermesHandler(BaseHTTPRequestHandler):
             if result["status"] == "not_found":
                 status = 404
             self._send({"service": PUBLIC_SERVICE, "agent_promotion": result}, status=status)
+            return
+
+        if self.path.startswith("/agents/session/") and self.path.endswith("/retry"):
+            result = retry_agent_event(settings, str(payload.get("event_id", "")))
+            status = 200 if result["status"] in {"completed", "partial"} else 400
+            if result["status"] == "not_found":
+                status = 404
+            if result["status"] == "not_retryable":
+                status = 409
+            self._send({"service": PUBLIC_SERVICE, "agent_retry": result}, status=status)
             return
 
         if self.path == "/channels/send":

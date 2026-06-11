@@ -49,6 +49,9 @@ const state = {
   selectedAgentSessionId: "",
   selectedAgentIds: [],
   agentEvents: [],
+  agentEventsPage: null,
+  agentEventOffset: 0,
+  agentEventLimit: 20,
   promotionResults: {},
   avatarStatus: null,
   avatarManifest: null,
@@ -432,6 +435,8 @@ function renderCommand() {
   el.actions.innerHTML = `
     <button class="ghost-btn" id="refresh-agents" type="button">Refresh</button>
     <button class="primary-btn" id="create-agent-session" type="button">New Session (${selectedCount})</button>
+    <button class="ghost-btn" id="save-agent-title" type="button" ${!state.selectedAgentSessionId ? "disabled" : ""}>Save Title</button>
+    <button class="ghost-btn" id="append-agent-message" type="button" ${!state.selectedAgentSessionId ? "disabled" : ""}>Append Message</button>
     <button class="ghost-btn" id="run-agent-round" type="button" ${!state.selectedAgentSessionId ? "disabled" : ""}>Run Round</button>`;
   el.body.innerHTML = `
     <div class="agent-layout">
@@ -466,6 +471,14 @@ function renderCommand() {
           </div>
           ${pill(state.errors["agent-round"] ? "blocked" : "ready", state.errors["agent-round"] ? "blocked" : "governed")}
         </div>
+        <div class="command-session-tools">
+          <input class="field" id="agent-session-title" placeholder="Session title" value="${escapeHtml(session?.title || "")}" ${!session ? "disabled" : ""} />
+          <div class="pager-actions">
+            <button class="ghost-btn mini" type="button" id="agent-events-prev" ${!state.agentEventsPage?.pagination?.previous_offset && state.agentEventsPage?.pagination?.previous_offset !== 0 ? "disabled" : ""}>Previous</button>
+            <span class="chip mono">${escapeHtml(agentPageLabel())}</span>
+            <button class="ghost-btn mini" type="button" id="agent-events-next" ${state.agentEventsPage?.pagination?.next_offset === null || state.agentEventsPage?.pagination?.next_offset === undefined ? "disabled" : ""}>Next</button>
+          </div>
+        </div>
         <div class="conversation">
           ${
             state.agentEvents.length
@@ -488,6 +501,7 @@ function renderCommand() {
   el.body.querySelectorAll("[data-agent-session]").forEach((button) => {
     button.addEventListener("click", async () => {
       state.selectedAgentSessionId = button.dataset.agentSession;
+      state.agentEventOffset = 0;
       const selected = state.agentSessions.find((item) => item.id === state.selectedAgentSessionId);
       state.selectedAgentIds = selected?.agent_ids?.length ? [...selected.agent_ids] : state.selectedAgentIds;
       await loadAgents();
@@ -508,10 +522,46 @@ function renderCommand() {
       render();
     });
   });
+  el.body.querySelectorAll("[data-retry-event]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await runAction("agent-retry", () => api.post(`/agents/session/${state.selectedAgentSessionId}/retry`, { event_id: button.dataset.retryEvent }), loadAgents);
+      render();
+    });
+  });
   el.body.querySelectorAll("[data-open-promotion]").forEach((button) => {
     button.addEventListener("click", async () => {
       await openPromotionResource(button.dataset.openPromotion, button.dataset.resourceId);
     });
+  });
+  document.getElementById("save-agent-title")?.addEventListener("click", async () => {
+    const title = document.getElementById("agent-session-title")?.value || "";
+    await runAction("agent-title", () => api.post(`/agents/session/${state.selectedAgentSessionId}/title`, { title }), loadAgents);
+    render();
+  });
+  document.getElementById("append-agent-message")?.addEventListener("click", async () => {
+    const content = el.commandInput.value.trim();
+    if (!content) {
+      state.errors["agent-message"] = "message is required";
+      render();
+      return;
+    }
+    await runAction("agent-message", () => api.post(`/agents/session/${state.selectedAgentSessionId}/message`, { content }), loadAgents);
+    el.commandInput.value = "";
+    render();
+  });
+  document.getElementById("agent-events-prev")?.addEventListener("click", async () => {
+    const previous = state.agentEventsPage?.pagination?.previous_offset;
+    if (previous === null || previous === undefined) return;
+    state.agentEventOffset = previous;
+    await loadAgents();
+    render();
+  });
+  document.getElementById("agent-events-next")?.addEventListener("click", async () => {
+    const next = state.agentEventsPage?.pagination?.next_offset;
+    if (next === null || next === undefined) return;
+    state.agentEventOffset = next;
+    await loadAgents();
+    render();
   });
   document.getElementById("create-agent-session")?.addEventListener("click", async () => {
     const result = await runAction("agent-session", () =>
@@ -521,6 +571,7 @@ function renderCommand() {
       }),
     );
     state.selectedAgentSessionId = result?.agent_session?.id || state.selectedAgentSessionId;
+    state.agentEventOffset = 0;
     state.selectedAgentIds = result?.agent_session?.agent_ids || state.selectedAgentIds;
     await loadAgents();
     render();
@@ -528,9 +579,18 @@ function renderCommand() {
   document.getElementById("run-agent-round")?.addEventListener("click", async () => {
     const promptText = el.commandInput.value.trim() || "Inspect current bairui workspace state.";
     await runAction("agent-round", () => api.post(`/agents/session/${state.selectedAgentSessionId}/round`, { prompt: promptText }));
+    state.agentEventOffset = 0;
     await loadAgents();
     render();
   });
+}
+
+function agentPageLabel() {
+  const page = state.agentEventsPage?.pagination;
+  if (!page) return "events 0";
+  const start = page.total ? page.offset + 1 : 0;
+  const end = Math.min(page.offset + page.limit, page.total);
+  return `${start}-${end}/${page.total}`;
 }
 
 function agentName(agentId) {
@@ -563,7 +623,8 @@ function renderMessage(event) {
   const profile = agentProfile(event.agent_id);
   const role = event.role || profile.role || event.agent_id || "agent";
   const content = event.content || event.error || "";
-  const actionable = event.agent_id !== "owner" && event.status !== "missing_config";
+  const actionable = event.agent_id !== "owner" && !["missing_config", "failed", "blocked"].includes(event.status || "");
+  const retryable = ["failed", "missing_config", "blocked"].includes(event.status || "");
   return `
     <article class="message">
       <div class="agent-avatar">${escapeHtml(profile.avatar_initials || role.slice(0, 2))}</div>
@@ -586,6 +647,13 @@ function renderMessage(event) {
                 <button class="ghost-btn mini" type="button" data-promote-event="${escapeHtml(event.id)}" data-promote-target="report">Report</button>
                 <button class="ghost-btn mini" type="button" data-promote-event="${escapeHtml(event.id)}" data-promote-target="memory_review">Memory Review</button>
                 <button class="ghost-btn mini" type="button" data-promote-event="${escapeHtml(event.id)}" data-promote-target="channel_draft">Channel Draft</button>
+              </div>`
+            : ""
+        }
+        ${
+          retryable
+            ? `<div class="message-actions">
+                <button class="ghost-btn mini" type="button" data-retry-event="${escapeHtml(event.id)}">Retry</button>
               </div>`
             : ""
         }
@@ -1435,7 +1503,19 @@ async function loadAgents() {
   const selected = state.agentSessions.find((item) => item.id === state.selectedAgentSessionId);
   if (!state.selectedAgentIds.length) state.selectedAgentIds = selected?.agent_ids?.length ? [...selected.agent_ids] : state.agents.map((agent) => agent.id);
   if (state.selectedAgentSessionId) {
-    state.agentEvents = await safe(() => api.get(`/agents/session/${state.selectedAgentSessionId}/events`).then((data) => data.agent_events || []), state.agentEvents, "agent-events");
+    const page = await safe(
+      () =>
+        api
+          .post(`/agents/session/${state.selectedAgentSessionId}/events`, {
+            limit: state.agentEventLimit,
+            offset: state.agentEventOffset,
+          })
+          .then((data) => data.agent_events_page),
+      state.agentEventsPage,
+      "agent-events",
+    );
+    state.agentEventsPage = page;
+    state.agentEvents = page?.events || [];
   }
 }
 

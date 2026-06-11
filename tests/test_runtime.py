@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from src.hermes.capabilities import collect_capabilities
 from src.hermes.avatar import avatar_engine_status, build_avatar_manifest, set_avatar_state, validate_avatar_model
-from src.hermes.agents import create_agent_session, list_agent_events, list_agents, promote_agent_event, run_agent_round
+from src.hermes.agents import add_agent_user_message, create_agent_session, list_agent_events, list_agent_events_page, list_agent_sessions, list_agents, promote_agent_event, retry_agent_event, run_agent_round, update_agent_session
 from src.hermes.channels import (
     channel_status,
     channel_targets,
@@ -206,8 +206,15 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("codegraph_repo_register", contract["forms"])
         self.assertIn("/codegraph/query", codegraph_paths)
         self.assertIn("agent_session_create", contract["forms"])
+        self.assertIn("agent_session_title", contract["forms"])
+        self.assertIn("agent_message_append", contract["forms"])
+        self.assertFalse(contract["forms"]["agent_retry"]["safety"]["will_execute_external_action"])
         self.assertIn("/agents", screens["chat"]["read"])
+        self.assertIn("/agents/session/{session_id}/message", agent_paths)
+        self.assertIn("/agents/session/{session_id}/title", agent_paths)
         self.assertIn("/agents/session/{session_id}/round", agent_paths)
+        self.assertIn("/agents/session/{session_id}/events", agent_paths)
+        self.assertIn("/agents/session/{session_id}/retry", agent_paths)
         self.assertIn("needs_review", contract["state_values"])
         self.assertIn("approval_required", contract["state_values"])
         self.assertIn("speaking", contract["state_values"])
@@ -350,6 +357,101 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(reports[-1]["id"], report["created_resource"]["id"])
         self.assertEqual(candidates[-1]["id"], memory["created_resource"]["id"])
         self.assertEqual(approvals[-1]["id"], channel["created_resource"]["id"])
+
+    def test_agent_sessions_support_title_message_paging_and_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "",
+                "BAIRUI_MODEL_API_KEY": "",
+                "BAIRUI_MODEL_NAME": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                session = create_agent_session(settings, "draft title", ("coordinator", "operator"))
+                renamed = update_agent_session(settings, session.id, title="Research cockpit")
+                message = add_agent_user_message(settings, session.id, "Investigate onboarding blockers.")
+                round_result = run_agent_round(settings, session.id, "Investigate onboarding blockers.")
+                page_one = list_agent_events_page(settings, session_id=session.id, limit=2, offset=0)
+                page_two = list_agent_events_page(settings, session_id=session.id, limit=2, offset=2)
+                missing_config_event = next(event for event in list_agent_events(settings, session_id=session.id) if event["status"] == "missing_config")
+                retry = retry_agent_event(settings, missing_config_event["id"])
+                sessions = list_agent_sessions(settings)
+
+        self.assertEqual(renamed["status"], "completed")
+        self.assertEqual(sessions[-1]["title"], "Research cockpit")
+        self.assertEqual(message["status"], "completed")
+        self.assertEqual(message["event"]["agent_id"], "owner")
+        self.assertIn(round_result["status"], {"completed", "partial"})
+        self.assertEqual(page_one["pagination"]["total"], 3)
+        self.assertEqual(page_one["pagination"]["next_offset"], 2)
+        self.assertEqual(page_two["pagination"]["previous_offset"], 0)
+        self.assertEqual(retry["status"], "partial")
+        self.assertEqual(retry["event"]["status"], "missing_config")
+        self.assertFalse(retry["will_execute_external_action"])
+
+    def test_agent_session_http_controls_are_real_contracts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "",
+                "BAIRUI_MODEL_API_KEY": "",
+                "BAIRUI_MODEL_NAME": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    create_status, _, create_body = _http_post(
+                        server.server_port,
+                        "/agents/session",
+                        {"title": "first", "agent_ids": ["coordinator", "operator"]},
+                    )
+                    session = json.loads(create_body.decode("utf-8"))["agent_session"]
+                    title_status, _, title_body = _http_post(server.server_port, f"/agents/session/{session['id']}/title", {"title": "Renamed session"})
+                    message_status, _, message_body = _http_post(
+                        server.server_port,
+                        f"/agents/session/{session['id']}/message",
+                        {"content": "Investigate current workspace."},
+                    )
+                    round_status, _, _ = _http_post(
+                        server.server_port,
+                        f"/agents/session/{session['id']}/round",
+                        {"prompt": "Investigate current workspace."},
+                    )
+                    events_status, _, events_body = _http_post(
+                        server.server_port,
+                        f"/agents/session/{session['id']}/events",
+                        {"limit": 2, "offset": 0},
+                    )
+                    events_page = json.loads(events_body.decode("utf-8"))["agent_events_page"]
+                    missing = next(event for event in list_agent_events(load_settings(), session_id=session["id"]) if event["status"] == "missing_config")
+                    retry_status, _, retry_body = _http_post(
+                        server.server_port,
+                        f"/agents/session/{session['id']}/retry",
+                        {"event_id": missing["id"]},
+                    )
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        self.assertEqual(create_status, 201)
+        self.assertEqual(title_status, 200)
+        self.assertEqual(json.loads(title_body.decode("utf-8"))["agent_session_update"]["session"]["title"], "Renamed session")
+        self.assertEqual(message_status, 200)
+        self.assertEqual(json.loads(message_body.decode("utf-8"))["agent_message"]["event"]["agent_id"], "owner")
+        self.assertEqual(round_status, 200)
+        self.assertEqual(events_status, 200)
+        self.assertEqual(events_page["pagination"]["limit"], 2)
+        self.assertGreaterEqual(events_page["pagination"]["total"], 3)
+        self.assertEqual(retry_status, 200)
+        self.assertFalse(json.loads(retry_body.decode("utf-8"))["agent_retry"]["will_execute_external_action"])
 
     def test_demo_seed_creates_walkthrough_resources_once(self):
         with tempfile.TemporaryDirectory() as tmp:

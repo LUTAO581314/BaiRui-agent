@@ -698,6 +698,22 @@ h1 {
   gap: 10px;
 }
 
+.command-session-tools {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin: 10px 0 12px;
+}
+
+.pager-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .message {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);

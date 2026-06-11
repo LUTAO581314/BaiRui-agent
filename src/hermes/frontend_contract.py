@@ -181,8 +181,11 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 "read": ("/agents", "/agents/sessions", "/agents/events", "/capabilities", "/memory/status"),
                 "actions": (
                     {"id": "create_agent_session", "method": "POST", "path": "/agents/session", "schema": "agent_session_create"},
+                    {"id": "update_agent_session_title", "method": "POST", "path": "/agents/session/{session_id}/title", "schema": "agent_session_title"},
+                    {"id": "append_agent_message", "method": "POST", "path": "/agents/session/{session_id}/message", "schema": "agent_message_append"},
                     {"id": "run_agent_round", "method": "POST", "path": "/agents/session/{session_id}/round", "schema": "agent_round"},
                     {"id": "promote_agent_event", "method": "POST", "path": "/agents/session/{session_id}/promote", "schema": "agent_promotion"},
+                    {"id": "retry_agent_event", "method": "POST", "path": "/agents/session/{session_id}/retry", "schema": "agent_retry"},
                     {"id": "send_chat", "method": "POST", "path": "/chat", "schema": "chat_message"},
                 ),
             },
@@ -292,6 +295,16 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"name": "agent_ids", "type": "id_list", "required": False, "label": "Agent IDs"},
                 )
             },
+            "agent_session_title": {
+                "fields": (
+                    {"name": "title", "type": "text", "required": True, "label": "Title"},
+                )
+            },
+            "agent_message_append": {
+                "fields": (
+                    {"name": "content", "type": "textarea", "required": True, "label": "Message"},
+                )
+            },
             "agent_round": {
                 "fields": (
                     {"name": "prompt", "type": "textarea", "required": True, "label": "Prompt"},
@@ -302,6 +315,15 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"name": "event_id", "type": "id", "required": True, "label": "Event ID"},
                     {"name": "target", "type": "select", "required": True, "label": "Target", "options": ("job", "report", "memory_review", "channel_draft")},
                 )
+            },
+            "agent_retry": {
+                "safety": {
+                    "will_execute_external_action": False,
+                    "retryable_statuses": ("failed", "missing_config", "blocked"),
+                },
+                "fields": (
+                    {"name": "event_id", "type": "id", "required": True, "label": "Event ID"},
+                ),
             },
             "document_ingest_plan": {
                 "fields": (
@@ -430,8 +452,11 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"method": "GET", "path": "/agents/events"},
                     {"method": "POST", "path": "/agents/session"},
                     {"method": "POST", "path": "/agents/session/{session_id}/message"},
+                    {"method": "POST", "path": "/agents/session/{session_id}/title"},
                     {"method": "POST", "path": "/agents/session/{session_id}/round"},
+                    {"method": "POST", "path": "/agents/session/{session_id}/events"},
                     {"method": "POST", "path": "/agents/session/{session_id}/promote"},
+                    {"method": "POST", "path": "/agents/session/{session_id}/retry"},
                 ),
             },
             {

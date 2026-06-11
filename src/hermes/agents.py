@@ -107,6 +107,32 @@ def list_agent_sessions(settings: Settings, limit: int = 50) -> list[dict[str, A
     return _read_jsonl(_sessions_path(settings), limit=limit)
 
 
+def update_agent_session(settings: Settings, session_id: str, *, title: str) -> dict[str, Any]:
+    title = title.strip()
+    if not title:
+        return {"status": "invalid_request", "detail": "title is required", "session": None}
+    sessions = _read_jsonl(_sessions_path(settings), limit=10000)
+    updated: dict[str, Any] | None = None
+    now = utc_now()
+    for session in sessions:
+        if session.get("id") == session_id:
+            session["title"] = title
+            session["updated_at"] = now
+            updated = session
+            break
+    if updated is None:
+        return {"status": "not_found", "detail": f"agent session not found: {session_id}", "session": None}
+    _write_jsonl(_sessions_path(settings), sessions)
+    create_audit_event(
+        settings.data_dir,
+        "agent.session_updated",
+        resource_type="agent_session",
+        resource_ref=session_id,
+        payload={"title": title},
+    )
+    return {"status": "completed", "detail": "agent session updated", "session": updated}
+
+
 def add_agent_user_message(settings: Settings, session_id: str, content: str) -> dict[str, Any]:
     if not content.strip():
         return {"status": "invalid_request", "detail": "content is required", "event": None}
@@ -202,6 +228,97 @@ def list_agent_events(settings: Settings, session_id: str = "", limit: int = 100
     if session_id:
         events = [event for event in events if event.get("session_id") == session_id]
     return events[-limit:]
+
+
+def list_agent_events_page(settings: Settings, session_id: str = "", *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+    limit = max(1, min(int(limit or 50), 200))
+    offset = max(0, int(offset or 0))
+    events = _read_jsonl(_events_path(settings), limit=10000)
+    if session_id:
+        events = [event for event in events if event.get("session_id") == session_id]
+    total = len(events)
+    page = events[offset : offset + limit]
+    return {
+        "status": "completed",
+        "events": page,
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "total": total,
+            "next_offset": offset + limit if offset + limit < total else None,
+            "previous_offset": max(0, offset - limit) if offset > 0 else None,
+        },
+    }
+
+
+def retry_agent_event(settings: Settings, event_id: str) -> dict[str, Any]:
+    event = next((item for item in list_agent_events(settings, limit=1000) if item.get("id") == event_id), None)
+    if event is None:
+        return {"status": "not_found", "detail": f"agent event not found: {event_id}", "event": None}
+    retryable = {"failed", "missing_config", "blocked"}
+    if event.get("status") not in retryable:
+        return {"status": "not_retryable", "detail": "only failed, missing_config, or blocked agent events can be retried", "event": None}
+    session = _find_session(settings, str(event.get("session_id", "")))
+    if session is None:
+        return {"status": "not_found", "detail": f"agent session not found: {event.get('session_id', '')}", "event": None}
+    agent = get_agent(settings, str(event.get("agent_id", "")))
+    if agent is None or agent.id == "owner":
+        return {"status": "not_retryable", "detail": "event has no retryable agent", "event": None}
+
+    prompt = _latest_owner_prompt(settings, str(event.get("session_id", ""))) or _event_text(event) or "Retry the previous agent task."
+    if agent.permission == "approval_required":
+        retried = _create_event(
+            settings,
+            session_id=str(event.get("session_id", "")),
+            agent_id=agent.id,
+            event_type="agent_retry",
+            status="approval_required",
+            role=agent.role,
+            model=agent.model,
+            permission=agent.permission,
+            content=f"{agent.display_name} retry still requires owner approval in the dedicated review screen.",
+            error="",
+        )
+    elif not settings.has_model_gateway and agent.role not in {"operations"}:
+        retried = _create_event(
+            settings,
+            session_id=str(event.get("session_id", "")),
+            agent_id=agent.id,
+            event_type="agent_retry",
+            status="missing_config",
+            role=agent.role,
+            model=agent.model,
+            permission=agent.permission,
+            content="",
+            error="model_gateway_missing_config",
+        )
+    else:
+        result = _agent_reply(settings, agent, prompt)
+        retried = _create_event(
+            settings,
+            session_id=str(event.get("session_id", "")),
+            agent_id=agent.id,
+            event_type="agent_retry",
+            status=result.status,
+            role=agent.role,
+            model=agent.model,
+            permission=agent.permission,
+            content=result.content,
+            error=result.error,
+        )
+    create_audit_event(
+        settings.data_dir,
+        "agent.event_retried",
+        resource_type="agent_event",
+        resource_ref=event_id,
+        payload={"new_event_id": retried.id, "status": retried.status, "will_execute_external_action": False},
+    )
+    return {
+        "status": "completed" if retried.status == "completed" else "partial",
+        "detail": "agent retry recorded",
+        "event": asdict(retried),
+        "will_execute_external_action": False,
+    }
 
 
 def promote_agent_event(settings: Settings, event_id: str, target: str) -> dict[str, Any]:
@@ -337,6 +454,14 @@ def _find_session(settings: Settings, session_id: str) -> dict[str, Any] | None:
     return next((session for session in list_agent_sessions(settings, limit=1000) if session.get("id") == session_id), None)
 
 
+def _latest_owner_prompt(settings: Settings, session_id: str) -> str:
+    events = list_agent_events(settings, session_id=session_id, limit=1000)
+    for event in reversed(events):
+        if event.get("agent_id") == "owner" and event.get("content"):
+            return str(event.get("content", ""))
+    return ""
+
+
 def _sessions_path(settings: Settings) -> Path:
     return settings.data_dir / "agents" / "sessions.jsonl"
 
@@ -350,6 +475,14 @@ def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         handle.write("\n")
+
+
+def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True))
+            handle.write("\n")
 
 
 def _read_jsonl(path: Path, limit: int = 50) -> list[dict[str, Any]]:
