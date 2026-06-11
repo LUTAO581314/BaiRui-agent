@@ -185,7 +185,11 @@ function renderActivation() {
   const flow = state.contract?.activation_flow || [];
   const selected = flow.find((step) => step.id === state.selectedStep) || flow[0];
   if (!state.selectedStep && selected) state.selectedStep = selected.id;
-  el.actions.innerHTML = `<button class="ghost-btn" type="button" id="refresh-activation">Refresh</button>`;
+  const selectedState = inferStepState(selected || {});
+  const targetScreen = activationTargetScreen(selected?.id || "");
+  el.actions.innerHTML = `
+    <button class="ghost-btn" type="button" id="refresh-activation">Refresh</button>
+    <button class="primary-btn" type="button" id="open-activation-target" ${!targetScreen ? "disabled" : ""}>Open Step</button>`;
   el.body.innerHTML = `
     <div class="activation-layout">
       <section class="panel pad">
@@ -201,6 +205,9 @@ function renderActivation() {
                     ${pill(stepState)}
                   </div>
                   <div class="step-copy">${escapeHtml(step.complete_when || "")}</div>
+                  <div class="agent-meta">
+                    ${(step.read || []).slice(0, 3).map((path) => `<span class="chip mono">${escapeHtml(path)}</span>`).join("")}
+                  </div>
                 </button>`;
             })
             .join("") || `<div class="empty-state">Backend contract is loading.</div>`}
@@ -215,10 +222,13 @@ function renderActivation() {
       </section>
       <section class="panel pad">
         <h2 class="panel-title">${escapeHtml(selected?.title || "Activation detail")}</h2>
+        <div class="agent-meta">${pill(selectedState)}<span class="chip">${escapeHtml(selected?.blocking ? "blocking" : "guided")}</span></div>
         <p class="muted">${escapeHtml(selected?.complete_when || "Load backend contract to inspect activation.")}</p>
+        ${renderActivationDiagnostics(selected, selectedState)}
         <div class="grid">
           ${(selected?.read || []).map((path) => `<span class="status-pill">${escapeHtml(path)}</span>`).join("")}
         </div>
+        ${selected?.action ? `<div class="activation-action-card"><span>Action</span><strong>${escapeHtml(selected.action.method || "POST")} ${escapeHtml(selected.action.path || "")}</strong><p>${escapeHtml(selected.action.id || "")}</p></div>` : ""}
         <hr class="rule">
         ${renderReadinessBlockers()}
       </section>
@@ -230,13 +240,79 @@ function renderActivation() {
     });
   });
   document.getElementById("refresh-activation")?.addEventListener("click", refresh);
+  document.getElementById("open-activation-target")?.addEventListener("click", async () => {
+    if (!targetScreen) return;
+    state.screen = targetScreen;
+    render();
+    await refreshScreenData();
+  });
 }
 
 function inferStepState(step) {
   if (!state.readiness) return "partial";
+  const capabilities = Object.fromEntries(state.capabilities.map((item) => [item.name, item.status]));
+  const runtimeItems = Object.fromEntries((state.readiness.runtime_readiness?.items || []).map((item) => [item.name, item.status]));
+  if (step?.id === "brand_lock") return state.contract?.brand?.public_brand === "bairui" ? "ready" : "blocked";
+  if (step?.id === "model_gateway") return capabilities.model_gateway || "missing_config";
+  if (step?.id === "document_runtime") return lookupStatus(runtimeItems, "document_parse") || lookupStatus(capabilities, "document_parse") || "missing_config";
   if (step?.blocking && state.readiness.runtime_readiness?.blockers?.length) return "blocked";
   if (step?.id === "memory_review") return (state.memoryQueue?.pending_count || 0) > 0 ? "needs_review" : "ready";
+  if (step?.id === "reports_and_sources") return state.reports.length || state.sourceRefs.length ? "ready" : "partial";
+  if (step?.id === "channels") return state.channels?.channels?.status || "missing_config";
+  if (step?.id === "avatar") return state.avatarStatus?.avatar?.status || state.avatarManifest?.avatar_manifest?.engine?.status || "missing_config";
+  if (step?.id === "codegraph") return runtimeItems.bairui_codegraph || state.codegraph?.codegraph?.status || "missing_config";
   return "ready";
+}
+
+function activationTargetScreen(stepId) {
+  return (
+    {
+      model_gateway: "settings",
+      document_runtime: "documents",
+      memory_review: "memory",
+      reports_and_sources: "reports",
+      channels: "channels",
+      avatar: "avatar",
+      codegraph: "codegraph",
+      brand_lock: "dashboard",
+    }[stepId] || ""
+  );
+}
+
+function lookupStatus(map, fragment) {
+  const key = Object.keys(map || {}).find((name) => name.includes(fragment));
+  return key ? map[key] : "";
+}
+
+function renderActivationDiagnostics(step, stepState) {
+  if (!step) return "";
+  const next = activationNextAction(step.id, stepState);
+  const counts = {
+    reads: (step.read || []).length,
+    actions: step.action ? 1 : 0,
+    blockers: state.readiness?.runtime_readiness?.blockers?.length || 0,
+    warnings: state.readiness?.runtime_readiness?.warnings?.length || 0,
+  };
+  return `
+    <div class="activation-diagnostics">
+      ${renderCountStrip(counts)}
+      <div class="activation-next">
+        <span>Next</span>
+        <strong>${escapeHtml(next.title)}</strong>
+        <p>${escapeHtml(next.detail)}</p>
+      </div>
+    </div>`;
+}
+
+function activationNextAction(stepId, stepState) {
+  if (stepState === "blocked" || stepState === "missing_config") {
+    return { title: "Fix missing configuration", detail: "Open the linked workbench and complete the visible missing_config items." };
+  }
+  if (stepId === "memory_review") return { title: "Review candidates", detail: "Approve or reject pending memory candidates before promoting long-term memory." };
+  if (stepId === "channels") return { title: "Check approvals", detail: "Create or review outbound drafts; backend still records will_send=false." };
+  if (stepId === "codegraph") return { title: "Register source", detail: "Register a source repository, scan it, then query source structure separately from memory." };
+  if (stepId === "avatar") return { title: "Probe avatar state", detail: "Use the Avatar screen to switch idle/thinking states and confirm the state layer." };
+  return { title: "Continue", detail: "This step is connected to real status endpoints. Open the linked screen to continue setup." };
 }
 
 function renderReadinessBlockers() {
@@ -1212,6 +1288,9 @@ async function refresh() {
 }
 
 async function refreshScreenData() {
+  if (state.screen === "activation") {
+    await Promise.all([loadRuntimeStatus(), loadMemory(), loadReports(), loadChannels(), loadCodeGraph()]);
+  }
   if (["documents", "graph", "entity"].includes(state.screen)) await loadDocuments();
   if (["memory", "graph", "entity"].includes(state.screen)) await loadMemory();
   if (["reports", "graph", "entity"].includes(state.screen)) await loadReports();

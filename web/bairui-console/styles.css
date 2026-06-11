@@ -535,6 +535,43 @@ h1 {
   font: 11px/1.5 var(--font-mono);
 }
 
+.activation-diagnostics {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.activation-next,
+.activation-action-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.025);
+  padding: 10px;
+}
+
+.activation-next span,
+.activation-action-card span {
+  display: block;
+  color: var(--muted);
+  font: 10px/1 var(--font-mono);
+  text-transform: uppercase;
+}
+
+.activation-next strong,
+.activation-action-card strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.activation-next p,
+.activation-action-card p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 @keyframes core-spin {
   to {
     transform: rotate(360deg);
