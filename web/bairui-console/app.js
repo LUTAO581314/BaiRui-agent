@@ -293,6 +293,7 @@ function renderActivation() {
     <div class="activation-layout">
       <section class="panel pad">
         <h2 class="panel-title">Activation steps</h2>
+        ${renderActivationProgress(flow)}
         <div class="step-list">
           ${flow
             .map((step) => {
@@ -325,6 +326,7 @@ function renderActivation() {
         <p class="muted">${escapeHtml(selected?.complete_when || "Load backend contract to inspect activation.")}</p>
         ${renderActivationEvidence(selected?.id || "")}
         ${renderActivationDiagnostics(selected, selectedState)}
+        ${renderActivationStepOperations(selected, selectedState, targetScreen)}
         <div class="grid">
           ${(selected?.read || []).map((path) => `<span class="status-pill">${escapeHtml(path)}</span>`).join("")}
         </div>
@@ -353,7 +355,9 @@ function inferStepState(step) {
   if (!state.readiness) return "partial";
   const capabilities = Object.fromEntries(state.capabilities.map((item) => [item.name, item.status]));
   const runtimeItems = Object.fromEntries((state.readiness.runtime_readiness?.items || []).map((item) => [item.name, item.status]));
-  if (step?.id === "brand_lock") return state.contract?.brand?.public_brand === "bairui" ? "ready" : "blocked";
+  if (step?.id === "brand_lock") {
+    return state.contract?.brand?.name === "bairui" && state.contract?.visibility_policy?.public_brand === "bairui" ? "ready" : "blocked";
+  }
   if (step?.id === "model_gateway") return capabilities.model_gateway || "missing_config";
   if (step?.id === "document_runtime") return lookupStatus(runtimeItems, "document_parse") || lookupStatus(capabilities, "document_parse") || "missing_config";
   if (step?.blocking && state.readiness.runtime_readiness?.blockers?.length) return "blocked";
@@ -368,6 +372,8 @@ function inferStepState(step) {
 function activationTargetScreen(stepId) {
   return (
     {
+      runtime_health: "dashboard",
+      license_and_platform: "settings",
       model_gateway: "settings",
       document_runtime: "documents",
       memory_review: "memory",
@@ -378,6 +384,30 @@ function activationTargetScreen(stepId) {
       brand_lock: "dashboard",
     }[stepId] || ""
   );
+}
+
+function renderActivationProgress(flow) {
+  if (!flow.length) return "";
+  const states = flow.map((step) => inferStepState(step));
+  const ready = states.filter((status) => status === "ready").length;
+  const needsReview = states.filter((status) => status === "needs_review").length;
+  const blocked = states.filter((status) => ["blocked", "missing_config"].includes(status)).length;
+  const percent = Math.round((ready / flow.length) * 100);
+  return `
+    <div class="activation-progress" aria-label="Activation progress">
+      <div class="conversation-head">
+        <div>
+          <span class="section-label">Startup readiness</span>
+          <strong>${escapeHtml(String(percent))}%</strong>
+        </div>
+        <div class="agent-meta">
+          ${pill("ready", `${ready} ready`)}
+          ${pill(needsReview ? "needs_review" : "ready", `${needsReview} review`)}
+          ${pill(blocked ? "blocked" : "ready", `${blocked} blocked`)}
+        </div>
+      </div>
+      <div class="activation-progress-track"><span style="width: ${Math.max(0, Math.min(100, percent))}%"></span></div>
+    </div>`;
 }
 
 function lookupStatus(map, fragment) {
@@ -472,6 +502,53 @@ function renderActivationDiagnostics(step, stepState) {
         <p>${escapeHtml(next.detail)}</p>
       </div>
     </div>`;
+}
+
+function renderActivationStepOperations(step, stepState, targetScreen) {
+  if (!step) return "";
+  const action = step.action || null;
+  const safety = activationSafetyBoundary(step.id);
+  const target = targetScreen ? screens.find(([id]) => id === targetScreen)?.[1] || targetScreen : "No linked workbench";
+  return `
+    <div class="activation-operations">
+      <div class="operation-card">
+        <span>Reads</span>
+        <strong>${escapeHtml(String((step.read || []).length))} status endpoints</strong>
+        <p>${escapeHtml((step.read || []).join(" | ") || "No read endpoint declared.")}</p>
+      </div>
+      <div class="operation-card">
+        <span>Action</span>
+        <strong>${escapeHtml(action ? `${action.method} ${action.path}` : "Open linked workbench")}</strong>
+        <p>${escapeHtml(action?.id || `Continue in ${target}`)}</p>
+      </div>
+      <div class="operation-card">
+        <span>Safety</span>
+        <strong>${escapeHtml(safety.title)}</strong>
+        <p>${escapeHtml(safety.detail)}</p>
+      </div>
+      <div class="operation-card">
+        <span>State</span>
+        <strong>${escapeHtml(stepState || "partial")}</strong>
+        <p>${escapeHtml(targetScreen ? `Open ${target} for the next real operation.` : "This step is verified from backend evidence only.")}</p>
+      </div>
+    </div>`;
+}
+
+function activationSafetyBoundary(stepId) {
+  const map = {
+    brand_lock: ["bairui only", "Public UI, setup copy, and contract labels must expose only bairui."],
+    runtime_health: ["diagnostic only", "Health and readiness checks do not execute external actions."],
+    license_and_platform: ["no secret echo", "License and heartbeat status are shown without exposing secret values."],
+    model_gateway: ["probe only", "The chat probe sends a minimal local readiness prompt and does not create resources."],
+    document_runtime: ["candidate gated", "Document parsing may create review candidates, but memory writes still require owner approval."],
+    memory_review: ["owner decision", "Long-term memory promotion requires explicit approve or reject decisions."],
+    reports_and_sources: ["source traceable", "Reports must keep source references visible for audit and follow-up."],
+    channels: ["will_send=false", "Channel actions create approval records only; no external send is performed here."],
+    avatar: ["state only", "Avatar activation updates local browser state; Live2D assets are not generated here."],
+    codegraph: ["memory separated", "CodeGraph indexes source structure and never auto-promotes code facts into memory."],
+  };
+  const [title, detail] = map[stepId] || ["governed", "This step uses backend contract evidence and keeps risky actions gated."];
+  return { title, detail };
 }
 
 function renderActivationAction(step) {

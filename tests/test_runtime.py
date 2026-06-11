@@ -739,6 +739,26 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn(".composer-toggle", styles)
         self.assertIn(".ghost-btn.active", styles)
 
+    def test_activation_console_renders_guided_steps_and_safety_boundaries(self):
+        app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
+        styles = Path("web/bairui-console/styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("function renderActivationProgress", app_js)
+        self.assertIn("function renderActivationStepOperations", app_js)
+        self.assertIn("function activationSafetyBoundary", app_js)
+        self.assertIn('state.contract?.brand?.name === "bairui"', app_js)
+        self.assertIn("state.contract?.visibility_policy?.public_brand", app_js)
+        self.assertIn("will_send=false", app_js)
+        self.assertIn("CodeGraph indexes source structure and never auto-promotes code facts into memory.", app_js)
+        self.assertIn("Document parsing may create review candidates, but memory writes still require owner approval.", app_js)
+        self.assertIn("License and heartbeat status are shown without exposing secret values.", app_js)
+        self.assertIn('runtime_health: "dashboard"', app_js)
+        self.assertIn('license_and_platform: "settings"', app_js)
+        self.assertIn(".activation-progress", styles)
+        self.assertIn(".activation-progress-track", styles)
+        self.assertIn(".activation-operations", styles)
+        self.assertIn(".operation-card", styles)
+
     def test_quickstart_and_deploy_docs_reference_console_demo_flow_and_readiness(self):
         readme = Path("README.md").read_text(encoding="utf-8")
         deployment = Path("docs/12-one-click-deployment.md").read_text(encoding="utf-8")
