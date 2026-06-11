@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.hermes.capabilities import collect_capabilities
+from src.hermes.avatar import avatar_engine_status, build_avatar_manifest, set_avatar_state, validate_avatar_model
 from src.hermes.channels import (
     channel_status,
     channel_targets,
@@ -59,6 +60,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(settings.trademark_name, "bairui")
         self.assertEqual(settings.logo_text, "bairui")
         self.assertEqual(settings.port, 8787)
+        self.assertEqual(settings.avatar_engine_package, "pixi-live2d-display-advanced")
+        self.assertEqual(settings.avatar_engine_version, "^1.1.0")
 
     def test_missing_license_reports_missing_config(self):
         state = load_license(Path("__missing_license__.json"))
@@ -97,6 +100,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("mirofish_simulation", names)
         self.assertIn("jobs_api", names)
         self.assertIn("model_gateway", names)
+        self.assertIn("bairui_avatar_runtime", names)
 
     def test_frontend_contract_lists_stable_product_surfaces(self):
         contract = build_frontend_contract(load_settings(), "test-version")
@@ -135,6 +139,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/events", screens["dashboard"]["read"])
         self.assertIn("document_ingest", screens)
         self.assertIn("channels", screens)
+        self.assertIn("avatar", screens)
         self.assertIn("/channels/status", screens["channels"]["read"])
         self.assertIn("/channels/targets", screens["channels"]["read"])
         self.assertIn("/channels/diagnostics", screens["channels"]["read"])
@@ -153,9 +158,141 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/channels/diagnostics", channel_paths)
         self.assertIn("/channels/approvals", channel_paths)
         self.assertIn("/channels/approvals/review", channel_paths)
+        self.assertIn("avatar", api_groups)
+        self.assertIn("/avatar/status", {endpoint["path"] for endpoint in api_groups["avatar"]["endpoints"]})
+        self.assertIn("/avatar/manifest", screens["avatar"]["read"])
         self.assertIn("/document/parse/workbench-next", document_paths)
         self.assertIn("needs_review", contract["state_values"])
         self.assertIn("approval_required", contract["state_values"])
+        self.assertIn("speaking", contract["state_values"])
+
+    def test_avatar_engine_status_uses_advanced_runtime_contract(self):
+        state = avatar_engine_status(load_settings())
+        self.assertEqual(state.package, "pixi-live2d-display-advanced")
+        self.assertEqual(state.license, "MIT")
+        self.assertIn("audio_lipsync", state.supports)
+        self.assertIn("npm install pixi-live2d-display-advanced", state.install_hint)
+
+    def test_avatar_manifest_defaults_to_browser_renderer(self):
+        manifest = build_avatar_manifest(load_settings())
+        self.assertEqual(manifest["brand"], "bairui")
+        self.assertEqual(manifest["engine"]["package"], "pixi-live2d-display-advanced")
+        self.assertEqual(manifest["runtime"]["renderer"], "browser")
+        self.assertFalse(manifest["runtime"]["backend_renders_live2d"])
+        self.assertIn("speaking", manifest["state_map"])
+
+    def test_avatar_validation_accepts_model3_manifest_with_assets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            model_dir = root / "avatar"
+            model_dir.mkdir()
+            (model_dir / "model.moc3").write_bytes(b"moc")
+            (model_dir / "texture.png").write_bytes(b"png")
+            (model_dir / "idle.motion3.json").write_text("{}", encoding="utf-8")
+            (model_dir / "happy.exp3.json").write_text("{}", encoding="utf-8")
+            manifest_path = model_dir / "bairui.model3.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "FileReferences": {
+                            "Moc": "model.moc3",
+                            "Textures": ["texture.png"],
+                            "Motions": {"idle": [{"File": "idle.motion3.json"}]},
+                            "Expressions": [{"Name": "happy", "File": "happy.exp3.json"}],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_AVATAR_ASSETS_DIR": str(root),
+                "BAIRUI_AVATAR_DEFAULT_MODEL": "avatar/bairui.model3.json",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                validation = validate_avatar_model(settings, "avatar/bairui.model3.json")
+                manifest = build_avatar_manifest(settings)
+        self.assertEqual(validation.status, "valid")
+        self.assertEqual(validation.model_format, "model3")
+        self.assertEqual(validation.missing_files, ())
+        self.assertTrue(manifest["model"]["configured"])
+        self.assertEqual(manifest["model"]["url"], "/avatars/assets/avatar/bairui.model3.json")
+
+    def test_avatar_validation_reports_missing_assets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest_path = root / "broken.model3.json"
+            manifest_path.write_text(
+                json.dumps({"FileReferences": {"Moc": "missing.moc3", "Textures": ["missing.png"]}}),
+                encoding="utf-8",
+            )
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_AVATAR_ASSETS_DIR": str(root),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                validation = validate_avatar_model(load_settings(), "broken.model3.json")
+        self.assertEqual(validation.status, "missing_assets")
+        self.assertIn("missing.moc3", validation.missing_files)
+        self.assertIn("missing.png", validation.missing_files)
+
+    def test_avatar_state_change_is_audited(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                result = set_avatar_state(settings, {"state": "speaking", "text": "hello", "audio_url": "/tts/1.wav"})
+                audit = list_audit_events(settings.data_dir)
+        self.assertEqual(result["status"], "accepted")
+        self.assertTrue(result["lip_sync"])
+        self.assertEqual(audit[-1]["action"], "avatar.state_changed")
+        self.assertEqual(audit[-1]["resource_type"], "avatar")
+
+    def test_avatar_state_rejects_unknown_state(self):
+        result = set_avatar_state(load_settings(), {"state": "dancing"})
+        self.assertEqual(result["status"], "invalid_state")
+        self.assertIn("idle", result["allowed_states"])
+
+    def test_cli_avatar_status_prints_advanced_runtime(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["avatar", "status"])
+        self.assertEqual(code, 0)
+        payload = print_json.call_args.args[0]
+        self.assertEqual(payload["service"], "bairui")
+        self.assertEqual(payload["avatar"]["package"], "pixi-live2d-display-advanced")
+
+    def test_cli_avatar_state_records_state_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["avatar", "state", "--state", "speaking", "--text", "ready"])
+        self.assertEqual(code, 0)
+        payload = print_json.call_args.args[0]
+        self.assertEqual(payload["avatar_state"]["status"], "accepted")
+        self.assertEqual(payload["avatar_state"]["state"], "speaking")
 
     def test_public_api_service_name_is_bairui(self):
         self.assertEqual(PUBLIC_SERVICE, "bairui")

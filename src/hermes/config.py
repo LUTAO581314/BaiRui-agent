@@ -60,6 +60,11 @@ class Settings:
     mineru_backend: str
     mineru_device: str
     mineru_timeout_seconds: int
+    avatar_assets_dir: Path
+    avatar_public_base_url: str
+    avatar_default_model: str
+    avatar_engine_package: str
+    avatar_engine_version: str
 
     @property
     def has_database(self) -> bool:
@@ -120,9 +125,14 @@ def load_settings() -> Settings:
         mineru_backend=os.getenv("MINERU_BACKEND", "pipeline"),
         mineru_device=os.getenv("MINERU_DEVICE", "cpu"),
         mineru_timeout_seconds=int(os.getenv("MINERU_TIMEOUT_SECONDS", "600")),
+        avatar_assets_dir=Path(os.getenv("BAIRUI_AVATAR_ASSETS_DIR", "./data/avatars")),
+        avatar_public_base_url=os.getenv("BAIRUI_AVATAR_PUBLIC_BASE_URL", ""),
+        avatar_default_model=os.getenv("BAIRUI_AVATAR_DEFAULT_MODEL", ""),
+        avatar_engine_package=os.getenv("BAIRUI_AVATAR_ENGINE_PACKAGE", "pixi-live2d-display-advanced"),
+        avatar_engine_version=os.getenv("BAIRUI_AVATAR_ENGINE_VERSION", "^1.1.0"),
     )
 
 
 def ensure_runtime_dirs(settings: Settings) -> None:
-    for path in (settings.data_dir, settings.log_dir, settings.obsidian_vault_dir, settings.everos_memory_root):
+    for path in (settings.data_dir, settings.log_dir, settings.obsidian_vault_dir, settings.everos_memory_root, settings.avatar_assets_dir):
         path.mkdir(parents=True, exist_ok=True)

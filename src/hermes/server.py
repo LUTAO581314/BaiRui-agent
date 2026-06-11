@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from urllib.parse import unquote
 
 from . import __version__
 from .adapters.everos import (
@@ -41,6 +43,7 @@ from .adapters.sonic import (
 )
 from .adapters.trendradar import as_payload as trendradar_payload, status as trendradar_status
 from .capabilities import collect_capabilities
+from .avatar import as_payload as avatar_payload, avatar_engine_status, build_avatar_manifest, set_avatar_state, validate_avatar_model
 from .channels import (
     as_payload as channel_payload,
     channel_status,
@@ -147,6 +150,15 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/runtime/readiness":
             self._send({"service": PUBLIC_SERVICE, "runtime_readiness": collect_runtime_readiness(settings)})
+            return
+        if self.path == "/avatar/status":
+            self._send({"service": PUBLIC_SERVICE, "avatar": avatar_payload(avatar_engine_status(settings))})
+            return
+        if self.path == "/avatar/manifest":
+            self._send({"service": PUBLIC_SERVICE, "avatar_manifest": build_avatar_manifest(settings)})
+            return
+        if self.path.startswith("/avatars/assets/"):
+            self._send_avatar_asset(settings, self.path.removeprefix("/avatars/assets/"))
             return
         if self.path == "/platform/heartbeat":
             self._send({"service": PUBLIC_SERVICE, "heartbeat": build_platform_heartbeat(settings)})
@@ -289,6 +301,23 @@ class HermesHandler(BaseHTTPRequestHandler):
             if result.status == "not_found":
                 status = 404
             self._send({"service": PUBLIC_SERVICE, "channel_send": channel_payload(result)}, status=status)
+            return
+
+        if self.path == "/avatar/validate":
+            model_path = str(payload.get("model_path", ""))
+            if not model_path.strip():
+                self._send({"error": "invalid_request", "message": "model_path is required"}, status=400)
+                return
+            result = validate_avatar_model(settings, model_path)
+            status = 200 if result.status == "valid" else 422
+            if result.status == "not_found":
+                status = 404
+            self._send({"service": PUBLIC_SERVICE, "avatar_validation": avatar_payload(result)}, status=status)
+            return
+
+        if self.path == "/avatar/state":
+            result = set_avatar_state(settings, payload)
+            self._send({"service": PUBLIC_SERVICE, "avatar_state": result}, status=202 if result["status"] == "accepted" else 400)
             return
 
         if self.path == "/channels/approvals/review":
@@ -726,6 +755,25 @@ class HermesHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_avatar_asset(self, settings: Any, asset_ref: str) -> None:
+        root = settings.avatar_assets_dir.resolve()
+        path = (root / unquote(asset_ref)).resolve()
+        try:
+            path.relative_to(root)
+        except ValueError:
+            self._send({"error": "forbidden", "path": asset_ref}, status=403)
+            return
+        if not path.exists() or not path.is_file():
+            self._send({"error": "not_found", "path": asset_ref}, status=404)
+            return
+        body = path.read_bytes()
+        content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

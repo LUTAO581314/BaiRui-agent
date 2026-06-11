@@ -6,6 +6,13 @@ from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from . import __version__
+from .avatar import (
+    as_payload as avatar_payload,
+    avatar_engine_status,
+    build_avatar_manifest,
+    set_avatar_state,
+    validate_avatar_model,
+)
 from .adapters.everos import (
     add_memory,
     as_payload,
@@ -198,6 +205,23 @@ def build_parser() -> argparse.ArgumentParser:
     memory_search.add_argument("--top-k", type=int, default=5)
     memory_search.add_argument("--method", default="hybrid")
     memory_search.add_argument("--include-profile", action="store_true")
+
+    avatar_parser = subcommands.add_parser("avatar", help="Operate browser avatar runtime integration")
+    avatar_subcommands = avatar_parser.add_subparsers(dest="avatar_command")
+    avatar_subcommands.add_parser("status", help="Inspect browser avatar engine contract")
+    avatar_manifest = avatar_subcommands.add_parser("manifest", help="Print frontend avatar manifest")
+    avatar_manifest.add_argument("--avatar-id", default="default")
+    avatar_manifest.add_argument("--model-path", default="")
+    avatar_validate = avatar_subcommands.add_parser("validate", help="Validate one Live2D model manifest and assets")
+    avatar_validate.add_argument("--model-path", required=True)
+    avatar_state = avatar_subcommands.add_parser("state", help="Record an avatar state change for frontend consumers")
+    avatar_state.add_argument("--avatar-id", default="default")
+    avatar_state.add_argument("--state", required=True)
+    avatar_state.add_argument("--motion", default="")
+    avatar_state.add_argument("--expression", default="")
+    avatar_state.add_argument("--text", default="")
+    avatar_state.add_argument("--audio-url", default="")
+    avatar_state.add_argument("--lip-sync", action="store_true")
 
     intel_parser = subcommands.add_parser("intel", help="Operate intelligence runtime adapters")
     intel_subcommands = intel_parser.add_subparsers(dest="intel_command")
@@ -560,6 +584,41 @@ def run(argv: list[str] | None = None) -> int:
             print_json({"service": "bairui", "memory": as_payload(result)})
             return 0 if result.status == "completed" else 1
         parser.error(f"unknown memory command: {memory_command}")
+        return 2
+
+    if command == "avatar":
+        avatar_command = args.avatar_command or "status"
+        if avatar_command == "status":
+            print_json({"service": "bairui", "avatar": avatar_payload(avatar_engine_status(settings))})
+            return 0
+        if avatar_command == "manifest":
+            print_json(
+                {
+                    "service": "bairui",
+                    "avatar_manifest": build_avatar_manifest(settings, avatar_id=args.avatar_id, model_path=args.model_path),
+                }
+            )
+            return 0
+        if avatar_command == "validate":
+            result = validate_avatar_model(settings, args.model_path)
+            print_json({"service": "bairui", "avatar_validation": avatar_payload(result)})
+            return 0 if result.status == "valid" else 1
+        if avatar_command == "state":
+            result = set_avatar_state(
+                settings,
+                {
+                    "avatar_id": args.avatar_id,
+                    "state": args.state,
+                    "motion": args.motion,
+                    "expression": args.expression,
+                    "text": args.text,
+                    "audio_url": args.audio_url,
+                    "lip_sync": args.lip_sync,
+                },
+            )
+            print_json({"service": "bairui", "avatar_state": result})
+            return 0 if result["status"] == "accepted" else 1
+        parser.error(f"unknown avatar command: {avatar_command}")
         return 2
 
     if command == "intel":

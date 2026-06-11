@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from .avatar import avatar_engine_status
 from .adapters.everos import status as everos_status
 from .adapters.funasr import status as funasr_status
 from .adapters.mineru import status as mineru_status
@@ -41,6 +42,7 @@ def collect_capabilities(settings: Settings) -> list[dict[str, str]]:
     mirofish = mirofish_status(settings)
     searxng = searxng_status(settings)
     sonic = sonic_status(settings)
+    avatar = avatar_engine_status(settings)
     caps = [
         Capability("health_api", "ready", "HTTP health endpoint is available"),
         Capability("readiness_api", "ready", "HTTP readiness endpoint is available"),
@@ -100,6 +102,13 @@ def collect_capabilities(settings: Settings) -> list[dict[str, str]]:
             sonic.detail,
             source=sonic.source,
             license=sonic.license,
+        ),
+        Capability(
+            "bairui_avatar_runtime",
+            avatar.status,
+            avatar.detail,
+            source=avatar.source,
+            license=avatar.license,
         ),
     ]
     return [asdict(cap) for cap in caps]

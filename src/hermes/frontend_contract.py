@@ -62,6 +62,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 "detail drawer",
                 "review queue",
                 "log panel",
+                "avatar dock",
                 "empty state",
             ),
         },
@@ -192,6 +193,15 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 ),
             },
             {
+                "id": "avatar",
+                "title": "Avatar",
+                "read": ("/avatar/status", "/avatar/manifest"),
+                "actions": (
+                    {"id": "validate_avatar_model", "method": "POST", "path": "/avatar/validate", "schema": "avatar_validate"},
+                    {"id": "set_avatar_state", "method": "POST", "path": "/avatar/state", "schema": "avatar_state"},
+                ),
+            },
+            {
                 "id": "runtime_settings",
                 "title": "Settings",
                 "read": (
@@ -202,6 +212,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     "/simulation/status",
                     "/search/status",
                     "/index/status",
+                    "/avatar/status",
                 ),
                 "actions": (),
             },
@@ -279,6 +290,26 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"name": "note", "type": "textarea", "required": False, "label": "Note"},
                 )
             },
+            "avatar_validate": {
+                "fields": (
+                    {"name": "model_path", "type": "file_path", "required": True, "label": "Model Manifest"},
+                )
+            },
+            "avatar_state": {
+                "fields": (
+                    {"name": "avatar_id", "type": "id", "required": False, "label": "Avatar ID"},
+                    {
+                        "name": "state",
+                        "type": "segmented",
+                        "required": True,
+                        "label": "State",
+                        "options": ("idle", "thinking", "speaking", "approval_required", "error", "done", "hidden"),
+                    },
+                    {"name": "text", "type": "textarea", "required": False, "label": "Speech Text"},
+                    {"name": "audio_url", "type": "text", "required": False, "label": "Audio URL"},
+                    {"name": "lip_sync", "type": "toggle", "required": False, "label": "Lip Sync"},
+                )
+            },
         },
         "api_groups": (
             {
@@ -325,6 +356,16 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 ),
             },
             {
+                "id": "avatar",
+                "stability": "experimental",
+                "endpoints": (
+                    {"method": "GET", "path": "/avatar/status"},
+                    {"method": "GET", "path": "/avatar/manifest"},
+                    {"method": "POST", "path": "/avatar/validate"},
+                    {"method": "POST", "path": "/avatar/state"},
+                ),
+            },
+            {
                 "id": "runtime_status",
                 "stability": "stable",
                 "endpoints": (
@@ -335,6 +376,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"method": "GET", "path": "/index/status"},
                     {"method": "GET", "path": "/search/status"},
                     {"method": "GET", "path": "/voice/asr/status"},
+                    {"method": "GET", "path": "/avatar/status"},
                 ),
             },
         ),
@@ -353,5 +395,10 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             "pending_review",
             "reviewed",
             "already_reviewed",
+            "source_ready",
+            "speaking",
+            "thinking",
+            "hidden",
+            "invalid_state",
         ),
     }
