@@ -52,6 +52,7 @@ const state = {
   selectedAgentIds: [],
   agentEvents: [],
   agentEventsPage: null,
+  agentPromotions: [],
   agentEventOffset: 0,
   agentEventLimit: 20,
   promotionResults: {},
@@ -664,6 +665,7 @@ function renderCommand() {
               : `<div class="empty-state">Create a session and run a round to record governed agent events.</div>`
           }
         </div>
+        ${renderAgentPromotionLedger()}
       </section>
     </div>`;
   document.getElementById("refresh-agents")?.addEventListener("click", refreshScreenData);
@@ -862,6 +864,66 @@ function renderPromotionResults(eventId) {
         })
         .join("")}
     </div>`;
+}
+
+function renderAgentPromotionLedger() {
+  const persisted = state.agentPromotions.map((promotion) => ({
+    target: promotion.target,
+    status: "planned",
+    duplicate: false,
+    detail: "Promotion recorded for owner review.",
+    promotion_id: promotion.id,
+    created_resource: {
+      type: promotion.resource_type,
+      id: promotion.resource_id,
+      status: promotion.resource_status,
+      review_required: promotion.review_required,
+      source: promotion.source || {},
+    },
+  }));
+  const transient = Object.values(state.promotionResults).flat();
+  const byResource = new Map();
+  [...persisted, ...transient].forEach((promotion) => {
+    const resource = promotion.created_resource || {};
+    const key = `${resource.type || promotion.resource_type}:${resource.id || promotion.resource_id}:${promotion.target || ""}`;
+    if (!key.includes("undefined")) byResource.set(key, promotion);
+  });
+  const rows = [...byResource.values()].slice(-8).reverse();
+  if (!rows.length) {
+    return `<section class="promotion-ledger top-gap"><div class="empty-state compact">Promotion ledger is empty. Promote an agent event to create a traceable resource.</div></section>`;
+  }
+  return `
+    <section class="promotion-ledger top-gap">
+      <div class="conversation-head">
+        <div>
+          <h3 class="sub-title">Promotion ledger</h3>
+          <p class="muted compact-copy">Agent event to resource trace. Memory and channel outputs still require owner review.</p>
+        </div>
+        <span class="chip mono">${escapeHtml(rows.length)} tracked</span>
+      </div>
+      <div class="promotion-ledger-list">
+        ${rows
+          .map((promotion) => {
+            const resource = promotion.created_resource || {};
+            const source = resource.source || promotion.source || {};
+            return `
+              <div class="promotion-ledger-row">
+                <div class="promotion-ledger-main">
+                  <div class="agent-meta">
+                    ${pill(resource.status || promotion.resource_status || promotion.status || "planned")}
+                    <span class="chip">${escapeHtml(promotion.target || source.target || "")}</span>
+                    <span class="chip">${escapeHtml(resource.review_required || promotion.review_required ? "owner_review" : "no_external_action")}</span>
+                    <span class="chip mono">event ${escapeHtml(shortId(source.source_ref || promotion.event_id || ""))}</span>
+                  </div>
+                  <strong>${escapeHtml(resource.type || promotion.resource_type || "resource")} ${escapeHtml(shortId(resource.id || promotion.resource_id || ""))}</strong>
+                  <p>${escapeHtml(promotion.detail || "Promotion recorded for owner review.")}</p>
+                </div>
+                <button class="ghost-btn mini" type="button" data-open-promotion="${escapeHtml(resource.type || promotion.resource_type || "")}" data-resource-id="${escapeHtml(resource.id || promotion.resource_id || "")}">View</button>
+              </div>`;
+          })
+          .join("")}
+      </div>
+    </section>`;
 }
 
 async function openPromotionResource(resourceType, resourceId) {
@@ -2171,6 +2233,13 @@ async function loadAgents() {
     );
     state.agentEventsPage = page;
     state.agentEvents = page?.events || [];
+    state.agentPromotions = await safe(
+      () => api.get(`/agents/session/${state.selectedAgentSessionId}/promotions`).then((data) => data.agent_promotions || []),
+      state.agentPromotions,
+      "agent-promotions",
+    );
+  } else {
+    state.agentPromotions = [];
   }
 }
 

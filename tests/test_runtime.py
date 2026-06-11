@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from src.hermes.capabilities import collect_capabilities
 from src.hermes.avatar import avatar_engine_status, build_avatar_manifest, set_avatar_state, validate_avatar_model
-from src.hermes.agents import add_agent_user_message, create_agent_session, list_agent_events, list_agent_events_page, list_agent_sessions, list_agents, promote_agent_event, retry_agent_event, run_agent_round, update_agent_session
+from src.hermes.agents import add_agent_user_message, create_agent_session, list_agent_events, list_agent_events_page, list_agent_promotions, list_agent_sessions, list_agents, promote_agent_event, retry_agent_event, run_agent_round, update_agent_session
 from src.hermes.channels import (
     channel_status,
     channel_targets,
@@ -353,6 +353,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                 reports = list_reports(settings.data_dir)
                 candidates = list_document_memory_candidates(settings.data_dir)
                 approvals = list_channel_approval_requests(settings.data_dir)
+                promotions = list_agent_promotions(settings, session_id=session.id)
                 audit = list_audit_events(settings.data_dir, limit=50)
 
         self.assertEqual(job["created_resource"]["type"], "job")
@@ -370,6 +371,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(channel["created_resource"]["type"], "channel_approval_request")
         self.assertTrue(channel["created_resource"]["review_required"])
         self.assertEqual(channel["created_resource"]["source"]["target"], "channel_draft")
+        self.assertEqual(len(promotions), 4)
+        self.assertEqual({item["target"] for item in promotions}, {"job", "report", "memory_review", "channel_draft"})
+        self.assertEqual(promotions[0]["event_id"], event["id"])
         self.assertEqual(len(jobs), 1)
         self.assertEqual(jobs[-1]["id"], job["created_resource"]["id"])
         self.assertEqual(reports[-1]["id"], report["created_resource"]["id"])
@@ -453,6 +457,14 @@ class RuntimeFoundationTests(unittest.TestCase):
                     )
                     events_page = json.loads(events_body.decode("utf-8"))["agent_events_page"]
                     missing = next(event for event in list_agent_events(load_settings(), session_id=session["id"]) if event["status"] == "missing_config")
+                    operator_event = next(event for event in list_agent_events(load_settings(), session_id=session["id"]) if event["agent_id"] == "operator")
+                    promote_status, _, _ = _http_post(
+                        server.server_port,
+                        f"/agents/session/{session['id']}/promote",
+                        {"event_id": operator_event["id"], "target": "report"},
+                    )
+                    promotions_status, _, promotions_body = _http_get(server.server_port, f"/agents/session/{session['id']}/promotions")
+                    promotions = json.loads(promotions_body.decode("utf-8"))["agent_promotions"]
                     retry_status, _, retry_body = _http_post(
                         server.server_port,
                         f"/agents/session/{session['id']}/retry",
@@ -472,6 +484,10 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(events_status, 200)
         self.assertEqual(events_page["pagination"]["limit"], 2)
         self.assertGreaterEqual(events_page["pagination"]["total"], 3)
+        self.assertEqual(promote_status, 200)
+        self.assertEqual(promotions_status, 200)
+        self.assertEqual(promotions[-1]["resource_type"], "report")
+        self.assertEqual(promotions[-1]["source"]["source_type"], "agent_event")
         self.assertEqual(retry_status, 200)
         self.assertFalse(json.loads(retry_body.decode("utf-8"))["agent_retry"]["will_execute_external_action"])
 

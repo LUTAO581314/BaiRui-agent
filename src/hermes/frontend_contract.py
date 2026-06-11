@@ -178,7 +178,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             {
                 "id": "chat",
                 "title": "Command",
-                "read": ("/agents", "/agents/sessions", "/agents/events", "/capabilities", "/memory/status"),
+                "read": ("/agents", "/agents/sessions", "/agents/events", "/agents/session/{session_id}/promotions", "/capabilities", "/memory/status"),
                 "actions": (
                     {"id": "create_agent_session", "method": "POST", "path": "/agents/session", "schema": "agent_session_create"},
                     {"id": "update_agent_session_title", "method": "POST", "path": "/agents/session/{session_id}/title", "schema": "agent_session_title"},
@@ -462,6 +462,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"method": "POST", "path": "/agents/session/{session_id}/title"},
                     {"method": "POST", "path": "/agents/session/{session_id}/round"},
                     {"method": "POST", "path": "/agents/session/{session_id}/events"},
+                    {"method": "GET", "path": "/agents/session/{session_id}/promotions"},
                     {"method": "POST", "path": "/agents/session/{session_id}/promote"},
                     {"method": "POST", "path": "/agents/session/{session_id}/retry"},
                 ),

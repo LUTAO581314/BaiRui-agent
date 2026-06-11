@@ -266,6 +266,13 @@ def list_agent_events_page(settings: Settings, session_id: str = "", *, limit: i
     }
 
 
+def list_agent_promotions(settings: Settings, session_id: str = "", limit: int = 50) -> list[dict[str, Any]]:
+    promotions = _read_jsonl(_promotions_path(settings), limit=10000)
+    if session_id:
+        promotions = [promotion for promotion in promotions if promotion.get("session_id") == session_id]
+    return promotions[-limit:]
+
+
 def retry_agent_event(settings: Settings, event_id: str) -> dict[str, Any]:
     event = next((item for item in list_agent_events(settings, limit=1000) if item.get("id") == event_id), None)
     if event is None:

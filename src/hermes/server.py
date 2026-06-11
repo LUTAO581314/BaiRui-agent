@@ -17,6 +17,7 @@ from .agents import (
     list_agent_events,
     list_agent_events_page,
     list_agent_sessions,
+    list_agent_promotions,
     list_agents,
     promote_agent_event,
     retry_agent_event,
@@ -208,6 +209,10 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/agents/session/") and self.path.endswith("/events"):
             session_id = self.path.removeprefix("/agents/session/").removesuffix("/events").strip("/")
             self._send({"service": PUBLIC_SERVICE, "agent_events": list_agent_events(settings, session_id=session_id)})
+            return
+        if self.path.startswith("/agents/session/") and self.path.endswith("/promotions"):
+            session_id = self.path.removeprefix("/agents/session/").removesuffix("/promotions").strip("/")
+            self._send({"service": PUBLIC_SERVICE, "agent_promotions": list_agent_promotions(settings, session_id=session_id)})
             return
         if self.path.startswith("/agents/") and not self.path.startswith("/agents/session"):
             agent_id = self.path.removeprefix("/agents/").strip("/")
@@ -401,7 +406,7 @@ class HermesHandler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/agents/session/") and self.path.endswith("/promote"):
             result = promote_agent_event(settings, str(payload.get("event_id", "")), str(payload.get("target", "")))
-            status = 200 if result["status"] == "planned" else 400
+            status = 200 if result["status"] in {"planned", "duplicate"} else 400
             if result["status"] == "not_found":
                 status = 404
             self._send({"service": PUBLIC_SERVICE, "agent_promotion": result}, status=status)
