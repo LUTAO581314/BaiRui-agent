@@ -2124,6 +2124,7 @@ function renderEntityCard(entity, heading = "Entity card") {
         </div>
         <div class="entity-mark">${escapeHtml(entityIcon(entity.type))}</div>
       </div>
+      ${renderEntityProductSummary(entity)}
       ${renderEntityOverview(overview)}
       <div class="entity-field-grid">
         ${fields.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "-")}</strong></div>`).join("")}
@@ -2147,6 +2148,90 @@ function entityFields(entity) {
   if (entity.type === "code") return [["Kind", raw.kind || raw.type], ["Name", raw.name || raw.relative_path], ["Path", raw.path || raw.relative_path], ["Language", raw.language], ["Repo", raw.repo_name || raw.repo_id], ["Scan", raw.scan_id], ["Symbols", raw.symbol_count]];
   if (entity.type === "avatar") return [["State", raw.state || raw.status], ["Motion", raw.motion], ["Lip sync", raw.lip_sync === true ? "true" : "false"], ["External action", "false"]];
   return [["Status", entity.status || raw.status], ["Reference", entity.ref || raw.id], ["Type", entity.type], ["Created", raw.created_at]];
+}
+
+function entityProductSummary(entity) {
+  const raw = entity.raw || {};
+  const status = raw.review_status || raw.status || entity.status || "";
+  const map = {
+    job: {
+      purpose: "Task created from a command, demo flow, or agent promotion.",
+      next: "Open Events to inspect the source action, then continue execution from Command or Dashboard.",
+      safety: "Local task record only; no external action.",
+      route: "Dashboard",
+    },
+    report: {
+      purpose: "Deliverable draft with a source reference or local report path.",
+      next: raw.path ? "Inspect the path or open Reports to review the deliverable." : "Open Reports and check source references.",
+      safety: "Report output is local and traceable.",
+      route: "Reports",
+    },
+    memory: {
+      purpose: "Candidate memory extracted from documents or agent output.",
+      next: status === "pending_review" ? "Approve or reject explicitly before any long-term memory write." : "Review the recorded owner decision and source chain.",
+      safety: status === "approved" ? "Owner approved; durable write status remains visible." : "No automatic long-term memory write.",
+      route: "Memory Review",
+    },
+    channel: {
+      purpose: "Outbound communication draft queued for owner review.",
+      next: status === "pending_review" ? "Approve or reject the draft in Channels." : "Inspect the review record and audit trail.",
+      safety: raw.will_send === true ? "External send would require explicit sender support." : "will_send=false; no external dispatch.",
+      route: "Channels",
+    },
+    source: {
+      purpose: "Evidence source linked to a report, document artifact, or graph node.",
+      next: "Open Reports to inspect where this source is used.",
+      safety: "Read-only reference.",
+      route: "Reports",
+    },
+    code: {
+      purpose: "CodeGraph source-structure object.",
+      next: "Open CodeGraph for query, scan, or impact analysis.",
+      safety: "Source indexing only; no memory write.",
+      route: "CodeGraph",
+    },
+    audit: {
+      purpose: "Audit evidence for a product action.",
+      next: "Open Events to inspect surrounding timeline and safety flags.",
+      safety: eventNeedsApproval(raw) ? "Approval-relevant evidence." : "Read-only audit record.",
+      route: "Events",
+    },
+    avatar: {
+      purpose: "Avatar state object for browser-side presentation.",
+      next: "Open Avatar to validate assets or update state.",
+      safety: "Visual state only; no voice clone or external action.",
+      route: "Avatar",
+    },
+  };
+  return map[entity.type] || {
+    purpose: "Traceable product object.",
+    next: "Use the available actions and source chain to continue.",
+    safety: "No unsafe action is implied by viewing this object.",
+    route: "Entity",
+  };
+}
+
+function renderEntityProductSummary(entity) {
+  const summary = entityProductSummary(entity);
+  return `
+    <div class="entity-product-summary">
+      <div>
+        <span>Purpose</span>
+        <strong>${escapeHtml(summary.purpose)}</strong>
+      </div>
+      <div>
+        <span>Next action</span>
+        <strong>${escapeHtml(summary.next)}</strong>
+      </div>
+      <div>
+        <span>Safety</span>
+        <strong>${escapeHtml(summary.safety)}</strong>
+      </div>
+      <div>
+        <span>Workbench</span>
+        <strong>${escapeHtml(summary.route)}</strong>
+      </div>
+    </div>`;
 }
 
 function entityOverview(entity) {
