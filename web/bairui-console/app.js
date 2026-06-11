@@ -1660,7 +1660,9 @@ function renderSelectedEntityPanel() {
 function renderReports() {
   setScreenHead("Reports", "deliverables and evidence");
   el.actions.innerHTML = `<button class="primary-btn" id="write-report" type="button">Write Manual Report</button>`;
+  const selectedReport = state.selectedEntity?.type === "report" ? state.selectedEntity.raw || {} : null;
   el.body.innerHTML = `
+    ${renderReportDeliveryOverview()}
     <div class="grid two">
       <section class="panel pad">
         <h2 class="panel-title">Reports</h2>
@@ -1695,6 +1697,7 @@ function renderReports() {
     </div>
     <div class="top-gap">
       ${state.selectedEntity?.type === "report" ? renderSelectedEntityPanel() : ""}
+      ${selectedReport ? renderRelatedSourceRefs(selectedReport) : ""}
     </div>
     `;
   bindEntityActions();
@@ -1720,6 +1723,62 @@ function renderReports() {
       state.screen = "entity";
       render();
     });
+  });
+}
+
+function renderReportDeliveryOverview() {
+  const draftCount = state.reports.filter((item) => item.status === "draft").length;
+  const ingestReportCount = state.reports.filter((item) => item.ingest_id || item.artifact_count !== undefined).length;
+  const sourcedCount = state.reports.filter((item) => item.source_ref || item.ingest_id).length;
+  return `
+    <section class="panel pad report-overview">
+      <div class="conversation-head">
+        <div>
+          <h2 class="panel-title">Delivery overview</h2>
+          <p class="muted compact-copy">Reports are local deliverables. Source references and paths remain visible for audit and handoff.</p>
+        </div>
+        ${pill(state.reports.length ? "ready" : "partial", `${state.reports.length} reports`)}
+      </div>
+      ${renderCountStrip({ drafts: draftCount, ingest_reports: ingestReportCount, sourced: sourcedCount, source_refs: state.sourceRefs.length })}
+    </section>`;
+}
+
+function renderRelatedSourceRefs(report) {
+  const related = relatedSourcesForReport(report);
+  return `
+    <section class="panel pad top-gap">
+      <div class="conversation-head">
+        <div>
+          <h2 class="panel-title">Related source refs</h2>
+          <p class="muted compact-copy">References linked by ingest id or report source ref.</p>
+        </div>
+        ${pill(related.length ? "ready" : "partial", `${related.length} refs`)}
+      </div>
+      ${
+        related.length
+          ? related
+              .slice(0, 8)
+              .map(
+                (item) => `
+                  <button class="object-card button-card source-card" type="button" data-source-open="${escapeHtml(item.source_ref || item.id || "")}">
+                    ${renderObjectCardInner(item, ["source_type", "provider", "title", "confidence"])}
+                  </button>`,
+              )
+              .join("")
+          : `<div class="empty-state">No related source refs found. Generate source refs from Documents to strengthen evidence.</div>`
+      }
+    </section>`;
+}
+
+function relatedSourcesForReport(report) {
+  const ingestId = report.ingest_id || report.source_ref || "";
+  return state.sourceRefs.filter((item) => {
+    const metadata = item.metadata || {};
+    return (
+      (ingestId && metadata.ingest_id === ingestId) ||
+      (report.source_ref && item.source_ref === report.source_ref) ||
+      (report.id && metadata.report_id === report.id)
+    );
   });
 }
 

@@ -912,6 +912,10 @@ h1 {
   font-size: 12px;
 }
 
+.report-overview {
+  margin-bottom: 14px;
+}
+
 .selected-entity-panel {
   border-color: color-mix(in srgb, var(--accent) 36%, var(--line));
 }
