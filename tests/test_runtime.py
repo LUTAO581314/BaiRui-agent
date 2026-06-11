@@ -756,6 +756,10 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(items["database"]["fields"]["database_url"], "configured")
         self.assertEqual(items["channel_targets"]["fields"]["will_send"], False)
         self.assertIn("codegraph", items["codegraph_root"]["fields"]["path"])
+        self.assertEqual(payload["checklist"]["title"], "bairui deployment checklist")
+        self.assertIn("BAIRUI_MODEL_API_KEY=<set-in-local-env-or-server-secret-store>", payload["checklist"]["env_template"])
+        self.assertIn("python -m src.hermes config-status", payload["checklist"]["commands"])
+        self.assertNotIn("super-secret-key", payload["checklist"]["markdown"])
 
     def test_config_status_http_endpoint_is_secret_safe(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -808,6 +812,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(payload["service"], "bairui")
         self.assertIn(payload["config_status"]["status"], {"ready", "partial"})
+        self.assertIn("checklist", payload["config_status"])
+        self.assertIn("BAIRUI_MODEL_API_KEY=<set-in-local-env-or-server-secret-store>", payload["config_status"]["checklist"]["markdown"])
         self.assertNotIn("cli-secret-key", raw)
         self.assertIn("secrets are reported only as configured or missing", payload["config_status"]["secret_policy"])
 
@@ -998,6 +1004,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("function renderSettingsConfigBoundary", app_js)
         self.assertIn("function renderSettingsConfigCenter", app_js)
         self.assertIn("function renderSettingsConfigFields", app_js)
+        self.assertIn("function renderSettingsConfigChecklist", app_js)
+        self.assertIn("async function copyText", app_js)
         self.assertIn("function renderSettingsNextActions", app_js)
         self.assertIn("function customerSafeRuntimeText", app_js)
         self.assertIn("Settings is the operator view for /health, /ready, /runtime/readiness", app_js)
@@ -1008,6 +1016,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn('api.get("/health")', app_js)
         self.assertIn('api.get("/ready")', app_js)
         self.assertIn('api.get("/config/status")', app_js)
+        self.assertIn('id="settings-copy-checklist"', app_js)
+        self.assertIn("A copyable operator checklist generated from the same safe config diagnostics.", app_js)
+        self.assertIn('renderProductError("settings-copy-checklist")', app_js)
         self.assertIn('api.get("/runtime/readiness")', app_js)
         self.assertIn('api.get("/platform/heartbeat")', app_js)
         self.assertIn('api.get("/license")', app_js)
@@ -1017,6 +1028,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn(".settings-config-center", styles)
         self.assertIn(".settings-config-fields", styles)
         self.assertIn(".settings-secret-policy", styles)
+        self.assertIn(".settings-checklist-grid", styles)
+        self.assertIn(".settings-checklist-text", styles)
+        self.assertIn(".settings-copy-result", styles)
         self.assertIn(".settings-runtime-matrix", styles)
         self.assertIn(".settings-boundary-list", styles)
         self.assertIn(".settings-next-actions", styles)

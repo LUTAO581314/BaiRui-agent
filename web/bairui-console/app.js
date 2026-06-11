@@ -179,6 +179,30 @@ async function runAction(key, fn, after = refreshScreenData) {
   }
 }
 
+async function copyText(text) {
+  const value = String(text || "");
+  if (!value) return false;
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch (error) {
+    // fallback below
+  }
+  const fallback = document.createElement("textarea");
+  fallback.value = value;
+  fallback.setAttribute("readonly", "readonly");
+  fallback.style.position = "fixed";
+  fallback.style.top = "-9999px";
+  fallback.style.opacity = "0";
+  document.body.appendChild(fallback);
+  fallback.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(fallback);
+  return copied;
+}
+
 function productErrorGuide(error, key = "") {
   const path = error?.path || "";
   const status = error?.status || "";
@@ -2738,6 +2762,7 @@ function renderSettings() {
   setScreenHead("Settings", "runtime status");
   el.actions.innerHTML = `
     <button class="primary-btn" id="settings-refresh" type="button">Refresh Checks</button>
+    <button class="ghost-btn" id="settings-copy-checklist" type="button">Copy Checklist</button>
     <button class="ghost-btn" id="settings-open-activation" type="button">Open Activation</button>
     <button class="ghost-btn" id="settings-open-events" type="button">Open Events</button>`;
   const readiness = state.readiness?.runtime_readiness || {};
@@ -2773,6 +2798,9 @@ function renderSettings() {
         ${pill(state.configStatus?.config_status?.status || "partial")}
       </div>
       ${renderSettingsConfigCenter()}
+      ${renderSettingsConfigChecklist()}
+      ${state.toast ? `<div class="settings-copy-result">${escapeHtml(state.toast)}</div>` : ""}
+      ${renderProductError("settings-copy-checklist")}
     </section>
     <section class="panel pad top-gap">
       <div class="conversation-head">
@@ -2796,6 +2824,18 @@ function renderSettings() {
     </section>`;
   document.getElementById("settings-refresh")?.addEventListener("click", async () => {
     await runAction("settings-refresh", refresh);
+  });
+  document.getElementById("settings-copy-checklist")?.addEventListener("click", async () => {
+    const checklist = state.configStatus?.config_status?.checklist?.markdown || "";
+    const copied = await copyText(checklist);
+    if (copied) {
+      state.toast = "Checklist copied.";
+      state.errors["settings-copy-checklist"] = "";
+      state.errorDetails["settings-copy-checklist"] = null;
+    } else {
+      state.errors["settings-copy-checklist"] = "Unable to copy checklist.";
+    }
+    render();
   });
   document.getElementById("settings-open-activation")?.addEventListener("click", async () => {
     state.screen = "activation";
@@ -2834,6 +2874,40 @@ function renderSettingsConfigCenter() {
       ${pill("ready", "no secret echo")}
       <span>${escapeHtml(config.secret_policy || "Secrets are never returned to the frontend.")}</span>
     </div>`;
+}
+
+function renderSettingsConfigChecklist() {
+  const checklist = state.configStatus?.config_status?.checklist || null;
+  if (!checklist) {
+    return `<div class="empty-state top-gap">Deployment checklist is not loaded yet. Refresh Settings to generate it.</div>`;
+  }
+  return `
+    <section class="settings-checklist top-gap">
+      <div class="conversation-head">
+        <div>
+          <h3 class="panel-title">Deployment checklist</h3>
+          <p class="muted compact-copy">A copyable operator checklist generated from the same safe config diagnostics. It shows required blockers, optional gaps, example env values, and verification commands.</p>
+        </div>
+        ${pill(checklist.status || "ready")}
+      </div>
+      <div class="settings-checklist-grid">
+        <div>
+          <span>Required blockers</span>
+          <strong>${escapeHtml((checklist.missing_required || []).join(", ") || "none")}</strong>
+        </div>
+        <div>
+          <span>Optional gaps</span>
+          <strong>${escapeHtml((checklist.optional_missing || []).join(", ") || "none")}</strong>
+        </div>
+        <div>
+          <span>Verification</span>
+          <strong>${escapeHtml(String((checklist.commands || []).length))} commands</strong>
+        </div>
+      </div>
+      <div class="settings-checklist-text">
+        <pre class="mono">${escapeHtml(checklist.markdown || "")}</pre>
+      </div>
+    </section>`;
 }
 
 function renderSettingsConfigFields(fields) {
