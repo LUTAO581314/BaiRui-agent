@@ -345,6 +345,7 @@ function renderDashboard() {
         <h2 class="panel-title">Readiness</h2>
         ${pill(state.readiness?.runtime_readiness?.status || "partial")}
         <p class="muted">${escapeHtml(state.readiness?.runtime_readiness?.summary || "Runtime readiness pending.")}</p>
+        <div class="top-gap">${renderRuntimeDiagnostics()}</div>
       </section>
       <section class="panel pad">
         <h2 class="panel-title">Platform</h2>
@@ -374,12 +375,20 @@ function renderDashboard() {
         ${renderTable(["title", "route", "status"], state.jobs.map((job) => ({ title: job.title, route: job.route, status: job.status })))}
       </section>
       <section class="panel pad">
-        <h2 class="panel-title">Audit</h2>
-        ${renderTable(["action", "resource_type", "risk_level"], state.audit.slice(-8).reverse())}
+        <div class="conversation-head">
+          <h2 class="panel-title">Recent audit</h2>
+          <button class="ghost-btn mini" type="button" id="open-events-screen">Open Events</button>
+        </div>
+        ${renderAuditCards(state.audit.slice(-8).reverse())}
       </section>
     </div>
     ${state.selectedEntity?.type === "job" ? renderSelectedEntityPanel() : ""}`;
   bindEntityActions();
+  bindAuditCards();
+  document.getElementById("open-events-screen")?.addEventListener("click", async () => {
+    state.screen = "events";
+    await refreshScreenData();
+  });
   document.getElementById("seed-demo-data")?.addEventListener("click", async () => {
     const result = await runAction("demo-seed", () => api.post("/demo/seed", { force: false }), refresh);
     state.demoSeed = result || state.demoSeed;
@@ -1145,6 +1154,7 @@ function entityFields(entity) {
   if (entity.type === "report") return [["Status", raw.status], ["Source", raw.source_type || raw.source?.source_type || "document"], ["Reference", raw.source_ref || raw.source?.source_ref || raw.ingest_id], ["Path", raw.path]];
   if (entity.type === "memory") return [["Candidate", raw.candidate_type], ["Confidence", raw.confidence], ["Source", raw.source_path || raw.source?.source_ref], ["Created", raw.created_at]];
   if (entity.type === "channel") return [["Target", raw.target_id], ["Channel", raw.channel_type], ["Media", raw.media_kind], ["Review", raw.review_status || raw.status], ["Source", raw.source?.source_ref]];
+  if (entity.type === "audit") return [["Action", raw.action], ["Resource", raw.resource_type], ["Reference", raw.resource_ref], ["Risk", raw.risk_level], ["Created", raw.created_at]];
   return [["Status", entity.status || raw.status], ["Reference", entity.ref || raw.id], ["Type", entity.type], ["Created", raw.created_at]];
 }
 
@@ -1204,7 +1214,9 @@ function renderEntityBody(entity) {
           ? raw.message_preview || raw.reason
           : entity.type === "report"
             ? raw.path
-            : JSON.stringify(raw, null, 2);
+            : entity.type === "audit"
+              ? JSON.stringify(raw.payload || {}, null, 2)
+              : JSON.stringify(raw, null, 2);
   if (!body) return "";
   return `<div class="entity-body"><span>${escapeHtml(entity.type === "report" ? "Location" : "Content")}</span><p>${escapeHtml(body)}</p></div>`;
 }
@@ -1592,8 +1604,51 @@ function renderEvents() {
   el.body.innerHTML = `
     <div class="grid two">
       <section class="panel pad"><h2 class="panel-title">Live events</h2>${renderTable(["type", "id", "action", "resource_type"], frontendEvents)}</section>
-      <section class="panel pad"><h2 class="panel-title">Audit fallback</h2>${renderTable(["action", "resource_type", "risk_level", "created_at"], state.audit.slice(-20).reverse())}</section>
+      <section class="panel pad"><h2 class="panel-title">Audit fallback</h2>${renderAuditCards(state.audit.slice(-20).reverse())}</section>
+    </div>
+    ${state.selectedEntity?.type === "audit" ? renderSelectedEntityPanel() : ""}`;
+  bindAuditCards();
+}
+
+function renderRuntimeDiagnostics() {
+  const readiness = state.readiness?.runtime_readiness || {};
+  const items = readiness.items || [];
+  const blockers = items.filter((item) => ["blocked", "missing_config", "failed"].includes(item.status));
+  const warnings = items.filter((item) => ["partial", "needs_review", "approval_required"].includes(item.status));
+  if (!blockers.length && !warnings.length) return `<div class="empty-state compact">No runtime blockers detected.</div>`;
+  return `
+    <div class="diagnostic-stack">
+      ${blockers.slice(0, 4).map((item) => `<div class="warning-row">${pill(item.status || "blocked")}<span>${escapeHtml(item.name || item.id || item.detail || "runtime blocker")}</span></div>`).join("")}
+      ${warnings.slice(0, 3).map((item) => `<div class="warning-row">${pill(item.status || "partial", "warning")}<span>${escapeHtml(item.name || item.id || item.detail || "runtime warning")}</span></div>`).join("")}
     </div>`;
+}
+
+function renderAuditCards(events) {
+  if (!events.length) return `<div class="empty-state">No audit events yet.</div>`;
+  return `
+    <div class="audit-card-list">
+      ${events
+        .map(
+          (event) => `
+            <button class="object-card button-card audit-card" type="button" data-audit-open="${escapeHtml(event.id)}">
+              <div><span>action</span><strong>${escapeHtml(event.action || "audit.event")}</strong></div>
+              <div><span>resource</span><strong>${escapeHtml(event.resource_type || "-")} / ${escapeHtml(shortId(event.resource_ref || ""))}</strong></div>
+              <div><span>risk</span><strong>${escapeHtml(event.risk_level || "low")}</strong></div>
+            </button>`,
+        )
+        .join("")}
+    </div>`;
+}
+
+function bindAuditCards(root = el.body) {
+  root.querySelectorAll("[data-audit-open]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const event = state.audit.find((item) => String(item.id) === String(button.dataset.auditOpen));
+      if (!event) return;
+      state.selectedEntity = { type: "audit", title: event.action, status: event.risk_level || "low", ref: event.id, raw: event };
+      render();
+    });
+  });
 }
 
 function renderTable(columns, rows) {
