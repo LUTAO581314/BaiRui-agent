@@ -684,6 +684,27 @@ h1 {
   margin-top: 10px;
 }
 
+.promotion-results {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.promotion-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent-2) 32%, var(--line));
+  border-radius: var(--radius-sm);
+  background: rgba(103, 168, 255, 0.045);
+  padding: 7px;
+}
+
+.selected-entity-panel {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--line));
+}
+
 .pipeline-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

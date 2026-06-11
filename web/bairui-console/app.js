@@ -49,6 +49,7 @@ const state = {
   selectedAgentSessionId: "",
   selectedAgentIds: [],
   agentEvents: [],
+  promotionResults: {},
   avatarStatus: null,
   avatarManifest: null,
   runtimeStatus: {},
@@ -281,7 +282,8 @@ function renderDashboard() {
         <h2 class="panel-title">Audit</h2>
         ${renderTable(["action", "resource_type", "risk_level"], state.audit.slice(-8).reverse())}
       </section>
-    </div>`;
+    </div>
+    ${state.selectedEntity?.type === "job" ? renderSelectedEntityPanel() : ""}`;
   document.getElementById("create-sample-job")?.addEventListener("click", async () => {
     await runAction("job", () => api.post("/jobs", { title: "Frontend console check", prompt: "Inspect bairui dashboard state", route: "operations" }));
   });
@@ -365,9 +367,19 @@ function renderCommand() {
     button.addEventListener("click", async () => {
       const eventId = button.dataset.promoteEvent;
       const target = button.dataset.promoteTarget;
-      await runAction("agent-promote", () => api.post(`/agents/session/${state.selectedAgentSessionId}/promote`, { event_id: eventId, target }));
+      const result = await runAction("agent-promote", () => api.post(`/agents/session/${state.selectedAgentSessionId}/promote`, { event_id: eventId, target }));
+      const promotion = result?.agent_promotion;
+      if (promotion?.created_resource) {
+        const list = state.promotionResults[eventId] || [];
+        state.promotionResults[eventId] = [...list.filter((item) => item.target !== target), promotion];
+      }
       await loadAgents();
       render();
+    });
+  });
+  el.body.querySelectorAll("[data-open-promotion]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await openPromotionResource(button.dataset.openPromotion, button.dataset.resourceId);
     });
   });
   document.getElementById("create-agent-session")?.addEventListener("click", async () => {
@@ -446,8 +458,64 @@ function renderMessage(event) {
               </div>`
             : ""
         }
+        ${renderPromotionResults(event.id)}
       </div>
     </article>`;
+}
+
+function renderPromotionResults(eventId) {
+  const results = state.promotionResults[eventId] || [];
+  if (!results.length) return "";
+  return `
+    <div class="promotion-results">
+      ${results
+        .map((promotion) => {
+          const resource = promotion.created_resource || {};
+          return `
+            <div class="promotion-result">
+              <div>
+                ${pill(resource.status || promotion.status || "planned")}
+                <span class="chip">${escapeHtml(promotion.target)}</span>
+                <span class="chip mono">${escapeHtml(shortId(resource.id))}</span>
+              </div>
+              <button class="ghost-btn mini" type="button" data-open-promotion="${escapeHtml(resource.type)}" data-resource-id="${escapeHtml(resource.id)}">View</button>
+            </div>`;
+        })
+        .join("")}
+    </div>`;
+}
+
+async function openPromotionResource(resourceType, resourceId) {
+  const target = promotionScreenFor(resourceType);
+  if (target === "dashboard") await loadDashboard();
+  if (target === "reports") await loadReports();
+  if (target === "memory") await loadMemory();
+  if (target === "channels") await loadChannels();
+  const entity = findResourceEntity(resourceType, resourceId);
+  state.selectedEntity = entity || { type: resourceType, title: resourceType, status: "created", ref: resourceId, raw: { id: resourceId } };
+  state.screen = target;
+  render();
+}
+
+function promotionScreenFor(resourceType) {
+  return (
+    {
+      job: "dashboard",
+      report: "reports",
+      document_memory_candidate: "memory",
+      channel_approval_request: "channels",
+    }[resourceType] || "entity"
+  );
+}
+
+function findResourceEntity(resourceType, resourceId) {
+  const collections = {
+    job: state.jobs.map((item) => ({ type: "job", title: item.title, status: item.status, ref: item.id, raw: item })),
+    report: state.reports.map((item) => ({ type: "report", title: item.title, status: item.status, ref: item.id || item.path, raw: item })),
+    document_memory_candidate: state.memoryCandidates.map((item) => ({ type: "memory", title: item.candidate_type, status: item.status, ref: item.id, raw: item })),
+    channel_approval_request: state.channelApprovals.map((item) => ({ type: "channel", title: item.media_kind, status: item.review_status || item.status, ref: item.id, raw: item })),
+  };
+  return (collections[resourceType] || []).find((item) => String(item.ref) === String(resourceId) || String(item.raw?.id) === String(resourceId));
 }
 
 function renderDocuments() {
@@ -557,7 +625,8 @@ function renderMemory() {
         <h2 class="panel-title">Safety boundary</h2>
         <div class="empty-state">Memory candidates are not written as long-term memory until an owner review action returns an approved state.</div>
       </section>
-    </div>`;
+    </div>
+    ${state.selectedEntity?.type === "memory" ? renderSelectedEntityPanel() : ""}`;
   document.getElementById("refresh-memory")?.addEventListener("click", refreshScreenData);
   document.getElementById("batch-reject-memory")?.addEventListener("click", async () => {
     const candidateIds = pending.map((candidate) => candidate.id);
@@ -659,6 +728,22 @@ function renderEntity() {
     : `<section class="panel pad"><h2 class="panel-title">Entity card</h2><div class="empty-state">Select a job, report, graph node, channel target, or avatar to inspect details.</div></section>`;
 }
 
+function renderSelectedEntityPanel() {
+  const entity = state.selectedEntity;
+  if (!entity) return "";
+  return `
+    <section class="panel pad selected-entity-panel top-gap">
+      <div class="conversation-head">
+        <div>
+          <h2 class="panel-title">Selected resource</h2>
+          <p class="muted compact-copy">${escapeHtml(entity.type)} · ${escapeHtml(shortId(entity.ref))}</p>
+        </div>
+        ${pill(entity.status || "created")}
+      </div>
+      <pre class="mono muted code-block">${escapeHtml(JSON.stringify(entity.raw || entity, null, 2))}</pre>
+    </section>`;
+}
+
 function renderReports() {
   setScreenHead("Reports", "deliverables and evidence");
   el.actions.innerHTML = `<button class="primary-btn" id="write-report" type="button">Write Manual Report</button>`;
@@ -672,7 +757,8 @@ function renderReports() {
         <h2 class="panel-title">Source references</h2>
         ${renderTable(["source_type", "provider", "title", "confidence"], state.sourceRefs.slice(-14).reverse())}
       </section>
-    </div>`;
+    </div>
+    ${state.selectedEntity?.type === "report" ? renderSelectedEntityPanel() : ""}`;
   document.getElementById("write-report")?.addEventListener("click", async () => {
     const title = prompt("Report title", "bairui Operator Note");
     const body = prompt("Report body", "Operator note from bairui console.");
@@ -729,7 +815,8 @@ function renderChannels() {
         <h2 class="panel-title">Approvals</h2>
         ${state.channelApprovals.map(renderChannelApproval).join("") || `<div class="empty-state">No approval requests yet. Planning an action records a review item; it does not send externally.</div>`}
       </section>
-    </div>`;
+    </div>
+    ${state.selectedEntity?.type === "channel" ? renderSelectedEntityPanel() : ""}`;
   document.getElementById("refresh-channels")?.addEventListener("click", refreshScreenData);
   document.getElementById("plan-channel")?.addEventListener("click", async () => {
     await runAction("channel", () =>
@@ -1016,6 +1103,16 @@ async function refreshScreenData() {
     state.audit = await safe(() => api.get("/audit").then((data) => data.audit || []), state.audit, "audit");
   }
   render();
+}
+
+async function loadDashboard() {
+  const [readiness, capabilities, jobs, audit] = await Promise.all([
+    safe(() => api.get("/runtime/readiness"), state.readiness, "dashboard-readiness"),
+    safe(() => api.get("/capabilities").then((data) => data.capabilities || []), state.capabilities, "dashboard-capabilities"),
+    safe(() => api.get("/jobs").then((data) => data.jobs || []), state.jobs, "dashboard-jobs"),
+    safe(() => api.get("/audit").then((data) => data.audit || []), state.audit, "dashboard-audit"),
+  ]);
+  Object.assign(state, { readiness, capabilities, jobs, audit });
 }
 
 async function loadDocuments() {
