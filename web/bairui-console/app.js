@@ -331,7 +331,7 @@ function renderCommand() {
         <div class="conversation-head">
           <div>
             <h2 class="panel-title">Conversation ${session ? `<span class="chip mono">${escapeHtml(shortId(session.id))}</span>` : ""}</h2>
-            <p class="muted compact-copy">${escapeHtml(session?.status || "no active session")} · ${escapeHtml(String(session?.agent_ids?.length || selectedCount || 0))} agents</p>
+            <p class="muted compact-copy">${escapeHtml(session?.status || "no active session")} - ${escapeHtml(String(session?.agent_ids?.length || selectedCount || 0))} agents</p>
           </div>
           ${pill(state.errors["agent-round"] ? "blocked" : "ready", state.errors["agent-round"] ? "blocked" : "governed")}
         </div>
@@ -538,7 +538,7 @@ function renderDocuments() {
                     <span>${escapeHtml(session.title)}</span>
                     ${pill(session.current_stage || session.status)}
                   </div>
-                  <div class="step-copy mono">${escapeHtml(shortId(session.ingest_id))} · ${escapeHtml(session.progress_percent)}%</div>
+                  <div class="step-copy mono">${escapeHtml(shortId(session.ingest_id))} - ${escapeHtml(session.progress_percent)}%</div>
                   ${progressBar(session.progress_percent)}
                 </button>`,
             )
@@ -781,17 +781,6 @@ function renderSelectedEntityPanel() {
   const entity = state.selectedEntity;
   if (!entity) return "";
   return `<div class="top-gap">${renderEntityCard(entity, "Selected resource")}</div>`;
-  return `
-    <section class="panel pad selected-entity-panel top-gap">
-      <div class="conversation-head">
-        <div>
-          <h2 class="panel-title">Selected resource</h2>
-          <p class="muted compact-copy">${escapeHtml(entity.type)} · ${escapeHtml(shortId(entity.ref))}</p>
-        </div>
-        ${pill(entity.status || "created")}
-      </div>
-      <pre class="mono muted code-block">${escapeHtml(JSON.stringify(entity.raw || entity, null, 2))}</pre>
-    </section>`;
 }
 
 function renderReports() {
@@ -824,7 +813,7 @@ function renderIntel() {
   const intel = state.runtimeStatus.intel?.intelligence?.status || "missing_config";
   el.body.innerHTML = `
     <div class="grid two">
-      <section class="panel system-core-stage"><div class="system-core"></div><div class="core-label"><strong>radar partial</strong><span>${escapeHtml(`intelligence ${intel} · search ${search} · index ${index}`)}</span></div></section>
+      <section class="panel system-core-stage"><div class="system-core"></div><div class="core-label"><strong>radar partial</strong><span>${escapeHtml(`intelligence ${intel} - search ${search} - index ${index}`)}</span></div></section>
       <section class="panel pad">
         <h2 class="panel-title">Signal actions</h2>
         <div class="pipeline-grid">
