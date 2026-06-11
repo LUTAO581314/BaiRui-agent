@@ -41,7 +41,7 @@ from .adapters.sonic import (
 )
 from .adapters.trendradar import as_payload as trendradar_payload, status as trendradar_status
 from .capabilities import collect_capabilities
-from .channels import as_payload as channel_payload, channel_status, channel_targets, plan_channel_send
+from .channels import as_payload as channel_payload, channel_status, channel_targets, diagnose_channel_targets, plan_channel_send
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
 from .document_pipeline import (
@@ -184,6 +184,9 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/channels/targets":
             self._send({"service": PUBLIC_SERVICE, "channel_targets": list(channel_targets(settings))})
+            return
+        if self.path == "/channels/diagnostics":
+            self._send({"service": PUBLIC_SERVICE, "channel_diagnostics": [channel_payload(item) for item in diagnose_channel_targets(settings)]})
             return
         if self.path == "/memory/status":
             self._send({"service": PUBLIC_SERVICE, "memory": as_payload(everos_status(settings))})

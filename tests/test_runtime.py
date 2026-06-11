@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.hermes.capabilities import collect_capabilities
-from src.hermes.channels import channel_status, channel_targets, plan_channel_send
+from src.hermes.channels import channel_status, channel_targets, diagnose_channel_targets, plan_channel_send
 from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings
 from src.hermes.db import SCHEMA_SQL, database_status
@@ -128,6 +128,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("channels", screens)
         self.assertIn("/channels/status", screens["channels"]["read"])
         self.assertIn("/channels/targets", screens["channels"]["read"])
+        self.assertIn("/channels/diagnostics", screens["channels"]["read"])
         self.assertIn("channel_send", contract["forms"])
         self.assertIn("/document/parse/session-list", screens["document_ingest"]["read"])
         self.assertIn("/document/parse/session-summary", screens["document_ingest"]["read"])
@@ -138,6 +139,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/audit", operation_paths)
         self.assertIn("/events", operation_paths)
         self.assertIn("/channels/send", channel_paths)
+        self.assertIn("/channels/diagnostics", channel_paths)
         self.assertIn("/document/parse/workbench-next", document_paths)
         self.assertIn("needs_review", contract["state_values"])
         self.assertIn("approval_required", contract["state_values"])
@@ -197,6 +199,46 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("channels_disabled", status.blockers)
         self.assertEqual(targets[0]["id"], "owner_review")
         self.assertEqual(targets[0]["channel_type"], "personal_chat")
+
+    def test_channel_target_diagnostics_explain_disabled_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                diagnostics = diagnose_channel_targets(load_settings())
+        self.assertEqual(diagnostics[0].id, "owner_review")
+        self.assertEqual(diagnostics[0].status, "missing_config")
+        self.assertIn("channels_disabled", diagnostics[0].blockers)
+        self.assertEqual(diagnostics[0].supports, ("text", "image", "video", "file"))
+
+    def test_channel_target_diagnostics_support_configured_targets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "BAIRUI_CHANNEL_TARGETS_JSON": json.dumps(
+                    [
+                        {
+                            "id": "ops_review",
+                            "label": "Ops Review",
+                            "channel_type": "team_webhook",
+                            "supports": ["text", "file"],
+                        }
+                    ]
+                ),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                diagnostics = diagnose_channel_targets(load_settings())
+        self.assertEqual(diagnostics[0].id, "ops_review")
+        self.assertEqual(diagnostics[0].status, "approval_required")
+        self.assertEqual(diagnostics[0].supports, ("text", "file"))
+        self.assertEqual(diagnostics[0].blockers, ())
 
     def test_channel_send_plan_is_audited_and_never_sends(self):
         with tempfile.TemporaryDirectory() as tmp:

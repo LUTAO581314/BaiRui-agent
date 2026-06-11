@@ -180,7 +180,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             {
                 "id": "channels",
                 "title": "Channels",
-                "read": ("/channels/status", "/channels/targets", "/events"),
+                "read": ("/channels/status", "/channels/targets", "/channels/diagnostics", "/events"),
                 "actions": ({"id": "plan_channel_send", "method": "POST", "path": "/channels/send", "schema": "channel_send"},),
             },
             {
@@ -303,6 +303,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 "endpoints": (
                     {"method": "GET", "path": "/channels/status"},
                     {"method": "GET", "path": "/channels/targets"},
+                    {"method": "GET", "path": "/channels/diagnostics"},
                     {"method": "POST", "path": "/channels/send"},
                 ),
             },

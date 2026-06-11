@@ -320,6 +320,7 @@ Initial backend supplement should expose neutral `bairui` endpoints:
 
 - `GET /channels/status`
 - `GET /channels/targets`
+- `GET /channels/diagnostics`
 - `POST /channels/send`
 - `GET /events`
 
@@ -329,6 +330,8 @@ types and configuration states.
 The current implementation plans and audits outbound text/image/video/file
 payloads, but it does not send them. Real external dispatch remains gated by
 owner confirmation, target configuration, and compliance review.
+It also exposes target diagnostics so the frontend can render exact blockers
+instead of guessing why a channel target is unavailable.
 
 ### Settings
 

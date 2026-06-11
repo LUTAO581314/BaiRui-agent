@@ -65,6 +65,7 @@ The frontend reads:
 - `/events`;
 - `/channels/status`;
 - `/channels/targets`;
+- `/channels/diagnostics`;
 - `/channels/send`;
 - `/document/parse/session-list`;
 - `/document/parse/session-summary`;

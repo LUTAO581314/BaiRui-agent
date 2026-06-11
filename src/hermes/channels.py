@@ -35,6 +35,19 @@ class ChannelStatus:
 
 
 @dataclass(frozen=True)
+class ChannelTargetDiagnostic:
+    id: str
+    label: str
+    channel_type: str
+    status: str
+    supports: tuple[str, ...]
+    requires_owner_confirmation: bool
+    enabled: bool
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ChannelSendPlan:
     status: str
     target_id: str
@@ -76,6 +89,46 @@ def channel_targets(settings: Settings) -> tuple[dict[str, Any], ...]:
     if configured:
         return tuple(configured)
     return DEFAULT_TARGETS
+
+
+def diagnose_channel_targets(settings: Settings) -> tuple[ChannelTargetDiagnostic, ...]:
+    enabled = _channels_enabled()
+    diagnostics: list[ChannelTargetDiagnostic] = []
+    for target in channel_targets(settings):
+        target_id = str(target.get("id", "")).strip()
+        label = str(target.get("label", target_id)).strip() or target_id
+        channel_type = str(target.get("channel_type", "")).strip()
+        supports = tuple(str(value) for value in target.get("supports", ()) if str(value) in SUPPORTED_MEDIA_KINDS)
+        requires_owner_confirmation = bool(target.get("requires_owner_confirmation", True))
+        blockers: list[str] = []
+        warnings: list[str] = []
+        if not enabled:
+            blockers.append("channels_disabled")
+        if not target_id:
+            blockers.append("missing_target_id")
+        if not channel_type:
+            blockers.append("missing_channel_type")
+        if not supports:
+            blockers.append("missing_supported_media")
+        if not requires_owner_confirmation:
+            warnings.append("owner_confirmation_disabled")
+        target_status = "ready" if enabled and not blockers else "missing_config"
+        if enabled and requires_owner_confirmation and not blockers:
+            target_status = "approval_required"
+        diagnostics.append(
+            ChannelTargetDiagnostic(
+                id=target_id,
+                label=label,
+                channel_type=channel_type,
+                status=target_status,
+                supports=supports,
+                requires_owner_confirmation=requires_owner_confirmation,
+                enabled=enabled,
+                blockers=tuple(blockers),
+                warnings=tuple(warnings),
+            )
+        )
+    return tuple(diagnostics)
 
 
 def plan_channel_send(settings: Settings, payload: dict[str, Any]) -> ChannelSendPlan:

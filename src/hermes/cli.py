@@ -63,7 +63,7 @@ from .adapters.trendradar import (
     status as trendradar_status,
 )
 from .capabilities import collect_capabilities
-from .channels import as_payload as channel_payload, channel_status, channel_targets, plan_channel_send
+from .channels import as_payload as channel_payload, channel_status, channel_targets, diagnose_channel_targets, plan_channel_send
 from .config import ensure_runtime_dirs, load_settings
 from .db import database_status, run_migrations
 from .document_pipeline import (
@@ -150,6 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
     channels_subcommands = channels_parser.add_subparsers(dest="channels_command")
     channels_subcommands.add_parser("status", help="Inspect outbound channel configuration")
     channels_subcommands.add_parser("targets", help="List configured outbound channel targets")
+    channels_subcommands.add_parser("diagnostics", help="Explain target readiness and blockers")
     channel_send = channels_subcommands.add_parser("plan-send", help="Create an owner-approved outbound send plan")
     channel_send.add_argument("--target-id", required=True)
     channel_send.add_argument("--text", default="")
@@ -473,6 +474,9 @@ def run(argv: list[str] | None = None) -> int:
             return 0
         if channels_command == "targets":
             print_json({"service": "bairui", "channel_targets": list(channel_targets(settings))})
+            return 0
+        if channels_command == "diagnostics":
+            print_json({"service": "bairui", "channel_diagnostics": tuple(diagnose_channel_targets(settings))})
             return 0
         if channels_command == "plan-send":
             result = plan_channel_send(
