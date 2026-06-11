@@ -77,6 +77,7 @@ const state = {
   codegraphQuery: null,
   codegraphImpact: null,
   activationProbe: null,
+  activationAction: null,
   demoSeed: null,
   selectedEntity: null,
   selectedStep: "brand_lock",
@@ -300,19 +301,58 @@ function renderActivationEvidence(stepId) {
   const license = state.license?.license || {};
   const heartbeat = state.platform?.heartbeat || {};
   const model = state.capabilities.find((item) => item.name === "model_gateway") || {};
+  const document = state.runtimeStatus.document?.document_parse || {};
+  const memoryPending = state.memoryQueue?.pending_count || 0;
+  const channelStatus = state.channels?.channels || {};
+  const avatarStatus = state.avatarStatus?.avatar_state || state.avatarStatus?.avatar || {};
+  const avatarEngine = state.avatarManifest?.avatar_manifest?.engine || {};
+  const codegraphStatus = state.codegraph?.codegraph || state.runtimeStatus.codegraph?.codegraph || {};
+  const reportsCount = state.reports.length;
+  const sourcesCount = state.sourceRefs.length;
   const base = [
     ["Health", state.health?.status || "loading", state.health?.version || "service pending"],
     ["Database", db.status || "missing_config", db.error || db.detail || "PostgreSQL readiness"],
     ["License", license.status || state.ready?.license || "missing_config", license.error || license.license_id || license.path || "license file"],
     ["Platform", heartbeat.health_status || state.ready?.platform || "missing_config", heartbeat.server_id || state.ready?.server_id || "server id pending"],
   ];
-  const extra =
-    stepId === "model_gateway"
-      ? [["Model Gateway", model.status || "missing_config", state.activationProbe?.detail || model.detail || "Run probe to verify /chat."]]
-      : [];
+  const extras = {
+    runtime_health: [
+      ["Runtime", state.readiness?.runtime_readiness?.status || "partial", state.readiness?.runtime_readiness?.summary || "runtime readiness pending"],
+      ["Blockers", state.readiness?.runtime_readiness?.blockers?.length || 0, "required blockers visible before use"],
+    ],
+    license_and_platform: [
+      ["Audit", state.audit.length ? "ready" : "partial", `${state.audit.length} audit events loaded`],
+      ["Server", heartbeat.server_id || state.ready?.server_id || "missing_config", heartbeat.protocol_version || "heartbeat protocol pending"],
+    ],
+    model_gateway: [["Model Gateway", model.status || "missing_config", state.activationProbe?.detail || model.detail || "Run probe to verify /chat."]],
+    document_runtime: [
+      ["Document Parser", document.status || "missing_config", document.detail || "parser runtime status"],
+      ["Workbench", state.documentSessions.length ? "ready" : "partial", `${state.documentSessions.length} ingest sessions loaded`],
+    ],
+    memory_review: [
+      ["Pending Review", memoryPending ? "needs_review" : "ready", `${memoryPending} memory candidates need owner decision`],
+      ["Reviews", state.memoryReviews.length ? "ready" : "partial", `${state.memoryReviews.length} review records loaded`],
+    ],
+    reports_and_sources: [
+      ["Reports", reportsCount ? "ready" : "partial", `${reportsCount} report objects loaded`],
+      ["Sources", sourcesCount ? "ready" : "partial", `${sourcesCount} source references loaded`],
+    ],
+    channels: [
+      ["Channels", channelStatus.status || "missing_config", channelStatus.detail || "approval-bound outbound planning"],
+      ["Approvals", state.channelApprovals.length ? "needs_review" : "ready", `${state.channelApprovals.length} approval records loaded; will_send=false`],
+    ],
+    avatar: [
+      ["Avatar State", avatarStatus.state || avatarStatus.status || "idle", state.activationAction?.detail || "browser state layer"],
+      ["Avatar Engine", avatarEngine.status || "missing_config", avatarEngine.package || "renderer package pending"],
+    ],
+    codegraph: [
+      ["CodeGraph", codegraphStatus.status || "missing_config", codegraphStatus.memory_boundary || "source structure stays separate from memory"],
+      ["Repositories", state.codegraphRepos.length ? "ready" : "partial", `${state.codegraphRepos.length} registered source repositories`],
+    ],
+  };
   return `
     <div class="activation-evidence">
-      ${[...base, ...extra]
+      ${[...base, ...(extras[stepId] || [])]
         .map(
           ([label, status, detail]) => `
             <div class="evidence-card">
@@ -348,9 +388,15 @@ function renderActivationDiagnostics(step, stepState) {
 function renderActivationAction(step) {
   if (!step?.action) return "";
   const isProbe = step.action.id === "send_chat_probe";
-  const loading = state.loading.has("activation-probe");
+  const isAvatarState = step.action.id === "set_avatar_state";
+  const key = isProbe ? "activation-probe" : "activation-action";
+  const loading = state.loading.has(key);
   const probe = state.activationProbe;
-  const status = probe?.status || (state.errors["activation-probe"] ? "missing_config" : "ready");
+  const action = state.activationAction;
+  const error = state.errors[key];
+  const status = probe?.status || action?.status || (error ? "missing_config" : "ready");
+  const buttonLabel = isProbe ? "Run Probe" : isAvatarState ? "Set Idle" : "";
+  const busyLabel = isProbe ? "Probing" : "Running";
   return `
     <div class="activation-action-card">
       <div class="conversation-head">
@@ -359,17 +405,21 @@ function renderActivationAction(step) {
           <strong>${escapeHtml(step.action.method || "POST")} ${escapeHtml(step.action.path || "")}</strong>
           <p>${escapeHtml(step.action.id || "")}</p>
         </div>
-        ${isProbe ? `<button class="primary-btn mini" id="activation-run-action" type="button" ${loading ? "disabled" : ""}>${loading ? "Probing" : "Run Probe"}</button>` : ""}
+        ${buttonLabel ? `<button class="primary-btn mini" id="activation-run-action" type="button" ${loading ? "disabled" : ""}>${loading ? busyLabel : buttonLabel}</button>` : ""}
       </div>
       ${
-        isProbe && (probe || state.errors["activation-probe"])
-          ? `<div class="probe-result">${pill(status)}<p>${escapeHtml(probe?.detail || state.errors["activation-probe"])}</p></div>`
+        (probe || action || error)
+          ? `<div class="probe-result">${pill(status)}<p>${escapeHtml(probe?.detail || action?.detail || error)}</p></div>`
           : ""
       }
     </div>`;
 }
 
 async function runActivationStepAction(step) {
+  if (step?.action?.id === "set_avatar_state") {
+    await runActivationAvatarAction();
+    return;
+  }
   if (step?.action?.id !== "send_chat_probe") return;
   setBusy("activation-probe", true);
   state.errors["activation-probe"] = "";
@@ -395,6 +445,34 @@ async function runActivationStepAction(step) {
   }
 }
 
+async function runActivationAvatarAction() {
+  setBusy("activation-action", true);
+  state.errors["activation-action"] = "";
+  state.activationAction = null;
+  render();
+  try {
+    const result = await api.post("/avatar/state", {
+      state: "idle",
+      text: "bairui activation check",
+      audio_url: "",
+      lip_sync: false,
+    });
+    const next = result?.avatar_state || {};
+    state.activationAction = {
+      status: next.status || "accepted",
+      detail: `Avatar state accepted: ${next.state || "idle"}`,
+    };
+    state.avatarStatus = next.state ? { avatar_state: next, avatar: { status: next.state } } : state.avatarStatus;
+    await refresh();
+  } catch (error) {
+    state.errors["activation-action"] = error.message;
+    state.activationAction = { status: "missing_config", detail: error.message };
+  } finally {
+    setBusy("activation-action", false);
+    render();
+  }
+}
+
 function activationNextAction(stepId, stepState) {
   if (stepId === "model_gateway") {
     if (stepState === "ready") return { title: "Run gateway probe", detail: "Send a minimal /chat request and confirm the configured model answers." };
@@ -406,7 +484,7 @@ function activationNextAction(stepId, stepState) {
   if (stepId === "memory_review") return { title: "Review candidates", detail: "Approve or reject pending memory candidates before promoting long-term memory." };
   if (stepId === "channels") return { title: "Check approvals", detail: "Create or review outbound drafts; backend still records will_send=false." };
   if (stepId === "codegraph") return { title: "Register source", detail: "Register a source repository, scan it, then query source structure separately from memory." };
-  if (stepId === "avatar") return { title: "Probe avatar state", detail: "Use the Avatar screen to switch idle/thinking states and confirm the state layer." };
+  if (stepId === "avatar") return { title: "Set avatar idle", detail: "Run the safe /avatar/state check here, then open Avatar for thinking/speaking states." };
   return { title: "Continue", detail: "This step is connected to real status endpoints. Open the linked screen to continue setup." };
 }
 
@@ -1988,7 +2066,7 @@ async function refresh() {
 
 async function refreshScreenData() {
   if (state.screen === "activation") {
-    await Promise.all([loadRuntimeStatus(), loadMemory(), loadReports(), loadChannels(), loadCodeGraph()]);
+    await Promise.all([loadRuntimeStatus(), loadDocuments(), loadMemory(), loadReports(), loadChannels(), loadCodeGraph()]);
   }
   if (["documents", "graph", "entity"].includes(state.screen)) await loadDocuments();
   if (["memory", "graph", "entity"].includes(state.screen)) await loadMemory();
