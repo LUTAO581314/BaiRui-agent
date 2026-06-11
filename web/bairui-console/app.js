@@ -203,18 +203,78 @@ async function copyText(text) {
   return copied;
 }
 
+function errorConfigTarget(key = "", error = {}) {
+  const text = `${key} ${error?.path || ""} ${error?.code || ""} ${error?.message || ""}`.toLowerCase();
+  if (/codegraph|repo|scan|source/.test(text)) return "codegraph_root";
+  if (/doc|mineru|parse|ingest/.test(text)) return "document_output_dir";
+  if (/memory|vault|obsidian/.test(text)) return "memory_vault";
+  if (/channel|approval|send/.test(text)) return "channel_targets";
+  if (/avatar|live2d/.test(text)) return "avatar_assets";
+  if (/database|postgres/.test(text)) return "database";
+  if (/license/.test(text)) return "license";
+  if (/agent|chat|model|command/.test(text)) return "model_gateway";
+  if (/settings|config/.test(text)) return "model_gateway";
+  return "";
+}
+
+function configStatusItem(id) {
+  return (state.configStatus?.config_status?.items || []).find((item) => item.id === id) || null;
+}
+
+function configChecklistStep(id) {
+  return (state.configStatus?.config_status?.checklist?.steps || []).find((step) => step.id === id || (id === "document_output_dir" && step.id === "documents")) || null;
+}
+
+function configRepairGuide(key = "", error = {}) {
+  const target = errorConfigTarget(key, error);
+  const checklist = state.configStatus?.config_status?.checklist || {};
+  const item = configStatusItem(target);
+  const step = configChecklistStep(target);
+  const command = (checklist.commands || [])[0] || "python -m src.hermes config-status";
+  if (!target) {
+    return {
+      target: "runtime",
+      fix: "Open Settings, refresh checks, then use the visible blocker list to repair the missing runtime.",
+      verify: command,
+    };
+  }
+  if (target === "model_gateway") {
+    return {
+      target,
+      fix: "Set BAIRUI_MODEL_BASE_URL, BAIRUI_MODEL_API_KEY, and BAIRUI_MODEL_NAME, then refresh Settings.",
+      verify: command,
+    };
+  }
+  if (target === "channel_targets") {
+    return {
+      target,
+      fix: "Configure BAIRUI_CHANNEL_TARGETS_JSON only for owner-reviewed targets. This still creates approvals only; will_send=false.",
+      verify: command,
+    };
+  }
+  const path = item?.fields?.path || step?.detail || "";
+  return {
+    target,
+    fix: path ? `Create or configure ${target}: ${path}` : step?.detail || "Open Settings and complete the mapped configuration item.",
+    verify: command,
+  };
+}
+
 function productErrorGuide(error, key = "") {
   const path = error?.path || "";
   const status = error?.status || "";
   const raw = error?.message || "Action failed.";
   const code = error?.code || "";
+  const repair = configRepairGuide(key, error);
   const guide = {
     title: "Action needs attention",
     summary: raw,
     reason: "The backend returned an error before completing the requested action.",
     next: "Review the visible configuration and try again after the missing input is fixed.",
+    fix: repair.fix,
+    verify: repair.verify,
     safety: "No external send or long-term memory write was completed.",
-    technical: [path, status ? `HTTP ${status}` : "", code, raw].filter(Boolean).join(" | "),
+    technical: [path, status ? `HTTP ${status}` : "", code, repair.target ? `config=${repair.target}` : "", raw].filter(Boolean).join(" | "),
   };
   if (status === 400 || code === "invalid_request" || /required/i.test(raw)) {
     guide.title = "Required input is missing";
@@ -229,7 +289,9 @@ function productErrorGuide(error, key = "") {
   if (status === 503 || code === "missing_config" || /missing_config|disabled|not configured/i.test(raw)) {
     guide.title = "Runtime is not configured";
     guide.reason = "A required local runtime, model, channel, parser, or path is missing.";
-    guide.next = "Open Activation or Settings, complete the missing_config item, then return here.";
+    guide.next = "Open Activation or Settings, complete the mapped missing_config item, then return here.";
+    guide.fix = repair.fix;
+    guide.verify = repair.verify;
   }
   if (status === 409 || /already/i.test(raw)) {
     guide.title = "Already reviewed";
@@ -238,18 +300,26 @@ function productErrorGuide(error, key = "") {
   }
   if (key.startsWith("codegraph")) {
     guide.next = "Register a source repository, select it, scan it, then run query or impact again.";
+    guide.fix = "Open CodeGraph, register the repository path, run Scan, then retry the query or impact action.";
+    guide.verify = "python -m src.hermes codegraph status";
     guide.safety = "CodeGraph reads source structure only and does not write long-term memory.";
   }
   if (key.startsWith("doc") || key === "documents") {
     guide.next = "Check the document path and selected ingest session, then advance the workbench one step.";
+    guide.fix = "Open Documents, confirm the local input path exists, then run Next Step or Run Until Blocked.";
+    guide.verify = "python -m src.hermes document parse status";
     guide.safety = "Document parsing may create candidates, but memory still requires owner review.";
   }
   if (key.startsWith("channel")) {
     guide.next = "Check channel target diagnostics, message text, media type, and attachment path.";
+    guide.fix = "Open Channels, inspect target diagnostics, then create or review the approval draft.";
+    guide.verify = "python -m src.hermes channels diagnostics";
     guide.safety = "Channel actions only create approval records; will_send remains false.";
   }
   if (key.startsWith("demo")) {
     guide.next = "Run Seed Demo first if resources are empty, then run Demo Flow again.";
+    guide.fix = "Open Dashboard and run Seed Demo, then Run Demo Flow. If configuration is blocked, copy the Settings checklist.";
+    guide.verify = ".\\scripts\\smoke-test.ps1 -FullAcceptance";
     guide.safety = "Demo Flow verifies approvals without sending externally or writing memory automatically.";
   }
   return guide;
@@ -265,6 +335,8 @@ function renderProductError(key) {
       <div class="error-guide-grid">
         <div><span>Why</span><strong>${escapeHtml(detail.reason)}</strong></div>
         <div><span>Next</span><strong>${escapeHtml(detail.next)}</strong></div>
+        <div><span>Fix</span><strong>${escapeHtml(detail.fix)}</strong></div>
+        <div><span>Verify</span><strong>${escapeHtml(detail.verify)}</strong></div>
         <div><span>Safety</span><strong>${escapeHtml(detail.safety)}</strong></div>
       </div>
       <p class="muted mono compact-copy">${escapeHtml(detail.technical)}</p>
