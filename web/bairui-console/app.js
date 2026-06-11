@@ -55,6 +55,7 @@ const state = {
   promotionResults: {},
   avatarStatus: null,
   avatarManifest: null,
+  avatarValidation: null,
   runtimeStatus: {},
   documentSessions: [],
   selectedIngestId: "",
@@ -1493,14 +1494,57 @@ function renderChannelApproval(item) {
 
 function renderAvatar() {
   setScreenHead("Avatar", "character state layer");
-  el.actions.innerHTML = `<button class="ghost-btn" id="avatar-thinking" type="button">Thinking</button><button class="ghost-btn" id="avatar-idle" type="button">Idle</button>`;
+  const currentState = state.avatarStatus?.avatar_state?.state || state.avatarStatus?.avatar?.status || "idle";
+  const states = ["idle", "thinking", "speaking", "approval_required", "error", "done", "hidden"];
+  el.actions.innerHTML = states
+    .map((item) => `<button class="ghost-btn" type="button" data-avatar-state="${escapeHtml(item)}">${escapeHtml(item)}</button>`)
+    .join("");
   el.body.innerHTML = `
     <div class="grid two">
-      <section class="panel system-core-stage"><div class="avatar-core avatar-preview"></div><div class="core-label"><strong>Avatar preview</strong><span>${escapeHtml(state.avatarManifest?.avatar_manifest?.engine?.status || "runtime pending")}</span></div></section>
-      <section class="panel pad"><h2 class="panel-title">Manifest</h2><pre class="mono muted code-block">${escapeHtml(JSON.stringify(state.avatarManifest?.avatar_manifest || state.avatarStatus?.avatar || {}, null, 2))}</pre></section>
+      <section class="panel system-core-stage">
+        <div class="avatar-core avatar-preview"></div>
+        <div class="core-label">
+          <strong>${escapeHtml(currentState)}</strong>
+          <span>${escapeHtml(state.avatarManifest?.avatar_manifest?.engine?.status || state.avatarStatus?.avatar?.status || "runtime pending")}</span>
+        </div>
+      </section>
+      <section class="panel pad">
+        <h2 class="panel-title">State controls</h2>
+        <p class="muted compact-copy">Avatar state changes are local product events. They do not clone voices, render backend video, or bypass approval flows.</p>
+        <label class="form-label">Speech text</label>
+        <textarea class="textarea" id="avatar-text" rows="4" placeholder="Text for speaking or approval_required state"></textarea>
+        <label class="form-label">Audio URL</label>
+        <input class="field" id="avatar-audio-url" placeholder="/tts/sample.wav" />
+        <div class="action-row top-gap">
+          ${states.map((item) => `<button class="ghost-btn" type="button" data-avatar-state="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("")}
+        </div>
+        <h3 class="sub-title">Validate model</h3>
+        <input class="field" id="avatar-model-path" placeholder="avatar/bairui.model3.json" />
+        <button class="ghost-btn top-gap" id="avatar-validate" type="button">Validate Model</button>
+        ${state.avatarValidation ? `<pre class="mono muted code-block top-gap">${escapeHtml(JSON.stringify(state.avatarValidation, null, 2))}</pre>` : ""}
+      </section>
     </div>`;
-  document.getElementById("avatar-thinking")?.addEventListener("click", () => runAction("avatar", () => api.post("/avatar/state", { state: "thinking", text: "Working" })));
-  document.getElementById("avatar-idle")?.addEventListener("click", () => runAction("avatar", () => api.post("/avatar/state", { state: "idle" })));
+  [...el.actions.querySelectorAll("[data-avatar-state]"), ...el.body.querySelectorAll("[data-avatar-state]")].forEach((button) => {
+    button.addEventListener("click", async () => {
+      const next = button.dataset.avatarState;
+      const result = await runAction("avatar", () =>
+        api.post("/avatar/state", {
+          state: next,
+          text: document.getElementById("avatar-text")?.value || (next === "thinking" ? "Working" : ""),
+          audio_url: document.getElementById("avatar-audio-url")?.value || "",
+          lip_sync: next === "speaking",
+        }),
+      );
+      state.avatarStatus = result?.avatar_state ? { avatar_state: result.avatar_state, avatar: { status: result.avatar_state.state } } : state.avatarStatus;
+      render();
+    });
+  });
+  document.getElementById("avatar-validate")?.addEventListener("click", async () => {
+    const modelPath = document.getElementById("avatar-model-path")?.value || "";
+    const result = await runAction("avatar-validate", () => api.post("/avatar/validate", { model_path: modelPath }));
+    state.avatarValidation = result?.avatar_validation || result;
+    render();
+  });
 }
 
 function renderSettings() {
