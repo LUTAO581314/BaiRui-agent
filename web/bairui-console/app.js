@@ -111,6 +111,9 @@ const state = {
   errorDetails: {},
 };
 
+const UI_STATE_KEY = "bairui.console.ui.v1";
+const validScreenIds = new Set(screens.map(([id]) => id));
+
 const el = {
   rail: document.getElementById("left-rail"),
   title: document.getElementById("screen-title"),
@@ -156,6 +159,59 @@ function firstNonEmpty(...values) {
 function setBusy(key, active) {
   if (active) state.loading.add(key);
   else state.loading.delete(key);
+}
+
+function persistUiState() {
+  try {
+    const entity = state.selectedEntity
+      ? {
+          type: state.selectedEntity.type || "",
+          title: state.selectedEntity.title || "",
+          status: state.selectedEntity.status || "",
+          ref: state.selectedEntity.ref || state.selectedEntity.raw?.id || state.selectedEntity.raw?.path || "",
+        }
+      : null;
+    const snapshot = {
+      screen: validScreenIds.has(state.screen) ? state.screen : "activation",
+      selectedStep: state.selectedStep || "brand_lock",
+      selectedIngestId: state.selectedIngestId || "",
+      selectedAgentSessionId: state.selectedAgentSessionId || "",
+      selectedAgentIds: Array.isArray(state.selectedAgentIds) ? state.selectedAgentIds.slice(0, 12) : [],
+      agentComposerMode: state.agentComposerMode || "round",
+      selectedCodegraphRepoId: state.selectedCodegraphRepoId || "",
+      auditFilter: state.auditFilter || "all",
+      selectedEntity: entity,
+    };
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify(snapshot));
+  } catch (error) {
+    console.warn("Could not persist bairui UI state", error);
+  }
+}
+
+function restoreUiState() {
+  try {
+    const snapshot = JSON.parse(localStorage.getItem(UI_STATE_KEY) || "{}");
+    if (!snapshot || typeof snapshot !== "object") return;
+    if (validScreenIds.has(snapshot.screen)) state.screen = snapshot.screen;
+    if (typeof snapshot.selectedStep === "string") state.selectedStep = snapshot.selectedStep || state.selectedStep;
+    if (typeof snapshot.selectedIngestId === "string") state.selectedIngestId = snapshot.selectedIngestId;
+    if (typeof snapshot.selectedAgentSessionId === "string") state.selectedAgentSessionId = snapshot.selectedAgentSessionId;
+    if (Array.isArray(snapshot.selectedAgentIds)) state.selectedAgentIds = snapshot.selectedAgentIds.filter(Boolean).slice(0, 12);
+    if (["round", "message"].includes(snapshot.agentComposerMode)) state.agentComposerMode = snapshot.agentComposerMode;
+    if (typeof snapshot.selectedCodegraphRepoId === "string") state.selectedCodegraphRepoId = snapshot.selectedCodegraphRepoId;
+    if (typeof snapshot.auditFilter === "string") state.auditFilter = snapshot.auditFilter || "all";
+    if (snapshot.selectedEntity?.type && snapshot.selectedEntity?.ref) {
+      state.selectedEntity = {
+        type: snapshot.selectedEntity.type,
+        title: snapshot.selectedEntity.title || snapshot.selectedEntity.ref,
+        status: snapshot.selectedEntity.status || "partial",
+        ref: snapshot.selectedEntity.ref,
+        raw: { id: snapshot.selectedEntity.ref, restored: true },
+      };
+    }
+  } catch (error) {
+    console.warn("Could not restore bairui UI state", error);
+  }
 }
 
 async function runAction(key, fn, after = refreshScreenData) {
@@ -356,6 +412,7 @@ function renderRail() {
   el.rail.querySelectorAll("[data-screen]").forEach((button) => {
     button.addEventListener("click", async () => {
       state.screen = button.dataset.screen;
+      persistUiState();
       render();
       await refreshScreenData();
     });
@@ -437,6 +494,7 @@ function renderActivation() {
   el.body.querySelectorAll("[data-step]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedStep = button.dataset.step;
+      persistUiState();
       renderActivation();
     });
   });
@@ -444,6 +502,7 @@ function renderActivation() {
   document.getElementById("open-activation-target")?.addEventListener("click", async () => {
     if (!targetScreen) return;
     state.screen = targetScreen;
+    persistUiState();
     render();
     await refreshScreenData();
   });
@@ -547,6 +606,7 @@ function bindActivationCoreInteractions() {
     button.addEventListener("click", () => {
       if (!button.dataset.coreStep) return;
       state.selectedStep = button.dataset.coreStep;
+      persistUiState();
       renderActivation();
     });
   });
@@ -1018,6 +1078,7 @@ function renderDashboard() {
   bindAuditCards();
   document.getElementById("open-events-screen")?.addEventListener("click", async () => {
     state.screen = "events";
+    persistUiState();
     await refreshScreenData();
   });
   document.getElementById("seed-demo-data")?.addEventListener("click", async () => {
@@ -1026,6 +1087,7 @@ function renderDashboard() {
     if (result?.demo_seed?.status === "completed") {
       const job = result.demo_seed.job;
       state.selectedEntity = job ? { type: "job", title: job.title, status: job.status, ref: job.id, raw: job } : state.selectedEntity;
+      persistUiState();
     }
     await refresh();
   });
@@ -1035,6 +1097,7 @@ function renderDashboard() {
     if (result?.demo_flow?.reports?.latest) {
       const report = result.demo_flow.reports.latest;
       state.selectedEntity = { type: "report", title: report.title, status: report.status, ref: report.id, raw: report };
+      persistUiState();
     }
     await refresh();
   });
@@ -1189,12 +1252,14 @@ function renderCommand() {
       if (input.checked) next.add(input.dataset.agentToggle);
       else next.delete(input.dataset.agentToggle);
       state.selectedAgentIds = [...next];
+      persistUiState();
       renderCommand();
     });
   });
   el.body.querySelectorAll("[data-agent-composer]").forEach((button) => {
     button.addEventListener("click", () => {
       state.agentComposerMode = button.dataset.agentComposer || "round";
+      persistUiState();
       renderCommand();
     });
   });
@@ -1204,6 +1269,7 @@ function renderCommand() {
       state.agentEventOffset = 0;
       const selected = state.agentSessions.find((item) => item.id === state.selectedAgentSessionId);
       state.selectedAgentIds = selected?.agent_ids?.length ? [...selected.agent_ids] : state.selectedAgentIds;
+      persistUiState();
       await loadAgents();
       render();
     });
@@ -1591,6 +1657,7 @@ async function openPromotionResource(resourceType, resourceId) {
     promotion,
   );
   state.screen = target;
+  persistUiState();
   render();
 }
 
@@ -1761,6 +1828,7 @@ function renderDocuments() {
   el.body.querySelectorAll("[data-ingest]").forEach((button) => {
     button.addEventListener("click", async () => {
       state.selectedIngestId = button.dataset.ingest;
+      persistUiState();
       await loadDocumentSession();
       renderDocuments();
     });
@@ -1789,6 +1857,7 @@ function renderDocuments() {
           .map((item) => ({ type: "report", title: item.title, status: item.status, ref: item.id || item.path, raw: item }))
           .find((item) => String(item.ref) === String(reportId) || String(item.raw?.path) === String(reportId)) || state.selectedEntity;
       state.screen = "reports";
+      persistUiState();
       render();
     });
   });
@@ -1814,6 +1883,7 @@ async function createDocumentPlan() {
   const result = await runAction("doc-plan", () => api.post("/document/parse/ingest-plan", draft), refreshScreenData);
   state.documentActionResult = documentActionSummary(result, "/document/parse/ingest-plan");
   state.selectedIngestId = result?.document_ingest?.id || state.selectedIngestId;
+  persistUiState();
   state.documentPlanDraft = { input_path: "", title: "", output_dir: "", backend: "", language: "", device: "cpu" };
   await refreshScreenData();
 }
@@ -1836,6 +1906,7 @@ async function runDocumentAction(action) {
   }
   if (action === "open-reports") {
     state.screen = "reports";
+    persistUiState();
     await refreshScreenData();
     return;
   }
@@ -1863,6 +1934,7 @@ async function runDocumentCommand(command) {
   }
   if (command === "done") {
     state.screen = "reports";
+    persistUiState();
     await refreshScreenData();
     return;
   }
@@ -1929,6 +2001,7 @@ function renderDocumentActionResult() {
 
 async function openDocumentMemoryReview() {
   state.screen = "memory";
+  persistUiState();
   await refreshScreenData();
 }
 
@@ -1945,6 +2018,7 @@ async function openDocumentSourceRefs() {
     };
   }
   state.screen = "reports";
+  persistUiState();
   render();
 }
 
@@ -2036,6 +2110,7 @@ function renderMemory() {
       state.memoryReviewResult = result?.document_memory_review || null;
       await loadMemory();
       state.selectedEntity = findResourceEntity("document_memory_candidate", button.dataset.candidate) || state.selectedEntity;
+      persistUiState();
       render();
     });
   });
@@ -2044,6 +2119,7 @@ function renderMemory() {
       const candidate = state.memoryCandidates.find((item) => item.id === button.dataset.memorySource) || pending.find((item) => item.id === button.dataset.memorySource);
       if (!candidate) return;
       state.selectedEntity = { type: "memory", title: candidate.candidate_type, status: candidate.status, ref: candidate.id, raw: candidate };
+      persistUiState();
       render();
     });
   });
@@ -2051,6 +2127,7 @@ function renderMemory() {
     button.addEventListener("click", async () => {
       state.selectedIngestId = button.dataset.memoryReports || state.selectedIngestId;
       state.screen = "reports";
+      persistUiState();
       await refreshScreenData();
     });
   });
@@ -2179,6 +2256,7 @@ function renderGraph() {
     button.addEventListener("click", () => {
       state.selectedEntity = nodes[Number(button.dataset.entity)];
       state.screen = "entity";
+      persistUiState();
       render();
     });
   });
@@ -2568,6 +2646,7 @@ async function runEntityAction(action, id) {
     );
     await loadMemory();
     state.selectedEntity = findResourceEntity("document_memory_candidate", id) || state.selectedEntity;
+    persistUiState();
     render();
     return;
   }
@@ -2583,26 +2662,31 @@ async function runEntityAction(action, id) {
     );
     await loadChannels();
     state.selectedEntity = findResourceEntity("channel_approval_request", id) || state.selectedEntity;
+    persistUiState();
     render();
     return;
   }
   if (action === "open-events") {
     state.screen = "events";
+    persistUiState();
     await refreshScreenData();
     return;
   }
   if (action === "open-reports") {
     state.screen = "reports";
+    persistUiState();
     await refreshScreenData();
     return;
   }
   if (action === "open-codegraph") {
     state.screen = "codegraph";
+    persistUiState();
     await refreshScreenData();
     return;
   }
   if (action === "inspect-path") {
     state.selectedEntity = { type: "report", title: "Report path", status: "source_ready", ref: id, raw: { path: id } };
+    persistUiState();
     render();
   }
 }
@@ -2686,6 +2770,7 @@ function renderReports() {
       const report = state.reports.find((item) => String(item.id || item.path) === String(button.dataset.reportOpen));
       if (!report) return;
       state.selectedEntity = { type: "report", title: report.title, status: report.status, ref: report.id || report.path, raw: report };
+      persistUiState();
       render();
     });
   });
@@ -2695,6 +2780,7 @@ function renderReports() {
       if (!source) return;
       state.selectedEntity = { type: "source", title: source.title, status: source.confidence, ref: source.source_ref || source.id, raw: source };
       state.screen = "entity";
+      persistUiState();
       render();
     });
   });
@@ -2705,6 +2791,7 @@ function renderReports() {
       if (!source) return;
       state.selectedEntity = { type: "source", title: source.title, status: source.confidence, ref: source.source_ref || source.id, raw: source };
       state.screen = "entity";
+      persistUiState();
       render();
     });
   });
@@ -2906,6 +2993,7 @@ function renderChannels() {
       document.getElementById("channel-text").value = "";
       await loadChannels();
       openChannelApprovalEntity(result.channel_send_plan.approval_request_id);
+      persistUiState();
       render();
     }
   });
@@ -2923,12 +3011,14 @@ function renderChannels() {
       });
       await loadChannels();
       openChannelApprovalEntity(button.dataset.request);
+      persistUiState();
       render();
     });
   });
   el.body.querySelectorAll("[data-channel-open]").forEach((button) => {
     button.addEventListener("click", () => {
       openChannelApprovalEntity(button.dataset.channelOpen);
+      persistUiState();
       render();
     });
   });
@@ -3231,10 +3321,12 @@ function renderSettings() {
   });
   document.getElementById("settings-open-activation")?.addEventListener("click", async () => {
     state.screen = "activation";
+    persistUiState();
     await refreshScreenData();
   });
   document.getElementById("settings-open-events")?.addEventListener("click", async () => {
     state.screen = "events";
+    persistUiState();
     await refreshScreenData();
   });
 }
@@ -3553,12 +3645,14 @@ function renderCodeGraph() {
   document.getElementById("refresh-codegraph")?.addEventListener("click", refreshScreenData);
   document.getElementById("codegraph-repo-select")?.addEventListener("change", async (event) => {
     state.selectedCodegraphRepoId = event.target.value;
+    persistUiState();
     await loadCodeGraph();
     render();
   });
   el.body.querySelectorAll("[data-codegraph-repo]").forEach((button) => {
     button.addEventListener("click", async () => {
       state.selectedCodegraphRepoId = button.dataset.codegraphRepo;
+      persistUiState();
       await loadCodeGraph();
       render();
     });
@@ -3571,6 +3665,7 @@ function renderCodeGraph() {
       }),
     );
     if (result?.codegraph_repo?.id) state.selectedCodegraphRepoId = result.codegraph_repo.id;
+    persistUiState();
     state.codegraphActionResult = codegraphActionSummary(result, "/codegraph/repos/register");
     await loadCodeGraph();
     render();
@@ -3593,6 +3688,7 @@ function renderCodeGraph() {
     );
     state.codegraphQuery = result?.codegraph_query || state.codegraphQuery;
     state.codegraphActionResult = codegraphActionSummary(result, "/codegraph/query");
+    persistUiState();
     render();
   });
   document.getElementById("codegraph-impact")?.addEventListener("click", async () => {
@@ -3605,6 +3701,7 @@ function renderCodeGraph() {
     );
     state.codegraphImpact = result?.codegraph_impact || state.codegraphImpact;
     state.codegraphActionResult = codegraphActionSummary(result, "/codegraph/impact");
+    persistUiState();
     render();
   });
   bindCodeGraphCards();
@@ -3726,6 +3823,7 @@ function bindCodeGraphCards() {
       const item = overviewFiles[Number(button.dataset.codegraphOverviewFile)];
       if (!item) return;
       state.selectedEntity = codeEntity({ type: "file", ...item });
+      persistUiState();
       render();
     });
   });
@@ -3734,6 +3832,7 @@ function bindCodeGraphCards() {
       const item = state.codegraphQuery?.results?.[Number(button.dataset.codegraphResult)];
       if (!item) return;
       state.selectedEntity = codeEntity(item);
+      persistUiState();
       render();
     });
   });
@@ -3742,6 +3841,7 @@ function bindCodeGraphCards() {
       const item = state.codegraphImpact?.files?.[Number(button.dataset.codegraphImpactFile)];
       if (!item) return;
       state.selectedEntity = codeEntity({ type: "file", ...item });
+      persistUiState();
       render();
     });
   });
@@ -3750,6 +3850,7 @@ function bindCodeGraphCards() {
       const item = state.codegraphImpact?.symbols?.[Number(button.dataset.codegraphImpactSymbol)];
       if (!item) return;
       state.selectedEntity = codeEntity({ type: "symbol", ...item });
+      persistUiState();
       render();
     });
   });
@@ -3809,15 +3910,18 @@ function renderEvents() {
   });
   document.getElementById("events-open-settings")?.addEventListener("click", async () => {
     state.screen = "settings";
+    persistUiState();
     await refreshScreenData();
   });
   document.getElementById("events-open-command")?.addEventListener("click", async () => {
     state.screen = "command";
+    persistUiState();
     await refreshScreenData();
   });
   el.body.querySelectorAll("[data-audit-filter]").forEach((button) => {
     button.addEventListener("click", () => {
       state.auditFilter = button.dataset.auditFilter || "all";
+      persistUiState();
       render();
     });
   });
@@ -4041,6 +4145,7 @@ function bindAuditCards(root = el.body) {
       const event = state.audit.find((item) => String(item.id) === String(button.dataset.auditOpen));
       if (!event) return;
       state.selectedEntity = { type: "audit", title: event.action, status: event.risk_level || "low", ref: event.id, raw: event };
+      persistUiState();
       render();
     });
   });
@@ -4210,6 +4315,9 @@ async function loadDashboard() {
 async function loadDocuments() {
   const list = await safe(() => api.post("/document/parse/session-list", { limit: 50 }).then((data) => data.document_ingest_sessions), null, "documents");
   state.documentSessions = list?.sessions || [];
+  if (state.selectedIngestId && !state.documentSessions.some((session) => session.ingest_id === state.selectedIngestId)) {
+    state.selectedIngestId = "";
+  }
   if (!state.selectedIngestId && state.documentSessions[0]) state.selectedIngestId = state.documentSessions[0].ingest_id;
   await loadDocumentSession();
 }
@@ -4268,6 +4376,9 @@ async function loadAgents() {
   ]);
   state.agents = agents || [];
   state.agentSessions = sessions || [];
+  if (state.selectedAgentSessionId && !state.agentSessions.some((item) => item.id === state.selectedAgentSessionId)) {
+    state.selectedAgentSessionId = "";
+  }
   if (!state.selectedAgentSessionId && state.agentSessions.length) state.selectedAgentSessionId = state.agentSessions.at(-1).id;
   const selected = state.agentSessions.find((item) => item.id === state.selectedAgentSessionId);
   if (!state.selectedAgentIds.length) state.selectedAgentIds = selected?.agent_ids?.length ? [...selected.agent_ids] : state.agents.map((agent) => agent.id);
@@ -4308,6 +4419,7 @@ async function ensureAgentSession() {
   );
   state.selectedAgentSessionId = result?.agent_session?.id || "";
   state.selectedAgentIds = result?.agent_session?.agent_ids || state.selectedAgentIds;
+  persistUiState();
   return state.selectedAgentSessionId;
 }
 
@@ -4355,6 +4467,9 @@ async function loadCodeGraph() {
   ]);
   state.codegraph = codegraph;
   state.codegraphRepos = repos || [];
+  if (state.selectedCodegraphRepoId && !state.codegraphRepos.some((repo) => repo.id === state.selectedCodegraphRepoId)) {
+    state.selectedCodegraphRepoId = "";
+  }
   if (!state.selectedCodegraphRepoId && state.codegraphRepos.length) {
     state.selectedCodegraphRepoId = state.codegraphRepos[state.codegraphRepos.length - 1].id;
   }
@@ -4404,8 +4519,9 @@ el.drawerClose.addEventListener("click", () => {
   el.drawer.style.display = "none";
 });
 
+restoreUiState();
 renderRail();
 renderTopbar();
-renderActivation();
+render();
 refresh();
 connectEvents();
