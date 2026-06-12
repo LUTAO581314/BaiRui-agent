@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ SECRET_FIELDS = {"model_api_key", "database_url", "owner_token"}
 PATH_FIELDS = {"document_output_dir", "memory_vault_dir", "avatar_assets_dir", "codegraph_root"}
 HIGH_RISK_FIELDS = {"database_url", "owner_token", "memory_vault_dir", "channel_targets_json", "codegraph_root"}
 DANGEROUS_CONFIRMATION_PHRASE = "APPLY BAIRUI CONFIG"
+PATH_SCOPE_POLICY = "paths must stay inside the bairui workspace, configured data/log/vault roots, or ~/bairui / ~/.bairui"
 
 
 def apply_local_config(settings: Settings, payload: dict[str, Any]) -> dict[str, Any]:
@@ -79,7 +81,19 @@ def apply_local_config(settings: Settings, payload: dict[str, Any]) -> dict[str,
         }
 
     for field, value in ((field, str(values.get(field, "")).strip()) for field in applied if field in PATH_FIELDS):
-        if value and create_dirs:
+        if not value:
+            continue
+        scope_error = _path_scope_error(settings, field, value)
+        if scope_error:
+            return {
+                "status": "invalid_request",
+                "errors": [scope_error],
+                "applied": _safe_applied(applied),
+                "path_scope_policy": PATH_SCOPE_POLICY,
+                "dangerous_fields": dangerous_fields,
+                "restart_required": bool(dangerous_fields),
+            }
+        if create_dirs:
             try:
                 Path(value).expanduser().mkdir(parents=True, exist_ok=True)
             except OSError as exc:
@@ -95,6 +109,7 @@ def apply_local_config(settings: Settings, payload: dict[str, Any]) -> dict[str,
         "path": str(path.expanduser().resolve()),
         "applied": _safe_applied(applied),
         "dangerous_fields": dangerous_fields,
+        "path_scope_policy": PATH_SCOPE_POLICY,
         "restart_required": bool(dangerous_fields),
         "secret_policy": "secret values were saved locally but are not returned",
     }
@@ -116,3 +131,62 @@ def _read_existing(settings: Settings) -> dict[str, str]:
 
 def _safe_applied(applied: dict[str, str]) -> dict[str, str]:
     return {field: ("configured" if field in SECRET_FIELDS else value) for field, value in applied.items()}
+
+
+def _path_scope_error(settings: Settings, field: str, raw_value: str) -> dict[str, str] | None:
+    candidate = Path(raw_value).expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    resolved = candidate.resolve(strict=False)
+    if _is_forbidden_system_path(resolved):
+        return {"field": field, "message": f"{field} is outside the allowed bairui path scope", "policy": PATH_SCOPE_POLICY}
+    if any(_is_relative_to(resolved, root) for root in _allowed_path_roots(settings)):
+        return None
+    return {"field": field, "message": f"{field} is outside the allowed bairui path scope", "policy": PATH_SCOPE_POLICY}
+
+
+def _allowed_path_roots(settings: Settings) -> tuple[Path, ...]:
+    project_root = Path(__file__).resolve().parents[2]
+    data_dir = settings.data_dir.expanduser().resolve(strict=False)
+    log_dir = settings.log_dir.expanduser().resolve(strict=False)
+    vault_dir = settings.obsidian_vault_dir.expanduser().resolve(strict=False)
+    home = Path.home().expanduser().resolve(strict=False)
+    roots = {
+        project_root,
+        data_dir,
+        data_dir.parent,
+        log_dir,
+        log_dir.parent,
+        vault_dir,
+        vault_dir.parent,
+        settings.avatar_assets_dir.expanduser().resolve(strict=False),
+        settings.codegraph_root.expanduser().resolve(strict=False),
+        home / "bairui",
+        home / ".bairui",
+    }
+    return tuple(root for root in roots if str(root))
+
+
+def _is_forbidden_system_path(path: Path) -> bool:
+    anchor_roots = [Path(anchor) for anchor in {path.anchor} if anchor]
+    if any(_norm(path) == _norm(root) for root in anchor_roots):
+        return True
+    forbidden_roots: list[Path] = []
+    for env_name in ("SystemRoot", "WINDIR", "ProgramFiles", "ProgramFiles(x86)", "ProgramData"):
+        value = os.getenv(env_name)
+        if value:
+            forbidden_roots.append(Path(value))
+    normalized = _norm(path)
+    return any(normalized == _norm(root) or normalized.startswith(_norm(root) + os.sep) for root in forbidden_roots if str(root))
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _norm(path: Path) -> str:
+    return os.path.normcase(str(path.expanduser().resolve(strict=False)))

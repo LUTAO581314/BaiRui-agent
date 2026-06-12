@@ -22,7 +22,7 @@ from src.hermes.channels import (
 from src.hermes.codegraph import codegraph_impact, codegraph_overview, codegraph_status, query_codegraph, register_codegraph_repo, scan_codegraph_repo
 from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings, local_config_path
-from src.hermes.config_apply import DANGEROUS_CONFIRMATION_PHRASE, apply_local_config
+from src.hermes.config_apply import DANGEROUS_CONFIRMATION_PHRASE, PATH_SCOPE_POLICY, apply_local_config
 from src.hermes.config_status import build_config_status
 from src.hermes.db import SCHEMA_SQL, database_status
 from src.hermes.demo import seed_demo_data
@@ -888,6 +888,26 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(confirmed["applied"]["owner_token"], "configured")
         self.assertNotIn("new-owner-secret", confirmed_raw)
 
+    def test_apply_local_config_rejects_paths_outside_bairui_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            outside = root.parent / f"{root.name}-outside-scope" / "documents"
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                result = apply_local_config(load_settings(), {"values": {"document_output_dir": str(outside)}})
+                saved = local_config_path(load_settings().data_dir).exists()
+
+        self.assertEqual(result["status"], "invalid_request")
+        self.assertEqual(result["path_scope_policy"], PATH_SCOPE_POLICY)
+        self.assertEqual(result["errors"][0]["field"], "document_output_dir")
+        self.assertIn("outside the allowed bairui path scope", result["errors"][0]["message"])
+        self.assertFalse(saved)
+        self.assertFalse(outside.exists())
+
     def test_config_apply_http_endpoint_is_secret_safe(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1050,6 +1070,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(owner_gate["fields"]["owner_token"], "configured")
         self.assertIn("/config/apply", owner_gate["fields"]["protects"])
         self.assertIn("BAIRUI_OWNER_TOKEN=<recommended-local-owner-token>", payload["checklist"]["markdown"])
+        self.assertIn(PATH_SCOPE_POLICY, payload["checklist"]["markdown"])
         self.assertNotIn("owner-secret-token", raw)
 
     def test_apply_local_config_rejects_invalid_channel_targets(self):
@@ -1299,7 +1320,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("function renderSettingsNextActions", app_js)
         self.assertIn("function customerSafeRuntimeText", app_js)
         self.assertIn("Settings is the operator view for /health, /ready, /runtime/readiness", app_js)
-        self.assertIn("Self-service configuration for model API, data paths, channel targets, Avatar assets, CodeGraph, and database. Secret fields can be saved but never echo.", app_js)
+        self.assertIn("Self-service configuration for model API, scoped data paths, channel targets, Avatar assets, CodeGraph, and database. Secret fields can be saved but never echo.", app_js)
         self.assertIn('api.post("/config/apply"', app_js)
         self.assertIn('id="settings-model-api-key"', app_js)
         self.assertIn('const OWNER_TOKEN_KEY = "bairui.console.ownerToken.v1"', app_js)
@@ -1312,6 +1333,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("Dangerous change needs confirmation", app_js)
         self.assertIn("APPLY BAIRUI CONFIG", app_js)
         self.assertIn("dangerous_fields=", app_js)
+        self.assertIn("path_scope=", app_js)
+        self.assertIn("Paths must stay inside the bairui workspace, configured data/log/vault roots, or ~/bairui / ~/.bairui.", app_js)
         self.assertIn("Owner token values never echo and are not included in exports.", app_js)
         self.assertIn("secret_echo=false", app_js)
         self.assertIn("no external send, no automatic long-term memory write, no dangerous operation without review", app_js)

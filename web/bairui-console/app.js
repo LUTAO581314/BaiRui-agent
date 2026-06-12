@@ -3365,7 +3365,7 @@ function renderSettings() {
       <div class="conversation-head">
         <div>
           <h2 class="panel-title">Configuration center</h2>
-          <p class="muted compact-copy">Self-service configuration for model API, data paths, channel targets, Avatar assets, CodeGraph, and database. Secret fields can be saved but never echo.</p>
+          <p class="muted compact-copy">Self-service configuration for model API, scoped data paths, channel targets, Avatar assets, CodeGraph, and database. Secret fields can be saved but never echo.</p>
         </div>
         ${pill(state.configStatus?.config_status?.status || "partial")}
       </div>
@@ -3469,17 +3469,17 @@ function renderSettingsConfigForm() {
       <div class="form-grid two-cols">
         <label>
           <span class="form-label">Document output directory</span>
-          <input class="field" id="settings-document-output-dir" placeholder="C:\\bairui\\documents" />
+          <input class="field" id="settings-document-output-dir" placeholder="data\\documents or C:\\Users\\you\\bairui\\documents" />
         </label>
         <label>
           <span class="form-label">Memory vault directory</span>
-          <input class="field" id="settings-memory-vault-dir" placeholder="C:\\bairui\\memory-vault" />
+          <input class="field" id="settings-memory-vault-dir" placeholder="obsidian-vault or C:\\Users\\you\\bairui\\memory-vault" />
         </label>
       </div>
       <div class="form-grid two-cols">
         <label>
           <span class="form-label">Avatar assets directory</span>
-          <input class="field" id="settings-avatar-assets-dir" placeholder="C:\\bairui\\avatars" />
+          <input class="field" id="settings-avatar-assets-dir" placeholder="data\\avatars or C:\\Users\\you\\bairui\\avatars" />
         </label>
         <label>
           <span class="form-label">Avatar default model</span>
@@ -3489,7 +3489,7 @@ function renderSettingsConfigForm() {
       <div class="form-grid two-cols">
         <label>
           <span class="form-label">CodeGraph root</span>
-          <input class="field" id="settings-codegraph-root" placeholder="C:\\bairui\\codegraph" />
+          <input class="field" id="settings-codegraph-root" placeholder="data\\codegraph or C:\\Users\\you\\bairui\\codegraph" />
         </label>
         <label>
           <span class="form-label">PostgreSQL URL</span>
@@ -3511,7 +3511,7 @@ function renderSettingsConfigForm() {
       <div class="action-row top-gap">
         <button class="ghost-btn" id="settings-save-owner-token-local" type="button">Save Owner Token Locally</button>
         <button class="primary-btn" id="settings-save-config" type="button">Save Configuration</button>
-        <span class="muted compact-copy">Saving updates local server config and refreshes diagnostics. Owner token values never echo and are not included in exports.</span>
+        <span class="muted compact-copy">Saving updates local server config and refreshes diagnostics. Paths must stay inside the bairui workspace, configured data/log/vault roots, or ~/bairui / ~/.bairui. Owner token values never echo and are not included in exports.</span>
       </div>
       ${renderSettingsConfigApplyResult()}
     </section>`;
@@ -3529,6 +3529,7 @@ function renderSettingsConfigApplyResult() {
       </div>
       ${result.dangerous_fields?.length ? `<p class="muted compact-copy">dangerous_fields=${escapeHtml(result.dangerous_fields.join(", "))}</p>` : ""}
       ${result.confirmation_phrase ? `<p class="muted compact-copy">confirmation_phrase=${escapeHtml(result.confirmation_phrase)}</p>` : ""}
+      ${result.path_scope_policy ? `<p class="muted compact-copy">path_scope=${escapeHtml(result.path_scope_policy)}</p>` : ""}
       <p>${escapeHtml(result.path || result.secret_policy || "Configuration saved.")}</p>
     </div>`;
 }

@@ -5,6 +5,7 @@ from typing import Any
 
 from .channels import channel_status
 from .config import Settings
+from .config_apply import PATH_SCOPE_POLICY
 
 
 def build_config_status(settings: Settings) -> dict[str, Any]:
@@ -162,6 +163,7 @@ def _build_checklist(settings: Settings, items: list[dict[str, Any]], blockers: 
         _checklist_step("codegraph_root", "Verify CodeGraph root", _path_status(settings.codegraph_root), _path_value(settings.codegraph_root)),
         _checklist_step("documents", "Prepare document output", _path_status(settings.mineru_output_dir), _path_value(settings.mineru_output_dir)),
         _checklist_step("avatar", "Prepare Avatar assets", _path_status(settings.avatar_assets_dir), _path_value(settings.avatar_assets_dir)),
+        _checklist_step("path_scope", "Keep local paths in the bairui scope", "required", PATH_SCOPE_POLICY),
         _checklist_step("channels", "Confirm channel approval boundary", channel_status(settings).status, "Configured targets create approval records only; will_send=false until a future sender is explicitly approved."),
         _checklist_step("database", "Optional PostgreSQL", "configured" if settings.has_database else "optional", "JSONL remains available for product beta; PostgreSQL URL is reported only as configured or missing."),
         _checklist_step("owner_gate", "Recommended owner token gate", "configured" if settings.owner_token else "recommended", "Set BAIRUI_OWNER_TOKEN before exposing the console beyond trusted local development. Token value is never returned."),
