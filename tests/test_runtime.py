@@ -74,11 +74,12 @@ def _http_get(port: int, path: str) -> tuple[int, dict[str, str], bytes]:
         connection.close()
 
 
-def _http_post(port: int, path: str, payload: dict[str, object] | None = None) -> tuple[int, dict[str, str], bytes]:
+def _http_post(port: int, path: str, payload: dict[str, object] | None = None, headers: dict[str, str] | None = None) -> tuple[int, dict[str, str], bytes]:
     body = json.dumps(payload or {}).encode("utf-8")
     connection = HTTPConnection("127.0.0.1", port, timeout=5)
     try:
-        connection.request("POST", path, body=body, headers={"Content-Type": "application/json"})
+        request_headers = {"Content-Type": "application/json", **(headers or {})}
+        connection.request("POST", path, body=body, headers=request_headers)
         response = connection.getresponse()
         response_body = response.read()
         headers = {key.lower(): value for key, value in response.getheaders()}
@@ -883,6 +884,69 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertNotIn("http-local-secret", raw)
         self.assertEqual(payload["config_status"]["items"][0]["fields"]["api_key"], "configured")
 
+    def test_config_apply_requires_owner_token_when_configured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_OWNER_TOKEN": "owner-secret-token",
+                "BAIRUI_MODEL_BASE_URL": "",
+                "BAIRUI_MODEL_API_KEY": "",
+                "BAIRUI_MODEL_NAME": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    denied_status, _, denied_body = _http_post(
+                        server.server_port,
+                        "/config/apply",
+                        {"values": {"model_name": "blocked-model"}},
+                    )
+                    allowed_status, _, allowed_body = _http_post(
+                        server.server_port,
+                        "/config/apply",
+                        {"values": {"model_name": "allowed-model"}},
+                        headers={"X-Bairui-Owner-Token": "owner-secret-token"},
+                    )
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        denied_payload = json.loads(denied_body.decode("utf-8"))
+        allowed_payload = json.loads(allowed_body.decode("utf-8"))
+        denied_raw = json.dumps(denied_payload, ensure_ascii=False)
+        allowed_raw = json.dumps(allowed_payload, ensure_ascii=False)
+        self.assertEqual(denied_status, 401)
+        self.assertEqual(denied_payload["error"], "owner_token_required")
+        self.assertNotIn("owner-secret-token", denied_raw)
+        self.assertEqual(allowed_status, 200)
+        self.assertEqual(allowed_payload["config_apply"]["status"], "saved")
+        self.assertNotIn("owner-secret-token", allowed_raw)
+
+    def test_config_status_reports_owner_gate_without_token_value(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_OWNER_TOKEN": "owner-secret-token",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                payload = build_config_status(load_settings())
+
+        raw = json.dumps(payload, ensure_ascii=False)
+        owner_gate = next(item for item in payload["items"] if item["id"] == "owner_gate")
+        self.assertEqual(owner_gate["status"], "configured")
+        self.assertEqual(owner_gate["fields"]["owner_token"], "configured")
+        self.assertIn("/config/apply", owner_gate["fields"]["protects"])
+        self.assertIn("BAIRUI_OWNER_TOKEN=<recommended-local-owner-token>", payload["checklist"]["markdown"])
+        self.assertNotIn("owner-secret-token", raw)
+
     def test_apply_local_config_rejects_invalid_channel_targets(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = {"HERMES_DATA_DIR": str(Path(tmp) / "data"), "HERMES_LOG_DIR": str(Path(tmp) / "logs"), "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault")}
@@ -1133,6 +1197,13 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("Self-service configuration for model API, data paths, channel targets, Avatar assets, CodeGraph, and database. Secret fields can be saved but never echo.", app_js)
         self.assertIn('api.post("/config/apply"', app_js)
         self.assertIn('id="settings-model-api-key"', app_js)
+        self.assertIn('const OWNER_TOKEN_KEY = "bairui.console.ownerToken.v1"', app_js)
+        self.assertIn('"X-Bairui-Owner-Token"', app_js)
+        self.assertIn("function ownerAuthHeaders", app_js)
+        self.assertIn('id="settings-owner-token-local"', app_js)
+        self.assertIn('id="settings-owner-token-new"', app_js)
+        self.assertIn("async function saveOwnerTokenLocal", app_js)
+        self.assertIn("Owner token values never echo and are not included in exports.", app_js)
         self.assertIn("secret_echo=false", app_js)
         self.assertIn("no external send, no automatic long-term memory write, no dangerous operation without review", app_js)
         self.assertIn("license status only; secrets never echo", app_js)

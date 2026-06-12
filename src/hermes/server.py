@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 import mimetypes
 from dataclasses import asdict
@@ -324,6 +325,8 @@ class HermesHandler(BaseHTTPRequestHandler):
         payload = self._read_json()
 
         if self.path == "/config/apply":
+            if not self._require_owner(settings):
+                return
             result = apply_local_config(settings, payload)
             next_settings = load_settings()
             status = 200 if result["status"] in {"saved", "no_changes"} else 400
@@ -1020,6 +1023,27 @@ class HermesHandler(BaseHTTPRequestHandler):
         if isinstance(payload, dict):
             return payload
         return {}
+
+    def _require_owner(self, settings: Any) -> bool:
+        expected = str(getattr(settings, "owner_token", "") or "").strip()
+        if not expected:
+            return True
+        provided = self.headers.get("X-Bairui-Owner-Token", "").strip()
+        authorization = self.headers.get("Authorization", "").strip()
+        if not provided and authorization.lower().startswith("bearer "):
+            provided = authorization[7:].strip()
+        if hmac.compare_digest(provided, expected):
+            return True
+        self._send(
+            {
+                "service": PUBLIC_SERVICE,
+                "error": "owner_token_required",
+                "message": "Owner token required for admin configuration changes.",
+                "secret_policy": "owner token is accepted by header only and is never returned",
+            },
+            status=401,
+        )
+        return False
 
 
 def serve(settings: Any | None = None) -> None:

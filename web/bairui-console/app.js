@@ -1,6 +1,6 @@
 const api = {
   async get(path) {
-    const response = await fetch(path, { cache: "no-store" });
+    const response = await fetch(path, { cache: "no-store", headers: ownerAuthHeaders() });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw createApiError(path, response.status, data);
     return data;
@@ -8,7 +8,7 @@ const api = {
   async post(path, payload = {}) {
     const response = await fetch(path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
       body: JSON.stringify(payload),
     });
     const data = await response.json().catch(() => ({}));
@@ -16,6 +16,35 @@ const api = {
     return data;
   },
 };
+
+const OWNER_TOKEN_KEY = "bairui.console.ownerToken.v1";
+
+function getOwnerToken() {
+  try {
+    return localStorage.getItem(OWNER_TOKEN_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function setOwnerToken(value) {
+  try {
+    const token = String(value || "").trim();
+    if (token) {
+      localStorage.setItem(OWNER_TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(OWNER_TOKEN_KEY);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ownerAuthHeaders() {
+  const token = getOwnerToken();
+  return token ? { "X-Bairui-Owner-Token": token } : {};
+}
 
 function createApiError(path, status, data = {}) {
   const message = data?.message || data?.chat?.error || data?.error || data?.detail || `${path} ${status}`;
@@ -3335,6 +3364,7 @@ function renderSettings() {
       </div>
       ${renderSettingsConfigForm()}
       ${renderProductError("config-apply")}
+      ${renderProductError("owner-token-local")}
       ${renderSettingsConfigCenter()}
       ${renderSettingsConfigChecklist()}
       ${state.toast ? `<div class="settings-copy-result">${escapeHtml(state.toast)}</div>` : ""}
@@ -3376,6 +3406,7 @@ function renderSettings() {
     render();
   });
   document.getElementById("settings-save-config")?.addEventListener("click", saveSettingsConfig);
+  document.getElementById("settings-save-owner-token-local")?.addEventListener("click", saveOwnerTokenLocal);
   document.getElementById("settings-open-activation")?.addEventListener("click", async () => {
     state.screen = "activation";
     persistUiState();
@@ -3386,6 +3417,19 @@ function renderSettings() {
     persistUiState();
     await refreshScreenData();
   });
+}
+
+async function saveOwnerTokenLocal() {
+  const ok = setOwnerToken(document.getElementById("settings-owner-token-local")?.value || "");
+  if (ok) {
+    state.toast = getOwnerToken() ? "Owner token saved locally for this browser." : "Owner token cleared from this browser.";
+    state.errors["owner-token-local"] = "";
+    state.errorDetails["owner-token-local"] = null;
+    await refreshScreenData();
+  } else {
+    state.errors["owner-token-local"] = "Unable to save owner token locally.";
+    render();
+  }
 }
 
 function renderSettingsConfigForm() {
@@ -3405,6 +3449,16 @@ function renderSettingsConfigForm() {
         <span class="form-label">Model API key</span>
         <input class="field" id="settings-model-api-key" type="password" autocomplete="new-password" placeholder="Save new key; existing key is never shown" />
       </label>
+      <div class="form-grid two-cols">
+        <label>
+          <span class="form-label">Owner token for this browser</span>
+          <input class="field" id="settings-owner-token-local" type="password" autocomplete="current-password" placeholder="Stored locally; sent as X-Bairui-Owner-Token" />
+        </label>
+        <label>
+          <span class="form-label">New owner token for server</span>
+          <input class="field" id="settings-owner-token-new" type="password" autocomplete="new-password" placeholder="Optional; save new token, never echo" />
+        </label>
+      </div>
       <div class="form-grid two-cols">
         <label>
           <span class="form-label">Document output directory</span>
@@ -3444,8 +3498,9 @@ function renderSettingsConfigForm() {
         <span>Create missing local directories when possible</span>
       </label>
       <div class="action-row top-gap">
+        <button class="ghost-btn" id="settings-save-owner-token-local" type="button">Save Owner Token Locally</button>
         <button class="primary-btn" id="settings-save-config" type="button">Save Configuration</button>
-        <span class="muted compact-copy">Saving updates local server config and refreshes diagnostics. Restart is not required for this local JSON override.</span>
+        <span class="muted compact-copy">Saving updates local server config and refreshes diagnostics. Owner token values never echo and are not included in exports.</span>
       </div>
       ${renderSettingsConfigApplyResult()}
     </section>`;
@@ -3470,6 +3525,7 @@ async function saveSettingsConfig() {
     model_base_url: document.getElementById("settings-model-base-url")?.value || "",
     model_api_key: document.getElementById("settings-model-api-key")?.value || "",
     model_name: document.getElementById("settings-model-name")?.value || "",
+    owner_token: document.getElementById("settings-owner-token-new")?.value || "",
     document_output_dir: document.getElementById("settings-document-output-dir")?.value || "",
     memory_vault_dir: document.getElementById("settings-memory-vault-dir")?.value || "",
     channel_targets_json: document.getElementById("settings-channel-targets-json")?.value || "",

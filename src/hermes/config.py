@@ -69,6 +69,7 @@ class Settings:
     avatar_engine_version: str
     codegraph_root: Path
     codegraph_max_file_bytes: int
+    owner_token: str
 
     @property
     def has_database(self) -> bool:
@@ -148,6 +149,7 @@ def load_settings() -> Settings:
         avatar_engine_version=env("BAIRUI_AVATAR_ENGINE_VERSION", "^1.1.0"),
         codegraph_root=Path(env("BAIRUI_CODEGRAPH_ROOT", "./data/codegraph")),
         codegraph_max_file_bytes=int(env("BAIRUI_CODEGRAPH_MAX_FILE_BYTES", "300000")),
+        owner_token=env("BAIRUI_OWNER_TOKEN", ""),
     )
 
 

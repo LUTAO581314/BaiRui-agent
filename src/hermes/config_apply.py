@@ -18,9 +18,10 @@ FIELD_TO_ENV = {
     "avatar_default_model": "BAIRUI_AVATAR_DEFAULT_MODEL",
     "codegraph_root": "BAIRUI_CODEGRAPH_ROOT",
     "database_url": "HERMES_DATABASE_URL",
+    "owner_token": "BAIRUI_OWNER_TOKEN",
 }
 
-SECRET_FIELDS = {"model_api_key", "database_url"}
+SECRET_FIELDS = {"model_api_key", "database_url", "owner_token"}
 PATH_FIELDS = {"document_output_dir", "memory_vault_dir", "avatar_assets_dir", "codegraph_root"}
 
 
