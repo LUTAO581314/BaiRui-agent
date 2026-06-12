@@ -417,13 +417,7 @@ function renderActivation() {
             .join("") || `<div class="empty-state">Backend contract is loading.</div>`}
         </div>
       </section>
-      <section class="panel system-core-stage">
-        <div class="system-core" aria-hidden="true"></div>
-        <div class="core-label">
-          <strong>bairui core</strong>
-          <span>${escapeHtml(state.readiness?.runtime_readiness?.summary || "diagnostic startup")}</span>
-        </div>
-      </section>
+      ${renderActivationCoreStage(flow, selected)}
       <section class="panel pad">
         <h2 class="panel-title">${escapeHtml(selected?.title || "Activation detail")}</h2>
         <div class="agent-meta">${pill(selectedState)}<span class="chip">${escapeHtml(selected?.blocking ? "blocking" : "guided")}</span></div>
@@ -454,6 +448,120 @@ function renderActivation() {
     await refreshScreenData();
   });
   document.getElementById("activation-run-action")?.addEventListener("click", () => runActivationStepAction(selected));
+  bindActivationCoreInteractions();
+}
+
+function renderActivationCoreStage(flow, selected) {
+  const steps = flow.length ? flow : [{ id: "loading", title: "Contract", complete_when: "Backend contract is loading." }];
+  const selectedId = selected?.id || steps[0]?.id || "loading";
+  const selectedState = selected ? inferStepState(selected) : "partial";
+  const camera = activationCoreCameraState(selectedId);
+  const ready = steps.filter((step) => inferStepState(step) === "ready").length;
+  const blocked = steps.filter((step) => ["blocked", "missing_config", "failed", "error"].includes(inferStepState(step))).length;
+  const review = steps.filter((step) => ["needs_review", "approval_required", "pending_review"].includes(inferStepState(step))).length;
+  const summary = state.readiness?.runtime_readiness?.summary || "diagnostic startup";
+  return `
+    <section class="panel activation-core-stage" aria-label="bairui activation system core">
+      <div class="activation-core-head">
+        <div>
+          <span class="section-label">bairui core</span>
+          <strong>${escapeHtml(selected?.title || "Activation")}</strong>
+        </div>
+        ${pill(selectedState)}
+      </div>
+      <div class="activation-core-viewport" data-core-viewport style="--core-base-x: ${camera.x}; --core-base-y: ${camera.y}; --core-focus-z: ${camera.z};">
+        <div class="activation-core-shell is-${escapeHtml(activationCoreStateClass(selectedState))}" data-core-shell>
+          <div class="activation-core-ring ring-outer" aria-hidden="true"></div>
+          <div class="activation-core-ring ring-inner" aria-hidden="true"></div>
+          <div class="activation-core-grid" aria-hidden="true"></div>
+          <div class="activation-core-brand">
+            <strong>bairui</strong>
+            <span>${escapeHtml(selectedState)}</span>
+          </div>
+          ${steps.map((step, index) => renderActivationCoreLayer(step, index, steps.length, selectedId)).join("")}
+        </div>
+      </div>
+      <div class="activation-core-footer">
+        <div><span>Ready</span><strong>${escapeHtml(String(ready))}</strong></div>
+        <div><span>Review</span><strong>${escapeHtml(String(review))}</strong></div>
+        <div><span>Blocked</span><strong>${escapeHtml(String(blocked))}</strong></div>
+      </div>
+      <p class="activation-core-summary">${escapeHtml(summary)}</p>
+    </section>`;
+}
+
+function renderActivationCoreLayer(step, index, total, selectedId) {
+  const status = step?.id === "loading" ? "partial" : inferStepState(step);
+  const className = activationCoreStateClass(status);
+  const angle = total ? Math.round((360 / total) * index - 90) : -90;
+  const depth = index % 2 ? 42 : 70;
+  const isActive = step.id === selectedId;
+  const label = step.title || step.id || "Activation";
+  return `
+    <button
+      class="activation-core-layer is-${escapeHtml(className)} ${isActive ? "active" : ""}"
+      type="button"
+      data-core-step="${escapeHtml(step.id || "")}"
+      style="--layer-angle: ${angle}deg; --layer-depth: ${depth}px;"
+      aria-label="${escapeHtml(`Select ${label}`)}"
+      ${step.id === "loading" ? "disabled" : ""}
+    >
+      <span class="activation-core-node" aria-hidden="true"></span>
+      <span class="activation-core-layer-copy">
+        <strong>${escapeHtml(label)}</strong>
+        <small>${escapeHtml(status)}</small>
+      </span>
+    </button>`;
+}
+
+function activationCoreStateClass(status) {
+  if (["ready", "completed", "configured", "done"].includes(status)) return "ready";
+  if (["blocked", "missing_config", "failed", "error"].includes(status)) return "blocked";
+  if (["needs_review", "approval_required", "pending_review"].includes(status)) return "review";
+  if (["loading", "checking", "running", "thinking"].includes(status)) return "checking";
+  return "partial";
+}
+
+function activationCoreCameraState(stepId) {
+  return (
+    {
+      brand_lock: { x: "0deg", y: "0deg", z: "24px" },
+      runtime_health: { x: "4deg", y: "-12deg", z: "30px" },
+      license_and_platform: { x: "-4deg", y: "18deg", z: "32px" },
+      model_gateway: { x: "2deg", y: "34deg", z: "42px" },
+      document_runtime: { x: "3deg", y: "-30deg", z: "38px" },
+      memory_review: { x: "-12deg", y: "8deg", z: "52px" },
+      reports_and_sources: { x: "-8deg", y: "-16deg", z: "36px" },
+      channels: { x: "6deg", y: "28deg", z: "46px" },
+      avatar: { x: "10deg", y: "-38deg", z: "50px" },
+      codegraph: { x: "-10deg", y: "42deg", z: "48px" },
+    }[stepId] || { x: "0deg", y: "0deg", z: "24px" }
+  );
+}
+
+function bindActivationCoreInteractions() {
+  const viewport = el.body.querySelector("[data-core-viewport]");
+  if (!viewport) return;
+  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  el.body.querySelectorAll("[data-core-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!button.dataset.coreStep) return;
+      state.selectedStep = button.dataset.coreStep;
+      renderActivation();
+    });
+  });
+  if (reduceMotion) return;
+  viewport.addEventListener("pointermove", (event) => {
+    const box = viewport.getBoundingClientRect();
+    const x = ((event.clientX - box.left) / box.width - 0.5) * 10;
+    const y = ((event.clientY - box.top) / box.height - 0.5) * -8;
+    viewport.style.setProperty("--core-pointer-y", `${x.toFixed(2)}deg`);
+    viewport.style.setProperty("--core-pointer-x", `${y.toFixed(2)}deg`);
+  });
+  viewport.addEventListener("pointerleave", () => {
+    viewport.style.setProperty("--core-pointer-y", "0deg");
+    viewport.style.setProperty("--core-pointer-x", "0deg");
+  });
 }
 
 function inferStepState(step) {
