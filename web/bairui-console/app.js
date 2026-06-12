@@ -3329,10 +3329,12 @@ function renderSettings() {
       <div class="conversation-head">
         <div>
           <h2 class="panel-title">Configuration center</h2>
-          <p class="muted compact-copy">Read-only configuration diagnostics for model API, data paths, document output, channel targets, Avatar assets, CodeGraph, database, and license. Secrets never echo.</p>
+          <p class="muted compact-copy">Self-service configuration for model API, data paths, channel targets, Avatar assets, CodeGraph, and database. Secret fields can be saved but never echo.</p>
         </div>
         ${pill(state.configStatus?.config_status?.status || "partial")}
       </div>
+      ${renderSettingsConfigForm()}
+      ${renderProductError("config-apply")}
       ${renderSettingsConfigCenter()}
       ${renderSettingsConfigChecklist()}
       ${state.toast ? `<div class="settings-copy-result">${escapeHtml(state.toast)}</div>` : ""}
@@ -3373,6 +3375,7 @@ function renderSettings() {
     }
     render();
   });
+  document.getElementById("settings-save-config")?.addEventListener("click", saveSettingsConfig);
   document.getElementById("settings-open-activation")?.addEventListener("click", async () => {
     state.screen = "activation";
     persistUiState();
@@ -3383,6 +3386,106 @@ function renderSettings() {
     persistUiState();
     await refreshScreenData();
   });
+}
+
+function renderSettingsConfigForm() {
+  return `
+    <section class="settings-config-form">
+      <div class="form-grid two-cols">
+        <label>
+          <span class="form-label">Model base URL</span>
+          <input class="field" id="settings-model-base-url" placeholder="https://models.example.com/v1" />
+        </label>
+        <label>
+          <span class="form-label">Model name</span>
+          <input class="field" id="settings-model-name" placeholder="bairui-demo-model" />
+        </label>
+      </div>
+      <label>
+        <span class="form-label">Model API key</span>
+        <input class="field" id="settings-model-api-key" type="password" autocomplete="new-password" placeholder="Save new key; existing key is never shown" />
+      </label>
+      <div class="form-grid two-cols">
+        <label>
+          <span class="form-label">Document output directory</span>
+          <input class="field" id="settings-document-output-dir" placeholder="C:\\bairui\\documents" />
+        </label>
+        <label>
+          <span class="form-label">Memory vault directory</span>
+          <input class="field" id="settings-memory-vault-dir" placeholder="C:\\bairui\\memory-vault" />
+        </label>
+      </div>
+      <div class="form-grid two-cols">
+        <label>
+          <span class="form-label">Avatar assets directory</span>
+          <input class="field" id="settings-avatar-assets-dir" placeholder="C:\\bairui\\avatars" />
+        </label>
+        <label>
+          <span class="form-label">Avatar default model</span>
+          <input class="field" id="settings-avatar-default-model" placeholder="bairui.model3.json" />
+        </label>
+      </div>
+      <div class="form-grid two-cols">
+        <label>
+          <span class="form-label">CodeGraph root</span>
+          <input class="field" id="settings-codegraph-root" placeholder="C:\\bairui\\codegraph" />
+        </label>
+        <label>
+          <span class="form-label">PostgreSQL URL</span>
+          <input class="field" id="settings-database-url" type="password" autocomplete="new-password" placeholder="Optional; save new URL, never echo" />
+        </label>
+      </div>
+      <label>
+        <span class="form-label">Channel targets JSON</span>
+        <textarea class="textarea" id="settings-channel-targets-json" rows="4" placeholder='[{"id":"owner","label":"Owner","channel_type":"personal_chat"}]'></textarea>
+      </label>
+      <label class="settings-create-dirs">
+        <input id="settings-create-dirs" type="checkbox" checked />
+        <span>Create missing local directories when possible</span>
+      </label>
+      <div class="action-row top-gap">
+        <button class="primary-btn" id="settings-save-config" type="button">Save Configuration</button>
+        <span class="muted compact-copy">Saving updates local server config and refreshes diagnostics. Restart is not required for this local JSON override.</span>
+      </div>
+      ${renderSettingsConfigApplyResult()}
+    </section>`;
+}
+
+function renderSettingsConfigApplyResult() {
+  const result = state.configApplyResult;
+  if (!result) return "";
+  return `
+    <div class="settings-apply-result">
+      <div class="agent-meta">
+        ${pill(result.status || "saved")}
+        <span class="chip">restart_required=${escapeHtml(String(result.restart_required === true))}</span>
+        <span class="chip">secret_echo=false</span>
+      </div>
+      <p>${escapeHtml(result.path || result.secret_policy || "Configuration saved.")}</p>
+    </div>`;
+}
+
+async function saveSettingsConfig() {
+  const values = {
+    model_base_url: document.getElementById("settings-model-base-url")?.value || "",
+    model_api_key: document.getElementById("settings-model-api-key")?.value || "",
+    model_name: document.getElementById("settings-model-name")?.value || "",
+    document_output_dir: document.getElementById("settings-document-output-dir")?.value || "",
+    memory_vault_dir: document.getElementById("settings-memory-vault-dir")?.value || "",
+    channel_targets_json: document.getElementById("settings-channel-targets-json")?.value || "",
+    avatar_assets_dir: document.getElementById("settings-avatar-assets-dir")?.value || "",
+    avatar_default_model: document.getElementById("settings-avatar-default-model")?.value || "",
+    codegraph_root: document.getElementById("settings-codegraph-root")?.value || "",
+    database_url: document.getElementById("settings-database-url")?.value || "",
+  };
+  const payload = {
+    create_dirs: document.getElementById("settings-create-dirs")?.checked !== false,
+    values: Object.fromEntries(Object.entries(values).filter(([, value]) => String(value || "").trim() !== "")),
+  };
+  const result = await runAction("config-apply", () => api.post("/config/apply", payload), async () => {});
+  state.configApplyResult = result?.config_apply || null;
+  state.configStatus = result?.config_status ? { config_status: result.config_status } : state.configStatus;
+  await refreshScreenData();
 }
 
 function renderSettingsConfigCenter() {

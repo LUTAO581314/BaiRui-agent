@@ -21,7 +21,8 @@ from src.hermes.channels import (
 )
 from src.hermes.codegraph import codegraph_impact, codegraph_overview, codegraph_status, query_codegraph, register_codegraph_repo, scan_codegraph_repo
 from src.hermes.cli import build_parser, run
-from src.hermes.config import load_settings
+from src.hermes.config import load_settings, local_config_path
+from src.hermes.config_apply import apply_local_config
 from src.hermes.config_status import build_config_status
 from src.hermes.db import SCHEMA_SQL, database_status
 from src.hermes.demo import seed_demo_data
@@ -800,6 +801,97 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertNotIn("http-secret-key", raw)
         self.assertIn("api_key", raw)
 
+    def test_apply_local_config_saves_without_echoing_secret_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "",
+                "BAIRUI_MODEL_API_KEY": "",
+                "BAIRUI_MODEL_NAME": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                result = apply_local_config(
+                    settings,
+                    {
+                        "values": {
+                            "model_base_url": "https://models.example.test/v1",
+                            "model_api_key": "local-secret-key",
+                            "model_name": "bairui-demo-model",
+                            "document_output_dir": str(root / "documents"),
+                            "channel_targets_json": '[{"id":"owner","label":"Owner","channel_type":"personal_chat"}]',
+                            "avatar_assets_dir": str(root / "avatars"),
+                            "codegraph_root": str(root / "codegraph"),
+                        }
+                    },
+                )
+                raw = json.dumps(result, ensure_ascii=False)
+                saved = json.loads(local_config_path(settings.data_dir).read_text(encoding="utf-8"))
+                documents_exists = (root / "documents").exists()
+                avatars_exists = (root / "avatars").exists()
+                codegraph_exists = (root / "codegraph").exists()
+
+        self.assertEqual(result["status"], "saved")
+        self.assertEqual(result["applied"]["model_api_key"], "configured")
+        self.assertNotIn("local-secret-key", raw)
+        self.assertEqual(saved["values"]["BAIRUI_MODEL_API_KEY"], "local-secret-key")
+        self.assertTrue(documents_exists)
+        self.assertTrue(avatars_exists)
+        self.assertTrue(codegraph_exists)
+
+    def test_config_apply_http_endpoint_is_secret_safe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "",
+                "BAIRUI_MODEL_API_KEY": "",
+                "BAIRUI_MODEL_NAME": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, _, body = _http_post(
+                        server.server_port,
+                        "/config/apply",
+                        {
+                            "values": {
+                                "model_base_url": "https://models.example.test/v1",
+                                "model_api_key": "http-local-secret",
+                                "model_name": "bairui-demo-model",
+                            }
+                        },
+                    )
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        payload = json.loads(body.decode("utf-8"))
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["service"], "bairui")
+        self.assertEqual(payload["config_apply"]["status"], "saved")
+        self.assertEqual(payload["config_apply"]["applied"]["model_api_key"], "configured")
+        self.assertNotIn("http-local-secret", raw)
+        self.assertEqual(payload["config_status"]["items"][0]["fields"]["api_key"], "configured")
+
+    def test_apply_local_config_rejects_invalid_channel_targets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"HERMES_DATA_DIR": str(Path(tmp) / "data"), "HERMES_LOG_DIR": str(Path(tmp) / "logs"), "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault")}
+            with patch.dict(os.environ, env, clear=False):
+                result = apply_local_config(load_settings(), {"values": {"channel_targets_json": '{"id":"owner"}'}})
+
+        self.assertEqual(result["status"], "invalid_request")
+        self.assertIn("channel_targets_json must be a JSON array", result["errors"][0]["message"])
+
     def test_cli_config_status_prints_safe_diagnostics(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1024,6 +1116,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         settings_screen = next(screen for screen in contract["screens"] if screen["id"] == "runtime_settings")
         self.assertIn("/config/status", status_paths)
         self.assertIn("/config/status", settings_screen["read"])
+        self.assertIn({"id": "apply_local_config", "method": "POST", "path": "/config/apply", "schema": "config_apply"}, settings_screen["actions"])
         self.assertIn("function renderSettingsGateGrid", app_js)
         self.assertIn("function renderSettingsReadinessList", app_js)
         self.assertIn("function renderSettingsRuntimeMatrix", app_js)
@@ -1031,11 +1124,16 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("function renderSettingsConfigCenter", app_js)
         self.assertIn("function renderSettingsConfigFields", app_js)
         self.assertIn("function renderSettingsConfigChecklist", app_js)
+        self.assertIn("function renderSettingsConfigForm", app_js)
+        self.assertIn("async function saveSettingsConfig", app_js)
         self.assertIn("async function copyText", app_js)
         self.assertIn("function renderSettingsNextActions", app_js)
         self.assertIn("function customerSafeRuntimeText", app_js)
         self.assertIn("Settings is the operator view for /health, /ready, /runtime/readiness", app_js)
-        self.assertIn("Read-only configuration diagnostics for model API, data paths, document output, channel targets, Avatar assets, CodeGraph, database, and license. Secrets never echo.", app_js)
+        self.assertIn("Self-service configuration for model API, data paths, channel targets, Avatar assets, CodeGraph, and database. Secret fields can be saved but never echo.", app_js)
+        self.assertIn('api.post("/config/apply"', app_js)
+        self.assertIn('id="settings-model-api-key"', app_js)
+        self.assertIn("secret_echo=false", app_js)
         self.assertIn("no external send, no automatic long-term memory write, no dangerous operation without review", app_js)
         self.assertIn("license status only; secrets never echo", app_js)
         self.assertIn("will_send=false", app_js)
@@ -1052,6 +1150,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn('renderProductError("settings-refresh")', app_js)
         self.assertIn(".settings-gate-grid", styles)
         self.assertIn(".settings-config-center", styles)
+        self.assertIn(".settings-config-form", styles)
+        self.assertIn(".settings-apply-result", styles)
         self.assertIn(".settings-config-fields", styles)
         self.assertIn(".settings-secret-policy", styles)
         self.assertIn(".settings-checklist-grid", styles)

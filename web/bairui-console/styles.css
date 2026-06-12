@@ -2382,6 +2382,38 @@ h1 {
   margin-top: 12px;
 }
 
+.settings-config-form {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: var(--radius-sm);
+  background: rgba(53, 230, 199, 0.028);
+  padding: 12px;
+}
+
+.settings-config-form .field,
+.settings-config-form .textarea {
+  background: rgba(7, 10, 15, 0.42);
+}
+
+.settings-create-dirs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.settings-apply-result {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--success) 30%, var(--line));
+  border-radius: var(--radius-sm);
+  background: rgba(94, 240, 164, 0.04);
+}
+
 .settings-config-card {
   min-width: 0;
   border: 1px solid color-mix(in srgb, var(--accent-2) 28%, var(--line));

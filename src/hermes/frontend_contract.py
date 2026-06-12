@@ -263,7 +263,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     "/avatar/status",
                     "/codegraph/status",
                 ),
-                "actions": (),
+                "actions": ({"id": "apply_local_config", "method": "POST", "path": "/config/apply", "schema": "config_apply"},),
             },
             {
                 "id": "codegraph",

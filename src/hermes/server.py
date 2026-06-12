@@ -81,6 +81,7 @@ from .codegraph import (
     scan_codegraph_repo,
 )
 from .config import ensure_runtime_dirs, load_settings
+from .config_apply import apply_local_config
 from .config_status import build_config_status
 from .db import database_status, run_migrations
 from .demo import seed_demo_data
@@ -321,6 +322,13 @@ class HermesHandler(BaseHTTPRequestHandler):
         settings = load_settings()
         ensure_runtime_dirs(settings)
         payload = self._read_json()
+
+        if self.path == "/config/apply":
+            result = apply_local_config(settings, payload)
+            next_settings = load_settings()
+            status = 200 if result["status"] in {"saved", "no_changes"} else 400
+            self._send({"service": PUBLIC_SERVICE, "config_apply": result, "config_status": build_config_status(next_settings)}, status=status)
+            return
 
         if self.path == "/jobs":
             title = str(payload.get("title", "Untitled job"))
