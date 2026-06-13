@@ -403,7 +403,7 @@ def index_document_artifacts(
     status = "completed" if failed_count == 0 else "failed"
     if indexed_count > 0 and failed_count > 0:
         status = "partial"
-    detail = f"indexed {indexed_count} document artifacts into Sonic"
+    detail = f"indexed {indexed_count} document artifacts into the local index"
     if failed_count:
         detail += f"; {failed_count} failed"
     run = create_document_index_run(
@@ -556,7 +556,7 @@ def review_document_memory_candidate(
             text=str(candidate.get("text", "")),
             app_id=app_id,
             project_id=project_id,
-            sender_name="Hermes Document Memory Review",
+            sender_name="bairui Document Memory Review",
         ),
     )
     status = "approved" if everos_result.status == "completed" else "promotion_failed"
@@ -571,9 +571,9 @@ def review_document_memory_candidate(
         everos_endpoint=everos_result.endpoint,
         everos_error=everos_result.error,
     )
-    detail = "document memory candidate approved and sent to EverOS"
+    detail = "document memory candidate approved and sent to the memory runtime"
     if status == "promotion_failed":
-        detail = "document memory candidate approval could not be promoted to EverOS"
+        detail = "document memory candidate approval could not be promoted to the memory runtime"
     obsidian_note = write_obsidian_memory_review_note(
         settings.obsidian_vault_dir,
         settings.data_dir,
@@ -720,7 +720,7 @@ def create_document_source_refs(settings: Settings, ingest_id: str) -> DocumentS
                 settings.data_dir,
                 source_type="document_artifact",
                 source_ref=str(artifact.get("id", "")),
-                provider="mineru",
+                provider="document_parser",
                 title=str(artifact.get("relative_path") or artifact.get("path") or "Document artifact"),
                 url=str(artifact.get("path", "")),
                 confidence="high",
@@ -740,8 +740,8 @@ def create_document_source_refs(settings: Settings, ingest_id: str) -> DocumentS
                 settings.data_dir,
                 source_type="document_index_run",
                 source_ref=str(run.get("id", "")),
-                provider=str(run.get("provider", "sonic")),
-                title=f"Sonic index run for {ingest_id[:8]}",
+                provider="local_index",
+                title=f"Local index run for {ingest_id[:8]}",
                 confidence="medium" if run.get("status") not in {"completed", "skipped"} else "high",
                 metadata={
                     "ingest_id": ingest_id,
@@ -762,7 +762,7 @@ def create_document_source_refs(settings: Settings, ingest_id: str) -> DocumentS
                 settings.data_dir,
                 source_type="document_memory_candidate",
                 source_ref=str(candidate.get("id", "")),
-                provider="hermes",
+                provider="bairui",
                 title=f"Memory candidate from {candidate.get('source_path', 'document')}",
                 confidence="medium",
                 metadata={
@@ -1150,7 +1150,7 @@ _SESSION_STAGE_LABELS = (
     ("plan", "Ingest plan"),
     ("parse", "Document parser"),
     ("artifact_registration", "Artifact registration"),
-    ("sonic_index", "Sonic index"),
+    ("sonic_index", "Local index"),
     ("memory_candidates", "Memory candidates"),
     ("memory_reviews", "Memory review"),
     ("source_refs", "Source references"),
@@ -1233,7 +1233,7 @@ def _workbench_warnings(
 ) -> list[str]:
     warnings: list[str] = []
     if index_runs and index_runs[-1].get("status") not in {"completed", "skipped"}:
-        warnings.append(f"latest Sonic index run is {index_runs[-1].get('status')}")
+        warnings.append(f"latest local index run is {index_runs[-1].get('status')}")
     if candidates and len(reviews) < len(candidates):
         warnings.append(f"{len(candidates) - len(reviews)} memory candidates still need review")
     if candidates and not source_refs:
@@ -1254,7 +1254,7 @@ def _workbench_next_actions(
     if pipeline.get("artifact_registration") == "pending":
         return [{"command": "register-artifacts", "label": "Register parser artifacts"}]
     if pipeline.get("sonic_index") == "pending":
-        return [{"command": "index-artifacts", "label": "Index text artifacts into Sonic"}]
+        return [{"command": "index-artifacts", "label": "Index text artifacts into the local index"}]
     if pipeline.get("memory_candidates") == "pending":
         return [{"command": "memory-candidates", "label": "Generate memory candidates"}]
     pending_candidates = [candidate for candidate in candidates if str(candidate.get("id", "")) not in reviewed_ids]

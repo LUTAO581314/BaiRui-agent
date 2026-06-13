@@ -2479,9 +2479,13 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertTrue(note_exists)
         self.assertTrue(moc_exists)
         self.assertIn("[[Document Memory Candidates]]", note_text)
-        self.assertIn("[[Bairui]]", note_text)
-        self.assertIn("[[Hermes]]", note_text)
-        self.assertIn("[[EverOS]]", note_text)
+        self.assertIn("[[bairui]]", note_text)
+        self.assertIn("[[Long Term Memory]]", note_text)
+        self.assertIn("source: bairui", note_text)
+        self.assertIn("Memory runtime status:", note_text)
+        self.assertNotIn("[[Hermes]]", note_text)
+        self.assertNotIn("[[EverOS]]", note_text)
+        self.assertNotIn("hermes/review", note_text)
         self.assertIn("Bairui Hermes document memory candidates", note_text)
 
     def test_review_document_memory_candidate_approve_records_missing_everos_config(self):
@@ -2515,7 +2519,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(result.status, "promotion_failed")
         self.assertEqual(result.review.everos_status, "missing_config")
         self.assertIn("promotion_failed", note_text)
-        self.assertIn("[[EverOS]]", note_text)
+        self.assertIn("[[Long Term Memory]]", note_text)
+        self.assertNotIn("[[EverOS]]", note_text)
 
     def test_review_document_memory_candidate_approve_promotes_to_everos(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2678,7 +2683,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("document_memory_candidate", source_types)
         memory_ref = next(ref for ref in refs if ref["source_type"] == "document_memory_candidate")
         self.assertEqual(memory_ref["metadata"]["review_status"], "rejected")
-        self.assertEqual(memory_ref["provider"], "hermes")
+        self.assertEqual(memory_ref["provider"], "bairui")
 
     def test_create_document_ingest_report_writes_obsidian_graph_report(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2723,11 +2728,63 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertTrue(moc_exists)
         self.assertIn("[[Document Ingest Reports]]", report_text)
         self.assertIn("[[Document Memory Candidates]]", report_text)
-        self.assertIn("[[MinerU]]", report_text)
-        self.assertIn("[[Sonic]]", report_text)
-        self.assertIn("[[EverOS]]", report_text)
+        self.assertIn("[[bairui]]", report_text)
+        self.assertIn("[[Document Parser]]", report_text)
+        self.assertIn("[[Local Index]]", report_text)
+        self.assertIn("[[Long Term Memory]]", report_text)
+        self.assertIn("source: bairui", report_text)
+        self.assertNotIn("[[Hermes]]", report_text)
+        self.assertNotIn("[[MinerU]]", report_text)
+        self.assertNotIn("[[Sonic]]", report_text)
+        self.assertNotIn("[[EverOS]]", report_text)
         self.assertIn("Memory Candidates And Reviews", report_text)
         self.assertIn("Source References", report_text)
+
+    def test_generated_obsidian_templates_keep_public_bairui_brand(self):
+        forbidden = ("[[Hermes]]", "[[EverOS]]", "[[MinerU]]", "[[Sonic]]", "source: hermes", "hermes/")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            output_dir = root / "parser-output"
+            output_dir.mkdir()
+            (output_dir / "sample.md").write_text(
+                "Customer-authored source text may mention upstream names, but generated templates must stay under the bairui brand.",
+                encoding="utf-8",
+            )
+            ingest = create_document_ingest(
+                data_dir,
+                title="Public brand plan",
+                input_path="sample.pdf",
+                output_dir=str(output_dir),
+                parser_command=("python", "-c", "print('parser ok')"),
+            )
+            register_document_artifacts(data_dir, ingest.id)
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "SONIC_HOST": "",
+                "SONIC_PASSWORD": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                index_document_artifacts(load_settings(), ingest.id)
+                candidate = generate_document_memory_candidates(data_dir, ingest.id).candidates[0]
+                review = review_document_memory_candidate(load_settings(), candidate.id, decision="reject")
+                create_document_source_refs(load_settings(), ingest.id)
+                report = create_document_ingest_report(load_settings(), ingest.id)
+            note_text = Path(review.obsidian_note["path"]).read_text(encoding="utf-8")
+            report_text = Path(report.report.path).read_text(encoding="utf-8")
+            candidate_moc = root / "vault" / "00-Inbox" / "everos-candidates" / "Document Memory Candidates.md"
+            report_moc = root / "vault" / "05_Reports" / "document-ingests" / "Document Ingest Reports.md"
+            moc_text = candidate_moc.read_text(encoding="utf-8") + "\n" + report_moc.read_text(encoding="utf-8")
+        generated_text = note_text + "\n" + report_text + "\n" + moc_text
+        self.assertIn("[[bairui]]", generated_text)
+        self.assertIn("[[Long Term Memory]]", generated_text)
+        self.assertIn("[[Document Parser]]", generated_text)
+        self.assertIn("[[Local Index]]", generated_text)
+        self.assertIn("source: bairui", generated_text)
+        for brand in forbidden:
+            self.assertNotIn(brand, generated_text)
 
     def test_document_workbench_state_summarizes_ingest_pipeline(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2771,7 +2828,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(state.counts["memory_reviews"], 1)
         self.assertEqual(state.next_actions[0]["command"], "done")
         self.assertFalse(state.blockers)
-        self.assertTrue(any("Sonic index" in warning for warning in state.warnings))
+        self.assertTrue(any("local index" in warning for warning in state.warnings))
 
     def test_document_ingest_session_summary_is_frontend_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
