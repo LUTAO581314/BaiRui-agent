@@ -3157,11 +3157,12 @@ function renderIntel() {
 
 function renderChannels() {
   setScreenHead("Channels", "approval-controlled outbound plans");
-  el.actions.innerHTML = `<button class="ghost-btn" id="refresh-channels" type="button">Refresh</button>`;
+  el.actions.innerHTML = `<button class="ghost-btn" id="refresh-channels" type="button">Refresh</button><button class="ghost-btn" id="export-channel-approval" type="button" ${state.selectedEntity?.type !== "channel" ? "disabled" : ""}>Export Approval</button>`;
   const firstTarget = state.channelTargets[0]?.id || "";
   const pendingApprovals = state.channelApprovals.filter((item) => (item.review_status || "pending_review") === "pending_review");
   const reviewedApprovals = state.channelApprovals.length - pendingApprovals.length;
   el.body.innerHTML = `
+    ${renderChannelApprovalCommandCenter(pendingApprovals, reviewedApprovals)}
     <section class="panel pad channel-safety-overview">
       <div class="conversation-head">
         <div>
@@ -3219,6 +3220,7 @@ function renderChannels() {
     ${state.selectedEntity?.type === "channel" ? renderSelectedEntityPanel() : ""}`;
   bindEntityActions();
   document.getElementById("refresh-channels")?.addEventListener("click", refreshScreenData);
+  document.getElementById("export-channel-approval")?.addEventListener("click", exportSelectedChannelApproval);
   document.getElementById("plan-channel")?.addEventListener("click", async () => {
     const result = await runAction("channel", () =>
       api.post("/channels/send", {
@@ -3263,6 +3265,43 @@ function renderChannels() {
       render();
     });
   });
+  el.body.querySelectorAll("[data-channel-export]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openChannelApprovalEntity(button.dataset.channelExport);
+      persistUiState();
+      exportSelectedChannelApproval();
+      render();
+    });
+  });
+}
+
+function renderChannelApprovalCommandCenter(pendingApprovals, reviewedApprovals) {
+  const selected = state.selectedEntity?.type === "channel" ? state.selectedEntity.raw || {} : null;
+  const selectedReview = selected ? channelReviewForApproval(selected.id) : null;
+  return `
+    <section class="panel pad channel-command-center">
+      <div class="conversation-head">
+        <div>
+          <p class="eyebrow">Approval command center</p>
+          <h2 class="panel-title">${escapeHtml(selected?.message_preview || selected?.media_kind || "Channel approval queue")}</h2>
+          <p class="muted compact-copy">Plan outbound drafts, record owner decisions, export evidence, and keep dispatch disabled in this product stage.</p>
+        </div>
+        ${pill(pendingApprovals.length ? "needs_review" : "ready", pendingApprovals.length ? `${pendingApprovals.length} pending` : "queue clear")}
+      </div>
+      ${renderCountStrip({
+        targets: state.channelTargets.length,
+        diagnostics: state.channelDiagnostics.length,
+        pending_review: pendingApprovals.length,
+        reviewed: reviewedApprovals,
+        selected_review: selectedReview ? 1 : 0,
+      })}
+      <div class="channel-command-grid">
+        <div><span>Selected approval</span><strong>${escapeHtml(shortId(selected?.id || ""))}</strong><p>${escapeHtml(selected?.reason || selected?.message_preview || "Open a draft to inspect and export approval evidence.")}</p></div>
+        <div><span>Next action</span><strong>${escapeHtml(pendingApprovals.length ? "approve-or-reject" : "plan-draft")}</strong><p>Owner decisions are recorded as review evidence; reviewed drafts cannot be reviewed again.</p></div>
+        <div><span>Dispatch gate</span><strong>will_send=false</strong><p>No planning or review action sends a message to external channels.</p></div>
+        <div><span>Export scope</span><strong>draft + review</strong><p>Approval exports omit secrets and include audit-safe no-send evidence.</p></div>
+      </div>
+    </section>`;
 }
 
 function renderChannelSafetyMatrix() {
@@ -3310,6 +3349,29 @@ function openChannelApprovalEntity(requestId) {
   state.selectedEntity = { type: "channel", title: approval.media_kind, status: approval.review_status || approval.status, ref: approval.id, raw: { ...approval, will_send: false } };
 }
 
+function channelReviewForApproval(requestId) {
+  if (!requestId) return null;
+  return state.channelApprovalReviews.find((item) => String(item.request_id || "") === String(requestId)) || null;
+}
+
+function exportSelectedChannelApproval() {
+  const entity = state.selectedEntity?.type === "channel" ? state.selectedEntity : null;
+  if (!entity) return;
+  const approval = entity.raw || {};
+  exportConsoleData("channel-approval", {
+    approval,
+    review: channelReviewForApproval(approval.id),
+    diagnostics: state.channelDiagnostics.filter((item) => !approval.target_id || String(item.id || "") === String(approval.target_id)),
+    handoff: {
+      includes_secrets: false,
+      external_send_performed: false,
+      will_send: false,
+      requires_owner_review: true,
+      evidence_basis: "approval draft, review record, target diagnostics, and no-send safety state",
+    },
+  });
+}
+
 function renderChannelApproval(item) {
   const reviewed = item.review_status === "reviewed";
   return `
@@ -3323,6 +3385,7 @@ function renderChannelApproval(item) {
       </div>
       <div class="action-row">
         <button class="ghost-btn" type="button" data-channel-open="${escapeHtml(item.id)}">View Draft</button>
+        <button class="ghost-btn" type="button" data-channel-export="${escapeHtml(item.id)}">Export Approval</button>
         <button class="ghost-btn" type="button" data-channel-review="approve" data-request="${escapeHtml(item.id)}" ${reviewed ? "disabled" : ""}>Approve Record</button>
         <button class="ghost-btn" type="button" data-channel-review="reject" data-request="${escapeHtml(item.id)}" ${reviewed ? "disabled" : ""}>Reject</button>
       </div>
