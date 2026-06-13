@@ -1,3 +1,5 @@
+import * as THREE from "/console/vendor/three.module.js";
+
 const api = {
   async get(path) {
     const response = await fetch(path, { cache: "no-store", headers: ownerAuthHeaders() });
@@ -141,6 +143,8 @@ const state = {
   errors: {},
   errorDetails: {},
 };
+
+let activationThreeCore = null;
 
 const UI_STATE_KEY = "bairui.console.ui.v1";
 const validScreenIds = new Set(screens.map(([id]) => id));
@@ -536,6 +540,7 @@ function setScreenHead(title, kicker = "bairui") {
 }
 
 function renderActivation() {
+  disposeActivationThreeCore();
   setScreenHead("Activation", "startup sequence");
   const flow = state.contract?.activation_flow || [];
   const selected = flow.find((step) => step.id === state.selectedStep) || flow[0];
@@ -603,6 +608,7 @@ function renderActivation() {
   });
   document.getElementById("activation-run-action")?.addEventListener("click", () => runActivationStepAction(selected));
   bindActivationCoreInteractions();
+  initActivationThreeCore(flow, selected);
 }
 
 function renderActivationCoreStage(flow, selected) {
@@ -624,6 +630,16 @@ function renderActivationCoreStage(flow, selected) {
         ${pill(selectedState)}
       </div>
       <div class="activation-core-viewport" data-core-viewport style="--core-base-x: ${camera.x}; --core-base-y: ${camera.y}; --core-focus-z: ${camera.z};">
+        <canvas
+          class="activation-three-canvas"
+          data-activation-three
+          data-selected-step="${escapeHtml(selectedId)}"
+          aria-label="bairui activation 3D readiness core"
+        ></canvas>
+        <div class="activation-three-overlay" aria-hidden="true">
+          <span>${escapeHtml(selectedState)}</span>
+          <strong>${escapeHtml(selected?.title || "Activation")}</strong>
+        </div>
         <div class="activation-core-shell is-${escapeHtml(activationCoreStateClass(selectedState))}" data-core-shell>
           <div class="activation-core-ring ring-outer" aria-hidden="true"></div>
           <div class="activation-core-ring ring-inner" aria-hidden="true"></div>
@@ -644,18 +660,216 @@ function renderActivationCoreStage(flow, selected) {
     </section>`;
 }
 
+function initActivationThreeCore(flow, selected) {
+  const canvas = el.body.querySelector("[data-activation-three]");
+  if (!canvas) return;
+  const steps = flow.length ? flow : [{ id: "loading", title: "Contract" }];
+  const selectedId = selected?.id || steps[0]?.id || "loading";
+  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    alpha: true,
+    antialias: true,
+    powerPreference: "high-performance",
+    preserveDrawingBuffer: true,
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.setClearColor(0x07101a, 0.22);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+  camera.position.set(0, 0.35, 8.2);
+  scene.add(new THREE.AmbientLight(0x9fdcff, 0.72));
+
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+  keyLight.position.set(4, 5, 6);
+  scene.add(keyLight);
+  const rimLight = new THREE.PointLight(0x35e6c7, 3.6, 20);
+  rimLight.position.set(-3.4, 1.5, 3.4);
+  scene.add(rimLight);
+
+  const root = new THREE.Group();
+  scene.add(root);
+
+  const coreMaterial = new THREE.MeshStandardMaterial({
+    color: 0x0d1720,
+    emissive: 0x123c42,
+    emissiveIntensity: 0.55,
+    metalness: 0.78,
+    roughness: 0.32,
+    transparent: true,
+    opacity: 0.94,
+  });
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.08, 4), coreMaterial);
+  root.add(core);
+
+  const innerGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(0.72, 48, 24),
+    new THREE.MeshBasicMaterial({ color: 0x35e6c7, transparent: true, opacity: 0.08 }),
+  );
+  root.add(innerGlow);
+
+  const orbitGroup = new THREE.Group();
+  root.add(orbitGroup);
+  const ringSpecs = [
+    [2.55, 0x35e6c7, Math.PI / 2.4, 0.3],
+    [3.12, 0x67a8ff, Math.PI / 2, -0.54],
+    [3.72, 0xf6c85f, Math.PI / 2.15, 0.95],
+  ];
+  const rings = ringSpecs.map(([radius, color, x, z]) => {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(radius, 0.012, 8, 160),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.34 }),
+    );
+    ring.rotation.x = x;
+    ring.rotation.z = z;
+    orbitGroup.add(ring);
+    return ring;
+  });
+
+  const nodes = steps.map((step, index) => {
+    const status = step?.id === "loading" ? "partial" : inferStepState(step);
+    const statusColor = activationThreeColor(status);
+    const isActive = step.id === selectedId;
+    const angle = (Math.PI * 2 * index) / Math.max(steps.length, 1) - Math.PI / 2;
+    const radius = 3.05 + (index % 3) * 0.23;
+    const y = Math.sin(index * 1.7) * 0.56;
+    const material = new THREE.MeshStandardMaterial({
+      color: statusColor,
+      emissive: statusColor,
+      emissiveIntensity: isActive ? 2.4 : 1.15,
+      metalness: 0.22,
+      roughness: 0.28,
+    });
+    const node = new THREE.Mesh(new THREE.SphereGeometry(isActive ? 0.15 : 0.105, 32, 16), material);
+    node.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius * 0.64);
+    node.userData = { id: step.id, angle, radius, y, active: isActive, baseScale: isActive ? 1.24 : 1 };
+    orbitGroup.add(node);
+
+    const halo = new THREE.Mesh(
+      new THREE.SphereGeometry(isActive ? 0.34 : 0.24, 32, 16),
+      new THREE.MeshBasicMaterial({ color: statusColor, transparent: true, opacity: isActive ? 0.18 : 0.09 }),
+    );
+    halo.position.copy(node.position);
+    halo.userData = { follows: node };
+    orbitGroup.add(halo);
+    return { node, halo, status, id: step.id };
+  });
+
+  const pointer = { x: 0, y: 0 };
+  const target = { x: 0, y: 0 };
+  let frame = 0;
+  let width = 0;
+  let height = 0;
+
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    width = Math.max(1, Math.floor(rect.width));
+    height = Math.max(1, Math.floor(rect.height));
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.position.z = width < 440 ? 9.4 : 8.2;
+    camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+  }
+
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(canvas);
+  resize();
+
+  function onPointerMove(event) {
+    const rect = canvas.getBoundingClientRect();
+    target.x = ((event.clientX - rect.left) / Math.max(rect.width, 1) - 0.5) * 0.48;
+    target.y = ((event.clientY - rect.top) / Math.max(rect.height, 1) - 0.5) * 0.32;
+  }
+
+  function onPointerLeave() {
+    target.x = 0;
+    target.y = 0;
+  }
+
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerleave", onPointerLeave);
+
+  function animate(time = 0) {
+    pointer.x += (target.x - pointer.x) * 0.08;
+    pointer.y += (target.y - pointer.y) * 0.08;
+    root.rotation.y = pointer.x + time * 0.00013;
+    root.rotation.x = -0.15 + pointer.y;
+    core.rotation.y += 0.004;
+    core.rotation.x += 0.0015;
+    innerGlow.scale.setScalar(1 + Math.sin(time * 0.002) * 0.04);
+    rings.forEach((ring, index) => {
+      ring.rotation.z += index % 2 ? -0.0018 : 0.0022;
+    });
+    nodes.forEach(({ node, halo }, index) => {
+      const pulse = 1 + Math.sin(time * 0.003 + index) * (node.userData.active ? 0.13 : 0.06);
+      node.scale.setScalar(node.userData.baseScale * pulse);
+      halo.position.copy(node.position);
+      halo.scale.setScalar(1 + Math.sin(time * 0.0025 + index) * 0.1);
+    });
+    renderer.render(scene, camera);
+    if (!reduceMotion) frame = requestAnimationFrame(animate);
+  }
+
+  renderer.render(scene, camera);
+  if (!reduceMotion) frame = requestAnimationFrame(animate);
+
+  activationThreeCore = {
+    canvas,
+    renderer,
+    scene,
+    resizeObserver,
+    frame,
+    dispose() {
+      if (frame) cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerleave", onPointerLeave);
+      scene.traverse((object) => {
+        if (object.geometry) object.geometry.dispose();
+        if (object.material) {
+          const materials = Array.isArray(object.material) ? object.material : [object.material];
+          materials.forEach((material) => material.dispose());
+        }
+      });
+      renderer.dispose();
+    },
+  };
+}
+
+function disposeActivationThreeCore() {
+  if (!activationThreeCore) return;
+  activationThreeCore.dispose();
+  activationThreeCore = null;
+}
+
+function activationThreeColor(status) {
+  const stateClass = activationCoreStateClass(status);
+  if (stateClass === "ready") return 0x5ef0a4;
+  if (stateClass === "blocked") return 0xff5c7a;
+  if (stateClass === "review") return 0xf6c85f;
+  if (stateClass === "checking") return 0x67a8ff;
+  return 0x35e6c7;
+}
+
 function renderActivationCoreLayer(step, index, total, selectedId) {
   const status = step?.id === "loading" ? "partial" : inferStepState(step);
   const className = activationCoreStateClass(status);
   const angle = total ? Math.round((360 / total) * index - 90) : -90;
   const depth = index % 2 ? 42 : 70;
   const isActive = step.id === selectedId;
-  const label = step.title || step.id || "Activation";
+  const profile = activationCoreRuntimeProfile(step.id || "");
+  const label = profile?.display_name || step.title || step.id || "Activation";
+  const context = profile ? step.title || profile.name || "" : status;
+  const detail = profile?.display_detail || step.complete_when || status;
   return `
     <button
       class="activation-core-layer is-${escapeHtml(className)} ${isActive ? "active" : ""}"
       type="button"
       data-core-step="${escapeHtml(step.id || "")}"
+      data-runtime="${escapeHtml(profile?.name || "")}"
       style="--layer-angle: ${angle}deg; --layer-depth: ${depth}px;"
       aria-label="${escapeHtml(`Select ${label}`)}"
       ${step.id === "loading" ? "disabled" : ""}
@@ -663,9 +877,24 @@ function renderActivationCoreLayer(step, index, total, selectedId) {
       <span class="activation-core-node" aria-hidden="true"></span>
       <span class="activation-core-layer-copy">
         <strong>${escapeHtml(label)}</strong>
-        <small>${escapeHtml(status)}</small>
+        <small>${escapeHtml(context)} · ${escapeHtml(status)}</small>
+        <em>${escapeHtml(customerSafeRuntimeText(detail))}</em>
       </span>
     </button>`;
+}
+
+function activationCoreRuntimeProfile(stepId) {
+  const map = {
+    runtime_health: "everos_memory",
+    document_runtime: "mineru_document_parse",
+    memory_review: "everos_memory",
+    channels: "bairui_agents",
+    avatar: "bairui_avatar_runtime",
+    codegraph: "bairui_codegraph",
+  };
+  const runtimeName = map[stepId];
+  if (!runtimeName) return null;
+  return (state.readiness?.runtime_readiness?.items || []).find((item) => item.name === runtimeName) || null;
 }
 
 function activationCoreStateClass(status) {
@@ -4779,6 +5008,7 @@ function renderObjectCardInner(item, keys) {
 }
 
 function render() {
+  if (state.screen !== "activation") disposeActivationThreeCore();
   renderRail();
   renderTopbar();
   renderDrawer();
