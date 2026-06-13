@@ -54,7 +54,7 @@ def build_diagnostic_bundle(settings: Settings, *, audit_limit: int = 100) -> di
         memory_candidates=memory_candidates,
         memory_reviews=memory_reviews,
     )
-    return {
+    bundle = {
         "service": "bairui",
         "bundle_type": "diagnostic",
         "schema_version": 1,
@@ -64,8 +64,8 @@ def build_diagnostic_bundle(settings: Settings, *, audit_limit: int = 100) -> di
         "long_term_memory_auto_write": False,
         "health": {
             "status": "ok",
-            "product": settings.product_name,
-            "brand": {"key": settings.brand_key, "trademark": settings.trademark_name, "logo_text": settings.logo_text},
+            "product": "bairui",
+            "brand": {"key": "bairui", "trademark": "bairui", "logo_text": "bairui"},
             "env": settings.env,
             "version": __version__,
         },
@@ -90,6 +90,7 @@ def build_diagnostic_bundle(settings: Settings, *, audit_limit: int = 100) -> di
         "file_inventory": _file_inventory(settings),
         "support_next_steps": _support_next_steps(config_status, readiness, counts),
     }
+    return _public_brand_safe(bundle)
 
 
 def _counts(**groups: list[Any]) -> dict[str, int]:
@@ -201,3 +202,40 @@ def _redact(value: Any) -> Any:
 def _is_secret_key(key: str) -> bool:
     lowered = key.lower()
     return any(marker in lowered for marker in ("secret", "token", "api_key", "password", "database_url", "authorization"))
+
+
+def _public_brand_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _public_brand_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_public_brand_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_public_brand_safe(item) for item in value)
+    if isinstance(value, str):
+        return _public_brand_text(value)
+    return value
+
+
+def _public_brand_text(value: str) -> str:
+    replacements = (
+        ("EverOS", "memory runtime"),
+        ("FunASR", "voice ASR"),
+        ("MinerU", "document parser"),
+        ("TrendRadar", "intelligence radar"),
+        ("MiroFish", "simulation lab"),
+        ("SearXNG", "web search"),
+        ("Sonic", "local index"),
+        ("Obsidian", "memory vault"),
+        ("Hermes", "bairui"),
+        ("MOXI", "bairui"),
+        ("Moxi", "bairui"),
+        ("moxi", "bairui"),
+        ("BaiLongma", "bairui"),
+        ("Xiaobailong", "bairui"),
+        ("白龙马", "bairui"),
+        ("小白龙", "bairui"),
+    )
+    safe = value
+    for old, new in replacements:
+        safe = safe.replace(old, new)
+    return safe

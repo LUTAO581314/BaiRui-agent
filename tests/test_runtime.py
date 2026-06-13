@@ -47,6 +47,7 @@ from src.hermes.platform import HEARTBEAT_PROTOCOL_VERSION, build_platform_heart
 from src.hermes.runtime_readiness import collect_runtime_readiness
 from src.hermes.server import HermesHandler, PUBLIC_SERVICE
 from src.hermes.storage import (
+    create_audit_event,
     create_document_ingest,
     create_job,
     list_audit_events,
@@ -1222,16 +1223,26 @@ class RuntimeFoundationTests(unittest.TestCase):
                 "BAIRUI_OWNER_TOKEN": "diagnostic-owner-secret",
                 "HERMES_DATABASE_URL": "postgresql://bairui:diagnostic-db-secret@example.test/bairui",
                 "BAIRUI_LICENSE_SECRET": "diagnostic-license-secret",
+                "MOXI_PRODUCT_NAME": "MOXI Industrial Agent OS",
             }
             with patch.dict(os.environ, env, clear=False):
                 settings = load_settings()
                 create_job(settings.data_dir, title="Diagnostics job", prompt="collect evidence", route="ops")
+                create_audit_event(
+                    settings.data_dir,
+                    "diagnostic.public_brand_probe",
+                    resource_type="diagnostic",
+                    resource_ref="brand",
+                    payload={"message": "Hermes EverOS MinerU Sonic TrendRadar MiroFish MOXI BaiLongma 白龙马 小白龙"},
+                )
                 record_error_log(settings, method="POST", path="/test/error", status=503, payload={"service": "bairui", "error": "test_error", "message": "safe diagnostic failure"})
                 bundle = build_diagnostic_bundle(settings)
 
         raw = json.dumps(bundle, ensure_ascii=False)
         self.assertEqual(bundle["service"], "bairui")
         self.assertEqual(bundle["bundle_type"], "diagnostic")
+        self.assertEqual(bundle["health"]["product"], "bairui")
+        self.assertEqual(bundle["health"]["brand"]["key"], "bairui")
         self.assertEqual(bundle["external_send_performed"], False)
         self.assertEqual(bundle["long_term_memory_auto_write"], False)
         self.assertGreaterEqual(bundle["counts"]["audit"], 1)
@@ -1245,6 +1256,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertNotIn("diagnostic-owner-secret", raw)
         self.assertNotIn("diagnostic-db-secret", raw)
         self.assertNotIn("diagnostic-license-secret", raw)
+        for brand in ("Hermes", "EverOS", "MinerU", "Sonic", "TrendRadar", "MiroFish", "MOXI", "BaiLongma", "白龙马", "小白龙"):
+            self.assertNotIn(brand, raw)
 
     def test_diagnostic_bundle_http_endpoint_and_cli_are_available(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1570,6 +1583,10 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("async function copyText", app_js)
         self.assertIn("function renderSettingsNextActions", app_js)
         self.assertIn("function customerSafeRuntimeText", app_js)
+        self.assertIn("function customerSafeExportPayload", app_js)
+        self.assertIn("function isSecretExportKey", app_js)
+        self.assertIn("payload: customerSafeExportPayload(payload)", app_js)
+        self.assertIn("public_brand_policy", app_js)
         self.assertIn("Settings is the operator view for /health, /ready, /runtime/readiness", app_js)
         self.assertIn("Self-service configuration for model API, scoped data paths, channel targets, Avatar assets, CodeGraph, and database. Secret fields can be saved but never echo.", app_js)
         self.assertIn('api.post("/config/apply"', app_js)

@@ -208,13 +208,32 @@ function exportConsoleData(kind, payload) {
     product: "bairui",
     export_kind: kind,
     exported_at: new Date().toISOString(),
+    public_brand_policy: "customer export contains only bairui public branding; upstream runtime names and secrets are redacted",
     safety: {
       secrets_included: false,
       external_send_performed: false,
       long_term_memory_auto_write: false,
     },
-    payload,
+    payload: customerSafeExportPayload(payload),
   });
+}
+
+function customerSafeExportPayload(value) {
+  if (Array.isArray(value)) return value.map(customerSafeExportPayload);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        isSecretExportKey(key) ? "redacted" : customerSafeExportPayload(item),
+      ]),
+    );
+  }
+  if (typeof value === "string") return customerSafeRuntimeText(value);
+  return value;
+}
+
+function isSecretExportKey(key) {
+  return /secret|token|api[_-]?key|password|database_url|authorization/i.test(String(key || ""));
 }
 
 function setBusy(key, active) {
