@@ -123,6 +123,7 @@ python -m src.hermes document parse session-summary --ingest-id <ingest_id>
 python -m src.hermes document parse workbench-next --ingest-id <ingest_id>
 python -m src.hermes document parse workbench-run-until-blocked --ingest-id <ingest_id>
 python -m src.hermes runtime-readiness
+python -m src.hermes admin-session
 python -m src.hermes diagnostics
 python -m src.hermes metrics
 python -m src.hermes errors
@@ -168,10 +169,11 @@ writes.
 Use `-FullAcceptance` when preparing a demo or release candidate. The default
 smoke command remains fast for CI and local sanity checks.
 
-The product acceptance script expands the same real backend flow into five
+The product acceptance script expands the same real backend flow into seven
 demo scenarios: research task, document knowledge base, customer draft
-approval, code understanding, and runtime diagnostics. It can also write a JSON
-report with `-OutputPath artifacts\product-acceptance.json`.
+approval, code understanding, runtime diagnostics, safe configuration
+diagnostics, and the local owner admin gate. It can also write a JSON report
+with `-OutputPath artifacts\product-acceptance.json`.
 
 Use `scripts/config-doctor.ps1` when you need an operator-safe configuration
 diagnostic from the CLI without opening the browser.

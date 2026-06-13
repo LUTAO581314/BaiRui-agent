@@ -39,6 +39,7 @@ directory and verifies these product scenarios:
 | Code understanding | CodeGraph registers, scans, queries, and reports that code structure is separate from long-term memory. |
 | Runtime diagnostics | Dashboard, Settings, and Events have audit evidence from the completed demo flow. |
 | Safe configuration diagnostics | `python -m src.hermes config-status` reports required paths and secret states without returning secret values. |
+| Local owner admin gate | `python -m src.hermes admin-session` proves owner-token mode is locked until the trial browser supplies the local owner token, without returning the token value. |
 
 Safety gates that must stay true:
 
@@ -47,8 +48,10 @@ Safety gates that must stay true:
 - channel plan and review both keep `will_send=false`
 - memory flow keeps `will_write_long_term_memory=false`
 - promotion idempotency is `event_id + target`
+- owner token values are never echoed in acceptance output
 
 Use this script before an internal demo. Use `scripts/smoke-test.ps1` for the
 faster CI-style repository health check, and add `-FullAcceptance` when the
-demo needs scenario-level proof. Use `scripts/config-doctor.ps1` when you need
-the same operator-safe configuration check without opening the browser.
+demo needs scenario-level proof. Use `scripts/config-doctor.ps1` and
+`python -m src.hermes admin-session` when you need the same operator-safe
+configuration and local owner gate checks without opening the browser.

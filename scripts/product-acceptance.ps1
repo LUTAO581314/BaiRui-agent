@@ -14,6 +14,7 @@ $previousEnv = @{
     BAIRUI_MODEL_BASE_URL = $env:BAIRUI_MODEL_BASE_URL
     BAIRUI_MODEL_API_KEY = $env:BAIRUI_MODEL_API_KEY
     BAIRUI_MODEL_NAME = $env:BAIRUI_MODEL_NAME
+    BAIRUI_OWNER_TOKEN = $env:BAIRUI_OWNER_TOKEN
 }
 
 function New-ScenarioResult {
@@ -45,6 +46,8 @@ try {
     $env:BAIRUI_MODEL_BASE_URL = "https://models.example.test/v1"
     $env:BAIRUI_MODEL_API_KEY = "dummy"
     $env:BAIRUI_MODEL_NAME = "bairui-acceptance-model"
+    $ownerGateProbe = "acceptance-" + "owner-" + "token"
+    $env:BAIRUI_OWNER_TOKEN = $ownerGateProbe
 
     $flowRaw = python -m src.hermes demo flow
     if ($LASTEXITCODE -ne 0) {
@@ -61,6 +64,12 @@ try {
     }
     $configPayload = $configRaw | ConvertFrom-Json
     $configStatus = $configPayload.config_status
+    $adminRaw = python -m src.hermes admin-session
+    if ($LASTEXITCODE -ne 0) {
+        throw "admin-session exited with code $LASTEXITCODE`: $adminRaw"
+    }
+    $adminPayload = $adminRaw | ConvertFrom-Json
+    $adminSession = $adminPayload.admin_session
 
     $researchPassed = $demo.checkpoints.command_session -eq $true -and $demo.checkpoints.report_created -eq $true -and @("planned", "duplicate") -contains $demo.promotions.report.status
     $knowledgePassed = $demo.checkpoints.memory_review_recorded -eq $true -and $demo.memory.will_write_long_term_memory -eq $false -and @("rejected", "already_reviewed") -contains $demo.memory.review.status
@@ -68,6 +77,7 @@ try {
     $codePassed = $demo.checkpoints.codegraph_query_ready -eq $true -and "$($demo.codegraph.memory_boundary)" -match "does not write long-term memory"
     $diagnosticsPassed = $demo.status -eq "completed" -and $demo.audit_marker.payload.will_send -eq $false -and $demo.audit_marker.payload.will_write_long_term_memory -eq $false
     $configurationPassed = @("ready", "partial") -contains $configStatus.status -and "$($configStatus.secret_policy)" -match "never returned"
+    $ownerGatePassed = $adminSession.status -eq "locked" -and $adminSession.authenticated -eq $false -and $adminSession.token_configured -eq $true -and "$($adminSession.secret_policy)" -match "never returned" -and "$adminRaw" -notmatch [regex]::Escape($ownerGateProbe)
 
     $scenarios = @(
         (New-ScenarioResult "research_task" "Command research task to report" $researchPassed "Command session, agent report promotion, and Reports output are present." "Open Command, promote a completed agent message to Report, then inspect Reports."),
@@ -75,7 +85,8 @@ try {
         (New-ScenarioResult "customer_draft" "Customer communication draft approval" $customerDraftPassed "Channel draft is planned and reviewed with will_send=false." "Open Channels and review drafts; current backend records review only."),
         (New-ScenarioResult "code_understanding" "CodeGraph source understanding" $codePassed "CodeGraph registers, scans, queries, and reports memory separation." "Open CodeGraph, register a repository, scan, query, and run impact analysis."),
         (New-ScenarioResult "runtime_diagnostics" "Dashboard Settings Events diagnostics" $diagnosticsPassed "Audit marker and safety gates are recorded for diagnostic screens." "Open Dashboard, Settings, and Events to inspect readiness and audit evidence."),
-        (New-ScenarioResult "configuration_status" "Safe configuration diagnostics" $configurationPassed "Config status runs from CLI and reports only safe secret states." "Run scripts\config-doctor.ps1 or open Settings before a demo.")
+        (New-ScenarioResult "configuration_status" "Safe configuration diagnostics" $configurationPassed "Config status runs from CLI and reports only safe secret states." "Run scripts\config-doctor.ps1 or open Settings before a demo."),
+        (New-ScenarioResult "owner_admin_gate" "Local owner admin gate" $ownerGatePassed "Admin session reports locked owner-gated mode without echoing the owner token." "Save the owner token in Settings for the trial browser, then refresh /admin/session.")
     )
 
     $safety = [pscustomobject]@{
@@ -83,6 +94,7 @@ try {
         no_auto_memory_write = $demo.checkpoints.no_auto_memory_write -eq $true -and $demo.memory.will_write_long_term_memory -eq $false
         promotion_idempotency = @("planned", "duplicate") -contains $demo.promotions.report.status
         promotion_idempotency_key = "event_id + target"
+        owner_token_not_echoed = "$adminRaw$configRaw" -notmatch [regex]::Escape($ownerGateProbe)
         old_public_brand_absent = $true
     }
 
@@ -106,6 +118,12 @@ try {
             status = $configStatus.status
             blocker_count = @($configStatus.blockers).Count
             secret_policy = $configStatus.secret_policy
+        }
+        owner_gate = [pscustomobject]@{
+            status = $adminSession.status
+            authenticated = $adminSession.authenticated
+            token_configured = $adminSession.token_configured
+            secret_policy = $adminSession.secret_policy
         }
         temp_root = $tmp
     }

@@ -129,6 +129,7 @@ CLI commands:
 ```powershell
 python -m src.hermes status
 python -m src.hermes runtime-readiness
+python -m src.hermes admin-session
 python -m src.hermes diagnostics
 python -m src.hermes metrics
 python -m src.hermes errors
@@ -156,6 +157,8 @@ owner tokens or secret values.
 
 - Meaning: write protection is enabled.
 - Fix: provide `X-Bairui-Owner-Token` or `Authorization: Bearer <token>`.
+- Verify: run `python -m src.hermes admin-session` from the server shell and
+  check the console Settings page for the local admin identity state.
 
 `confirmation_required`
 
@@ -239,6 +242,8 @@ Go only when all items are true:
   expose only the `bairui` brand.
 - `/metrics`, `/errors`, and `/diagnostics/bundle` return redacted support data.
 - Owner-token gating is enabled and tested for the trial environment.
+- `python -m src.hermes admin-session` reports owner-token status without
+  returning the token value.
 - Risky config fields require `APPLY BAIRUI CONFIG`.
 - Demo evidence shows `will_send=false` and no automatic long-term memory write.
 - Deployment writes `data/readiness.json`.
