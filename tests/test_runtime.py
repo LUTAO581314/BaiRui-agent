@@ -1667,6 +1667,32 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("python -m src.hermes config-status", doctor)
         self.assertIn("[switch]$AllowBlocked", doctor)
 
+    def test_commercial_trial_quickstart_covers_activation_observability_and_brand(self):
+        readme = Path("README.md").read_text(encoding="utf-8")
+        doc = Path("docs/27-commercial-trial-delivery-quickstart.md").read_text(encoding="utf-8")
+
+        self.assertIn("docs/27-commercial-trial-delivery-quickstart.md", readme)
+        self.assertIn("python -m src.hermes diagnostics", readme)
+        self.assertIn("python -m src.hermes metrics", readme)
+        self.assertIn("python -m src.hermes errors", readme)
+        self.assertIn("Customer-facing UI", doc)
+        self.assertIn("only `bairui`", doc)
+        self.assertIn("http://127.0.0.1:8787/console", doc)
+        self.assertIn("BAIRUI_OWNER_TOKEN", doc)
+        self.assertIn("APPLY BAIRUI CONFIG", doc)
+        self.assertIn("python -m src.hermes demo flow", doc)
+        self.assertIn("python -m src.hermes diagnostics", doc)
+        self.assertIn("python -m src.hermes metrics", doc)
+        self.assertIn("python -m src.hermes errors", doc)
+        self.assertIn("/diagnostics/bundle", doc)
+        self.assertIn("/metrics", doc)
+        self.assertIn("/errors", doc)
+        self.assertIn("will_send=false", doc)
+        self.assertIn("no automatic long-term memory write", doc)
+        self.assertIn("data/readiness.json", doc)
+        self.assertIn("PostgreSQL backup/restore", doc)
+        self.assertIn("third-party attribution inventory", doc)
+
     def test_avatar_engine_status_uses_advanced_runtime_contract(self):
         state = avatar_engine_status(load_settings())
         self.assertEqual(state.package, "pixi-live2d-display-advanced")

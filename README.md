@@ -89,6 +89,9 @@ Internal frontend source reference:
 - [bairui Frontend Design And Source UI Modification](docs/22-bairui-frontend-design-and-source-ui-modification.md)
 - [bairui Avatar Runtime Backend Integration](docs/23-bairui-avatar-runtime-backend-integration.md)
 - [bairui Frontend Screens And UI Design](docs/24-bairui-frontend-screens-and-ui-design.md)
+- [Product Demo Acceptance](docs/25-product-demo-acceptance.md)
+- [Activation 3D Interaction Prompt](docs/26-bairui-activation-3d-interaction-prompt.md)
+- [Commercial Trial Delivery Quickstart](docs/27-commercial-trial-delivery-quickstart.md)
 
 ## CLI Entry Point
 
@@ -119,6 +122,9 @@ python -m src.hermes document parse session-summary --ingest-id <ingest_id>
 python -m src.hermes document parse workbench-next --ingest-id <ingest_id>
 python -m src.hermes document parse workbench-run-until-blocked --ingest-id <ingest_id>
 python -m src.hermes runtime-readiness
+python -m src.hermes diagnostics
+python -m src.hermes metrics
+python -m src.hermes errors
 python -m src.hermes demo seed
 python -m src.hermes demo flow
 python -m src.hermes serve
