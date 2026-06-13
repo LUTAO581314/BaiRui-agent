@@ -324,9 +324,10 @@ class HermesHandler(BaseHTTPRequestHandler):
         ensure_runtime_dirs(settings)
         payload = self._read_json()
 
+        if not self._require_owner(settings, permission="write_api"):
+            return
+
         if self.path == "/config/apply":
-            if not self._require_owner(settings):
-                return
             result = apply_local_config(settings, payload)
             next_settings = load_settings()
             create_audit_event(
@@ -1040,7 +1041,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             return payload
         return {}
 
-    def _require_owner(self, settings: Any) -> bool:
+    def _require_owner(self, settings: Any, *, permission: str = "owner") -> bool:
         expected = str(getattr(settings, "owner_token", "") or "").strip()
         if not expected:
             return True
@@ -1050,11 +1051,22 @@ class HermesHandler(BaseHTTPRequestHandler):
             provided = authorization[7:].strip()
         if hmac.compare_digest(provided, expected):
             return True
+        create_audit_event(
+            settings.data_dir,
+            "auth.owner_token_denied",
+            actor_type="anonymous",
+            actor_ref=self.client_address[0] if self.client_address else "unknown",
+            resource_type="api",
+            resource_ref=self.path,
+            risk_level="high",
+            payload={"permission": permission, "method": self.command, "path": self.path, "secret_echo": False},
+        )
         self._send(
             {
                 "service": PUBLIC_SERVICE,
                 "error": "owner_token_required",
-                "message": "Owner token required for admin configuration changes.",
+                "message": "Owner token required for write API access.",
+                "permission": permission,
                 "secret_policy": "owner token is accepted by header only and is never returned",
             },
             status=401,

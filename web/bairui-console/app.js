@@ -396,6 +396,14 @@ function productErrorGuide(error, key = "") {
     guide.reason = "The action did not have all required fields.";
     guide.next = "Fill the highlighted path, id, message, decision, or prompt field, then run the action again.";
   }
+  if (status === 401 && code === "owner_token_required") {
+    guide.title = "Owner token required";
+    guide.reason = "The server is in owner-gated mode and refused a write API request without the local owner token.";
+    guide.next = "Open Settings, save the owner token for this browser, then retry the action.";
+    guide.fix = "Use the Owner token for this browser field. The token is sent as X-Bairui-Owner-Token and is never included in exports.";
+    guide.verify = "Open Settings and refresh /config/status; owner_gate should be configured.";
+    guide.safety = "No write action was completed before owner authorization.";
+  }
   if (status === 404 || code === "not_found" || /not found/i.test(raw)) {
     guide.title = "Record was not found";
     guide.reason = "The selected item no longer exists or the page is using an outdated reference.";

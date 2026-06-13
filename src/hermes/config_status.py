@@ -77,10 +77,10 @@ def build_config_status(settings: Settings) -> dict[str, Any]:
             "owner_gate",
             "Owner token gate",
             "configured" if settings.owner_token.strip() else "missing_config",
-            "Admin configuration changes require the local owner token when configured; token value is never returned.",
+            "All write API calls require the local owner token when configured; token value is never returned.",
             {
                 "owner_token": _secret_state(settings.owner_token),
-                "protects": ["/config/apply"],
+                "protects": ["POST /* write APIs"],
                 "accepted_headers": ["X-Bairui-Owner-Token", "Authorization: Bearer"],
             },
         ),
@@ -166,7 +166,7 @@ def _build_checklist(settings: Settings, items: list[dict[str, Any]], blockers: 
         _checklist_step("path_scope", "Keep local paths in the bairui scope", "required", PATH_SCOPE_POLICY),
         _checklist_step("channels", "Confirm channel approval boundary", channel_status(settings).status, "Configured targets create approval records only; will_send=false until a future sender is explicitly approved."),
         _checklist_step("database", "Optional PostgreSQL", "configured" if settings.has_database else "optional", "JSONL remains available for product beta; PostgreSQL URL is reported only as configured or missing."),
-        _checklist_step("owner_gate", "Recommended owner token gate", "configured" if settings.owner_token else "recommended", "Set BAIRUI_OWNER_TOKEN before exposing the console beyond trusted local development. Token value is never returned."),
+        _checklist_step("owner_gate", "Recommended owner token gate", "configured" if settings.owner_token else "recommended", "Set BAIRUI_OWNER_TOKEN before exposing the console beyond trusted local development. All POST write APIs require it when configured; token value is never returned."),
         _checklist_step("license", "Optional license gate", "configured" if settings.license_secret else "optional", "License secret is reported only as configured or missing."),
     ]
     markdown = _checklist_markdown(steps, env_template, commands, missing_required, optional_missing)

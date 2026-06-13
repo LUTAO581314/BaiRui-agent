@@ -1053,6 +1053,53 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(allowed_payload["config_apply"]["status"], "saved")
         self.assertNotIn("owner-secret-token", allowed_raw)
 
+    def test_owner_token_gate_protects_write_apis_when_configured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_OWNER_TOKEN": "owner-secret-token",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    health_status, _, health_body = _http_get(server.server_port, "/health")
+                    denied_status, _, denied_body = _http_post(
+                        server.server_port,
+                        "/jobs",
+                        {"title": "blocked", "prompt": "should not write", "route": "general"},
+                    )
+                    allowed_status, _, allowed_body = _http_post(
+                        server.server_port,
+                        "/jobs",
+                        {"title": "allowed", "prompt": "write with owner token", "route": "general"},
+                        headers={"Authorization": "Bearer owner-secret-token"},
+                    )
+                    audits = list_audit_events(load_settings().data_dir)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        health = json.loads(health_body.decode("utf-8"))
+        denied = json.loads(denied_body.decode("utf-8"))
+        allowed = json.loads(allowed_body.decode("utf-8"))
+        raw = json.dumps({"denied": denied, "allowed": allowed, "audit": audits}, ensure_ascii=False)
+        self.assertEqual(health_status, 200)
+        self.assertEqual(health["service"], "bairui")
+        self.assertEqual(denied_status, 401)
+        self.assertEqual(denied["error"], "owner_token_required")
+        self.assertEqual(denied["permission"], "write_api")
+        self.assertEqual(allowed_status, 201)
+        self.assertEqual(allowed["job"]["title"], "allowed")
+        self.assertIn("auth.owner_token_denied", [audit["action"] for audit in audits])
+        self.assertIn("/jobs", [audit["resource_ref"] for audit in audits])
+        self.assertNotIn("owner-secret-token", raw)
+
     def test_config_status_reports_owner_gate_without_token_value(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = {
@@ -1068,8 +1115,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         owner_gate = next(item for item in payload["items"] if item["id"] == "owner_gate")
         self.assertEqual(owner_gate["status"], "configured")
         self.assertEqual(owner_gate["fields"]["owner_token"], "configured")
-        self.assertIn("/config/apply", owner_gate["fields"]["protects"])
+        self.assertIn("POST /* write APIs", owner_gate["fields"]["protects"])
         self.assertIn("BAIRUI_OWNER_TOKEN=<recommended-local-owner-token>", payload["checklist"]["markdown"])
+        self.assertIn("All POST write APIs require it when configured", payload["checklist"]["markdown"])
         self.assertIn(PATH_SCOPE_POLICY, payload["checklist"]["markdown"])
         self.assertNotIn("owner-secret-token", raw)
 
@@ -1326,6 +1374,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn('const OWNER_TOKEN_KEY = "bairui.console.ownerToken.v1"', app_js)
         self.assertIn('"X-Bairui-Owner-Token"', app_js)
         self.assertIn("function ownerAuthHeaders", app_js)
+        self.assertIn("Owner token required", app_js)
+        self.assertIn("X-Bairui-Owner-Token", app_js)
         self.assertIn('id="settings-owner-token-local"', app_js)
         self.assertIn('id="settings-owner-token-new"', app_js)
         self.assertIn('id="settings-danger-confirmation"', app_js)
