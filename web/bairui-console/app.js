@@ -2164,8 +2164,10 @@ function renderMemory() {
   el.actions.innerHTML = `
     <button class="ghost-btn" id="refresh-memory" type="button">Refresh</button>
     <button class="ghost-btn" id="export-memory" type="button">Export Memory</button>
+    <button class="ghost-btn" id="export-memory-candidate" type="button" ${state.selectedEntity?.type !== "memory" ? "disabled" : ""}>Export Candidate</button>
     <button class="ghost-btn" id="batch-reject-memory" type="button" ${!pending.length ? "disabled" : ""}>Reject Pending</button>`;
   el.body.innerHTML = `
+    ${renderMemoryReviewCommandCenter(queue, pending)}
     <div class="grid two">
       <section class="panel pad">
         <h2 class="panel-title">Pending queue</h2>
@@ -2193,6 +2195,7 @@ function renderMemory() {
   bindEntityActions();
   document.getElementById("refresh-memory")?.addEventListener("click", refreshScreenData);
   document.getElementById("export-memory")?.addEventListener("click", exportMemoryData);
+  document.getElementById("export-memory-candidate")?.addEventListener("click", exportSelectedMemoryCandidate);
   document.getElementById("batch-reject-memory")?.addEventListener("click", async () => {
     const candidateIds = pending.map((candidate) => candidate.id);
     const result = await runAction("memory-batch", () =>
@@ -2240,6 +2243,44 @@ function renderMemory() {
       await refreshScreenData();
     });
   });
+  el.body.querySelectorAll("[data-memory-export]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const candidate = state.memoryCandidates.find((item) => item.id === button.dataset.memoryExport) || pending.find((item) => item.id === button.dataset.memoryExport);
+      if (!candidate) return;
+      state.selectedEntity = { type: "memory", title: candidate.candidate_type, status: candidate.status, ref: candidate.id, raw: candidate };
+      persistUiState();
+      exportSelectedMemoryCandidate();
+      render();
+    });
+  });
+}
+
+function renderMemoryReviewCommandCenter(queue, pending) {
+  const selected = state.selectedEntity?.type === "memory" ? state.selectedEntity.raw || {} : null;
+  const selectedReviewed = selected ? memoryReviewsForCandidate(selected.id).length : 0;
+  return `
+    <section class="panel pad memory-command-center">
+      <div class="conversation-head">
+        <div>
+          <p class="eyebrow">Review command center</p>
+          <h2 class="panel-title">${escapeHtml(selected?.candidate_type || "Memory candidate queue")}</h2>
+          <p class="muted compact-copy">Review candidates one by one, export evidence, and keep long-term memory writes behind explicit owner approval.</p>
+        </div>
+        ${pill(pending.length ? "needs_review" : "ready", pending.length ? `${pending.length} pending` : "queue clear")}
+      </div>
+      ${renderCountStrip({
+        pending: pending.length,
+        reviewed: queue?.reviewed_count || state.memoryReviews.length,
+        candidates: state.memoryCandidates.length,
+        selected_reviews: selectedReviewed,
+      })}
+      <div class="memory-command-grid">
+        <div><span>Selected candidate</span><strong>${escapeHtml(shortId(selected?.id || ""))}</strong><p>${escapeHtml(selected?.text || "Open a candidate to inspect source and export evidence.")}</p></div>
+        <div><span>Next action</span><strong>${escapeHtml(pending.length ? "approve-or-reject" : "refresh-or-ingest")}</strong><p>Approve or reject explicitly; batch action remains reject-only.</p></div>
+        <div><span>Write gate</span><strong>owner reviewed</strong><p>will_write_long_term_memory=false until an approval action succeeds.</p></div>
+        <div><span>Export scope</span><strong>candidate + reviews</strong><p>Exports omit secrets and do not perform memory writes.</p></div>
+      </div>
+    </section>`;
 }
 
 function exportMemoryData() {
@@ -2251,6 +2292,29 @@ function exportMemoryData() {
     selected_entity: state.selectedEntity?.type === "memory" ? state.selectedEntity : null,
     note: "Memory candidates are exported for review. This export does not approve, reject, or write long-term memory.",
   });
+}
+
+function exportSelectedMemoryCandidate() {
+  const entity = state.selectedEntity?.type === "memory" ? state.selectedEntity : null;
+  if (!entity) return;
+  const candidate = entity.raw || {};
+  exportConsoleData("memory-candidate", {
+    candidate,
+    reviews: memoryReviewsForCandidate(candidate.id),
+    related_reports_hint: candidate.ingest_id || "",
+    handoff: {
+      includes_secrets: false,
+      external_send_performed: false,
+      long_term_memory_auto_write: false,
+      requires_owner_review: true,
+      evidence_basis: "candidate metadata, source trace, and review records",
+    },
+  });
+}
+
+function memoryReviewsForCandidate(candidateId) {
+  if (!candidateId) return [];
+  return (state.memoryReviews || []).filter((review) => String(review.candidate_id || "") === String(candidateId));
 }
 
 function renderMemoryReviewResult() {
@@ -2354,6 +2418,7 @@ function renderMemoryCandidate(candidate) {
         <button class="ghost-btn" type="button" data-review="reject" data-candidate="${escapeHtml(candidate.id)}">Reject</button>
         <button class="ghost-btn" type="button" data-memory-source="${escapeHtml(candidate.id)}">View Source</button>
         <button class="ghost-btn" type="button" data-memory-reports="${escapeHtml(candidate.ingest_id || "")}">Open Reports</button>
+        <button class="ghost-btn" type="button" data-memory-export="${escapeHtml(candidate.id)}">Export Candidate</button>
       </div>
     </article>`;
 }

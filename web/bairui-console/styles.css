@@ -1975,11 +1975,27 @@ h1 {
   margin: 10px 0;
 }
 
-.memory-source-strip,
-.memory-safety-grid {
+.memory-command-center {
+  margin-bottom: 14px;
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+}
+
+.memory-command-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+  margin-top: 12px;
+}
+
+.memory-source-strip,
+.memory-safety-grid,
+.memory-command-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.memory-source-strip {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .memory-safety-grid {
@@ -1987,7 +2003,8 @@ h1 {
 }
 
 .memory-source-strip div,
-.memory-safety-grid div {
+.memory-safety-grid div,
+.memory-command-grid div {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -1996,7 +2013,8 @@ h1 {
 }
 
 .memory-source-strip span,
-.memory-safety-grid span {
+.memory-safety-grid span,
+.memory-command-grid span {
   display: block;
   color: var(--muted);
   font: 10px/1.2 var(--font-mono);
@@ -2004,7 +2022,8 @@ h1 {
 }
 
 .memory-source-strip strong,
-.memory-safety-grid strong {
+.memory-safety-grid strong,
+.memory-command-grid strong {
   display: block;
   margin-top: 5px;
   color: var(--text);
@@ -2012,11 +2031,13 @@ h1 {
   overflow-wrap: anywhere;
 }
 
-.memory-safety-grid p {
+.memory-safety-grid p,
+.memory-command-grid p {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .demo-flow-panel {
@@ -2801,8 +2822,11 @@ h1 {
   .activation-repair-card,
   .agent-layout,
   .documents-layout,
+  .document-workbench-grid,
   .document-routes,
   .report-detail-grid,
+  .report-delivery-evidence,
+  .memory-command-grid,
   .memory-source-strip,
   .memory-safety-grid,
   .channels-layout,
