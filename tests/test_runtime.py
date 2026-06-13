@@ -1357,6 +1357,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("function documentCommandPath", app_js)
         self.assertIn("function documentCommandPayload", app_js)
         self.assertIn("function renderDocumentActionResult", app_js)
+        self.assertIn("function renderDocumentWorkbenchCommandCenter", app_js)
         self.assertIn('data-document-command="${escapeHtml(action.command || "")}"', app_js)
         self.assertIn('"run-ingest": "/document/parse/run-ingest"', app_js)
         self.assertIn('"register-artifacts": "/document/parse/register-artifacts"', app_js)
@@ -1367,8 +1368,13 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn('collection: "bairui"', app_js)
         self.assertIn("Document path is required.", app_js)
         self.assertIn("Parsing and memory writes still require explicit workflow and review steps.", app_js)
+        self.assertIn("A guided pipeline for parse, artifact registration, indexing, memory candidate review, source refs, and report handoff.", app_js)
+        self.assertIn("Parsing can produce candidates; long-term memory writes require explicit owner approval.", app_js)
+        self.assertIn("Document workbench actions do not dispatch channels and do not hide blockers.", app_js)
         self.assertIn(".action-step", styles)
         self.assertIn(".document-action-result", styles)
+        self.assertIn(".document-command-center", styles)
+        self.assertIn(".document-workbench-grid", styles)
 
     def test_memory_review_console_keeps_owner_review_and_source_trace_visible(self):
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")

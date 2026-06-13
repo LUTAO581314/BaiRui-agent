@@ -1794,6 +1794,7 @@ function renderDocuments() {
     <button class="ghost-btn" id="run-until-blocked" type="button" ${!state.selectedIngestId ? "disabled" : ""}>Run Until Blocked</button>
     <button class="ghost-btn" id="open-document-memory" type="button" ${!selected?.review_queue?.pending_count ? "disabled" : ""}>Review Memory</button>`;
   el.body.innerHTML = `
+    ${renderDocumentWorkbenchCommandCenter(selected)}
     <div class="documents-layout">
       <section class="panel pad">
         <h2 class="panel-title">Create ingest</h2>
@@ -1936,6 +1937,37 @@ function renderDocuments() {
       render();
     });
   });
+}
+
+function renderDocumentWorkbenchCommandCenter(session) {
+  const action = session?.workbench?.next_actions?.[0] || session?.primary_action || {};
+  const counts = session?.counts || {};
+  const blockers = session?.blockers || [];
+  const warnings = session?.warnings || [];
+  return `
+    <section class="panel pad document-command-center">
+      <div class="conversation-head">
+        <div>
+          <p class="eyebrow">Ingest workbench</p>
+          <h2 class="panel-title">${escapeHtml(session?.title || "No document selected")}</h2>
+          <p class="muted compact-copy">A guided pipeline for parse, artifact registration, indexing, memory candidate review, source refs, and report handoff.</p>
+        </div>
+        ${pill(session?.status || "partial", session?.current_stage || session?.status || "select session")}
+      </div>
+      ${renderCountStrip({
+        sessions: state.documentSessions.length,
+        blockers: blockers.length,
+        warnings: warnings.length,
+        pending_review: session?.review_queue?.pending_count || 0,
+        reports: counts.reports || (session?.report ? 1 : 0),
+      })}
+      <div class="document-workbench-grid">
+        <div><span>Selected ingest</span><strong>${escapeHtml(shortId(state.selectedIngestId || ""))}</strong><p>${escapeHtml(session?.input_path || "Create or select an ingest plan.")}</p></div>
+        <div><span>Next action</span><strong>${escapeHtml(action.command || "create-plan")}</strong><p>${escapeHtml(action.description || action.reason || "Create a plan, then advance one governed step at a time.")}</p></div>
+        <div><span>Owner gate</span><strong>review before memory</strong><p>Parsing can produce candidates; long-term memory writes require explicit owner approval.</p></div>
+        <div><span>External effects</span><strong>no auto-send</strong><p>Document workbench actions do not dispatch channels and do not hide blockers.</p></div>
+      </div>
+    </section>`;
 }
 
 async function runDocumentStep(path, key) {
