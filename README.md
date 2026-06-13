@@ -156,6 +156,7 @@ For Windows PowerShell verification:
 .\scripts\smoke-test.ps1 -FullAcceptance
 .\scripts\product-acceptance.ps1
 .\scripts\config-doctor.ps1
+.\scripts\check-public-brand.ps1
 ```
 
 The smoke test runs the product closure demo flow in a temporary data directory.

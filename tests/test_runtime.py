@@ -1635,10 +1635,13 @@ class RuntimeFoundationTests(unittest.TestCase):
         script = Path("scripts/product-acceptance.ps1").read_text(encoding="utf-8")
         smoke = Path("scripts/smoke-test.ps1").read_text(encoding="utf-8")
         doctor = Path("scripts/config-doctor.ps1").read_text(encoding="utf-8")
+        brand_scan = Path("scripts/check-public-brand.ps1").read_text(encoding="utf-8")
+        ci = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
 
         self.assertIn(".\\scripts\\product-acceptance.ps1", readme)
         self.assertIn(".\\scripts\\smoke-test.ps1 -FullAcceptance", readme)
         self.assertIn(".\\scripts\\config-doctor.ps1", readme)
+        self.assertIn(".\\scripts\\check-public-brand.ps1", readme)
         self.assertIn("python -m src.hermes demo flow", script)
         self.assertIn("python -m src.hermes config-status", script)
         self.assertIn("product_acceptance", script)
@@ -1667,6 +1670,11 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("Safe configuration diagnostics", doc)
         self.assertIn("python -m src.hermes config-status", doctor)
         self.assertIn("[switch]$AllowBlocked", doctor)
+        self.assertIn("web/bairui-console/index.html", brand_scan)
+        self.assertIn("web/bairui-console/app.js", brand_scan)
+        self.assertIn("src/hermes/frontend_contract.py", brand_scan)
+        self.assertIn("forbidden public brand", brand_scan)
+        self.assertIn("./scripts/check-public-brand.ps1", ci)
 
     def test_commercial_trial_quickstart_covers_activation_observability_and_brand(self):
         readme = Path("README.md").read_text(encoding="utf-8")
@@ -1680,6 +1688,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("python -m src.hermes backup plan", readme)
         self.assertIn("Customer-facing UI", doc)
         self.assertIn("only `bairui`", doc)
+        self.assertIn(".\\scripts\\check-public-brand.ps1", doc)
         self.assertIn("http://127.0.0.1:8787/console", doc)
         self.assertIn("BAIRUI_OWNER_TOKEN", doc)
         self.assertIn("APPLY BAIRUI CONFIG", doc)

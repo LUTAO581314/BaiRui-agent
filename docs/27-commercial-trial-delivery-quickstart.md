@@ -50,6 +50,7 @@ Run these before a customer trial handoff:
 .\scripts\smoke-test.ps1 -FullAcceptance
 .\scripts\product-acceptance.ps1
 .\scripts\config-doctor.ps1
+.\scripts\check-public-brand.ps1
 ```
 
 Use `-FullAcceptance` when preparing a release candidate or guided demo. It
@@ -234,6 +235,8 @@ Go only when all items are true:
 - `.\scripts\smoke-test.ps1 -FullAcceptance` succeeds on Windows.
 - `.\scripts\product-acceptance.ps1` succeeds.
 - `.\scripts\config-doctor.ps1` returns actionable diagnostics.
+- `.\scripts\check-public-brand.ps1` confirms customer UI and contract assets
+  expose only the `bairui` brand.
 - `/metrics`, `/errors`, and `/diagnostics/bundle` return redacted support data.
 - Owner-token gating is enabled and tested for the trial environment.
 - Risky config fields require `APPLY BAIRUI CONFIG`.
