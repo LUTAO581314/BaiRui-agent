@@ -131,6 +131,8 @@ python -m src.hermes runtime-readiness
 python -m src.hermes diagnostics
 python -m src.hermes metrics
 python -m src.hermes errors
+python -m src.hermes backup status
+python -m src.hermes backup plan
 python -m src.hermes config-status
 python -m src.hermes events
 ```
@@ -195,10 +197,19 @@ Document parser missing
 
 ## 7. PostgreSQL And Backup Note
 
-The source tree includes PostgreSQL schema and migration foundations, while
-local demos can still use JSONL-backed storage. Before real customer data is
-accepted, validate production PostgreSQL connection, migration, backup, restore,
-and rollback on the target server.
+The source tree includes PostgreSQL schema, migration, and guarded backup
+planning foundations, while local demos can still use JSONL-backed storage.
+Before real customer data is accepted, validate production PostgreSQL
+connection, migration, backup, restore, and rollback on the target server.
+
+```powershell
+python -m src.hermes backup status
+python -m src.hermes backup plan
+python -m src.hermes backup restore-plan --backup-path .\data\backups\postgres\example.dump
+```
+
+Restore planning is blocked unless the artifact exists and the operator types
+the confirmation phrase `RESTORE BAIRUI POSTGRES`.
 
 Do not treat a local JSONL demo as production persistence readiness.
 

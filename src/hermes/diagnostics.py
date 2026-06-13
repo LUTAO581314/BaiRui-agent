@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .backup import backup_status
 from .config import Settings
 from .config_status import build_config_status
 from .db import database_status
@@ -39,6 +40,7 @@ def build_diagnostic_bundle(settings: Settings, *, audit_limit: int = 100) -> di
     memory_reviews = list_document_memory_reviews(settings.data_dir)
     license_state = load_license(settings.license_file, settings.license_secret)
     db_state = database_status(settings)
+    backup_state = backup_status(settings)
     errors = list_error_logs(settings, limit=100)
     metrics = build_metrics_summary(settings)
     counts = _counts(
@@ -70,6 +72,7 @@ def build_diagnostic_bundle(settings: Settings, *, audit_limit: int = 100) -> di
         "ready": {
             "status": "partial",
             "database": db_state.__dict__,
+            "backup": backup_state.__dict__,
             "license": license_state.status,
             "platform": "configured" if settings.platform_base_url else "missing_config",
             "server_id": "configured" if settings.server_id else "missing_config",

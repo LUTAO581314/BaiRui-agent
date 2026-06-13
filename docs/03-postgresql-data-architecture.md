@@ -220,3 +220,16 @@ Back up:
 - audit export.
 
 Never back up plaintext secrets into shared folders.
+
+Current operator CLI entrypoints:
+
+```bash
+python -m src.hermes backup status
+python -m src.hermes backup plan
+python -m src.hermes backup restore-plan --backup-path ./data/backups/postgres/example.dump
+```
+
+`backup plan` prints a `pg_dump` command that reads credentials from
+`HERMES_DATABASE_URL` without echoing the database URL. `restore-plan` is
+blocked until the backup artifact exists and the operator provides the typed
+confirmation phrase `RESTORE BAIRUI POSTGRES`.

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from . import __version__
+from .backup import backup_status
 from .config import Settings
 from .db import database_status
 from .license import load_license
@@ -26,6 +27,7 @@ def _health_status(license_status: str, db_status: str) -> str:
 def build_platform_heartbeat(settings: Settings) -> dict[str, Any]:
     license_state = load_license(settings.license_file, settings.license_secret)
     db_state = database_status(settings)
+    backup_state = backup_status(settings)
     organization_id = license_state.organization_id or "missing_config"
     license_id = license_state.license_id or "missing_config"
     server_id = settings.server_id or "missing_config"
@@ -40,7 +42,8 @@ def build_platform_heartbeat(settings: Settings) -> dict[str, Any]:
         "health_status": _health_status(license_state.status, db_state.status),
         "database_status": db_state.status,
         "database": asdict(db_state),
-        "backup_status": "not_configured",
+        "backup_status": backup_state.status,
+        "backup": asdict(backup_state),
         "connector_status_summary": {},
         "error_count_24h": 0,
         "brand_key": settings.brand_key,

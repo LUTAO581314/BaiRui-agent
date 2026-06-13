@@ -70,6 +70,7 @@ from .adapters.trendradar import (
     status as trendradar_status,
 )
 from .capabilities import collect_capabilities
+from .backup import build_backup_plan, build_restore_plan, backup_status
 from .channels import (
     as_payload as channel_payload,
     channel_status,
@@ -172,6 +173,13 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands.add_parser("audit", help="List recent audit events")
     subcommands.add_parser("events", help="List frontend event stream snapshots")
     subcommands.add_parser("migrate", help="Run PostgreSQL schema migrations")
+    backup_parser = subcommands.add_parser("backup", help="Plan PostgreSQL backup and restore operations")
+    backup_subcommands = backup_parser.add_subparsers(dest="backup_command")
+    backup_subcommands.add_parser("status", help="Print PostgreSQL backup readiness")
+    backup_subcommands.add_parser("plan", help="Print a pg_dump command without exposing secrets")
+    restore_plan = backup_subcommands.add_parser("restore-plan", help="Print a guarded pg_restore command")
+    restore_plan.add_argument("--backup-path", required=True)
+    restore_plan.add_argument("--confirm-restore", default="")
     subcommands.add_parser("heartbeat", help="Print the platform heartbeat payload")
     subcommands.add_parser("paths", help="Print runtime paths and key configuration")
     subcommands.add_parser("config-status", help="Print operator-safe configuration diagnostics")
@@ -528,6 +536,22 @@ def run(argv: list[str] | None = None) -> int:
         result = run_migrations(settings)
         print_json({"service": "bairui", "database": result})
         return 0 if result.status == "ready" else 1
+
+    if command == "backup":
+        backup_command = args.backup_command or "status"
+        if backup_command == "status":
+            status = backup_status(settings)
+            print_json({"service": "bairui", "backup": status})
+            return 0 if status.status in {"ready", "not_ready"} else 1
+        if backup_command == "plan":
+            plan = build_backup_plan(settings)
+            print_json({"service": "bairui", "backup_plan": plan})
+            return 0 if plan["status"] == "ready" else 1
+        if backup_command == "restore-plan":
+            plan = build_restore_plan(settings, args.backup_path, confirm=args.confirm_restore)
+            print_json({"service": "bairui", "restore_plan": plan})
+            return 0 if plan["status"] == "ready" else 1
+        parser.error(f"unknown backup command: {backup_command}")
 
     if command == "heartbeat":
         print_json({"service": "bairui", "heartbeat": build_platform_heartbeat(settings)})

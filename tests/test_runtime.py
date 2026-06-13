@@ -24,6 +24,7 @@ from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings, local_config_path
 from src.hermes.config_apply import DANGEROUS_CONFIRMATION_PHRASE, PATH_SCOPE_POLICY, apply_local_config
 from src.hermes.config_status import build_config_status
+from src.hermes.backup import RESTORE_CONFIRMATION, backup_status, build_backup_plan, build_restore_plan
 from src.hermes.db import SCHEMA_SQL, database_status
 from src.hermes.demo import seed_demo_data
 from src.hermes.demo_flow import run_demo_flow
@@ -1675,6 +1676,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("python -m src.hermes diagnostics", readme)
         self.assertIn("python -m src.hermes metrics", readme)
         self.assertIn("python -m src.hermes errors", readme)
+        self.assertIn("python -m src.hermes backup status", readme)
+        self.assertIn("python -m src.hermes backup plan", readme)
         self.assertIn("Customer-facing UI", doc)
         self.assertIn("only `bairui`", doc)
         self.assertIn("http://127.0.0.1:8787/console", doc)
@@ -1684,6 +1687,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("python -m src.hermes diagnostics", doc)
         self.assertIn("python -m src.hermes metrics", doc)
         self.assertIn("python -m src.hermes errors", doc)
+        self.assertIn("python -m src.hermes backup status", doc)
+        self.assertIn("RESTORE BAIRUI POSTGRES", doc)
         self.assertIn("/diagnostics/bundle", doc)
         self.assertIn("/metrics", doc)
         self.assertIn("/errors", doc)
@@ -2831,6 +2836,64 @@ class RuntimeFoundationTests(unittest.TestCase):
         settings = load_settings()
         self.assertEqual(database_status(settings).status, "missing_config")
 
+    def test_backup_status_and_plans_are_secret_safe_and_guarded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_DATABASE_URL": "postgresql://bairui:super-secret@example.test:5432/bairui",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                status = backup_status(settings)
+                backup_dir = root / "data" / "backups" / "postgres"
+                backup_dir.mkdir(parents=True)
+                backup_file = backup_dir / "trial.dump"
+                backup_file.write_bytes(b"pgdump")
+                ready_status = backup_status(settings)
+                plan = build_backup_plan(settings)
+                blocked_restore = build_restore_plan(settings, str(backup_file))
+                ready_restore = build_restore_plan(settings, str(backup_file), confirm=RESTORE_CONFIRMATION)
+                with patch("src.hermes.cli.print_json"):
+                    cli_status_code = run(["backup", "status"])
+                with patch("src.hermes.cli.print_json") as print_json:
+                    cli_plan_code = run(["backup", "plan"])
+
+        serialized = json.dumps(
+            {
+                "status": status.__dict__,
+                "ready_status": ready_status.__dict__,
+                "plan": plan,
+                "blocked_restore": blocked_restore,
+                "ready_restore": ready_restore,
+                "cli_payload": print_json.call_args.args[0],
+            },
+            ensure_ascii=False,
+        )
+        self.assertEqual(status.status, "not_ready")
+        self.assertEqual(ready_status.status, "ready")
+        self.assertEqual(plan["status"], "ready")
+        self.assertIn("pg_dump", plan["command"])
+        self.assertIn("$HERMES_DATABASE_URL", plan["command"])
+        self.assertEqual(blocked_restore["status"], "blocked")
+        self.assertIn(RESTORE_CONFIRMATION, blocked_restore["blockers"][0])
+        self.assertEqual(ready_restore["status"], "ready")
+        self.assertTrue(ready_restore["destructive"])
+        self.assertEqual(cli_status_code, 0)
+        self.assertEqual(cli_plan_code, 0)
+        self.assertNotIn("super-secret", serialized)
+
+    def test_backup_status_without_database_url_is_missing_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"HERMES_DATA_DIR": str(Path(tmp) / "data"), "HERMES_DATABASE_URL": ""}, clear=False):
+                settings = load_settings()
+                plan = build_backup_plan(settings)
+                with patch("src.hermes.cli.print_json"):
+                    status_code = run(["backup", "plan"])
+        self.assertEqual(backup_status(settings).status, "missing_config")
+        self.assertEqual(plan["status"], "missing_config")
+        self.assertEqual(status_code, 1)
+
     def test_postgresql_schema_includes_source_refs(self):
         self.assertIn("create table if not exists source_refs", SCHEMA_SQL)
         self.assertIn("source_type text not null", SCHEMA_SQL)
@@ -2845,7 +2908,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(heartbeat["server_id"], "missing_config")
         self.assertEqual(heartbeat["license_status"], "missing_config")
         self.assertEqual(heartbeat["database_status"], "missing_config")
-        self.assertEqual(heartbeat["backup_status"], "not_configured")
+        self.assertEqual(heartbeat["backup_status"], "missing_config")
+        self.assertEqual(heartbeat["backup"]["restore_requires_confirmation"], True)
         self.assertNotIn("prompt", heartbeat)
         self.assertNotIn("messages", heartbeat)
 
@@ -2865,6 +2929,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("search", help_text)
         self.assertIn("index", help_text)
         self.assertIn("runtime-readiness", help_text)
+        self.assertIn("backup", help_text)
 
     def test_cli_frontend_contract_prints_product_contract(self):
         with patch("src.hermes.cli.print_json") as print_json:

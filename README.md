@@ -125,6 +125,9 @@ python -m src.hermes runtime-readiness
 python -m src.hermes diagnostics
 python -m src.hermes metrics
 python -m src.hermes errors
+python -m src.hermes backup status
+python -m src.hermes backup plan
+python -m src.hermes backup restore-plan --backup-path ./data/backups/postgres/example.dump
 python -m src.hermes demo seed
 python -m src.hermes demo flow
 python -m src.hermes serve
