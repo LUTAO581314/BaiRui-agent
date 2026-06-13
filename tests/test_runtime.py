@@ -1587,6 +1587,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("function isSecretExportKey", app_js)
         self.assertIn("payload: customerSafeExportPayload(payload)", app_js)
         self.assertIn("public_brand_policy", app_js)
+        self.assertIn("item.display_detail || item.detail", app_js)
+        self.assertIn("item.display_name", app_js)
         self.assertIn("Settings is the operator view for /health, /ready, /runtime/readiness", app_js)
         self.assertIn("Self-service configuration for model API, scoped data paths, channel targets, Avatar assets, CodeGraph, and database. Secret fields can be saved but never echo.", app_js)
         self.assertIn('api.post("/config/apply"', app_js)
@@ -3962,9 +3964,33 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("funasr_voice_asr", names)
         self.assertIn("mineru_document_parse", names)
         self.assertIn("sonic_local_index", names)
-        self.assertTrue(any("funasr_voice_asr" in warning for warning in readiness["warnings"]))
-        self.assertTrue(any("mineru_document_parse" in warning for warning in readiness["warnings"]))
-        self.assertTrue(any("sonic_local_index" in warning for warning in readiness["warnings"]))
+        items = {item["name"]: item for item in readiness["items"]}
+        self.assertEqual(items["everos_memory"]["display_name"], "Memory runtime")
+        self.assertEqual(items["mineru_document_parse"]["display_name"], "Document parser")
+        self.assertEqual(items["sonic_local_index"]["display_name"], "Local index")
+        self.assertEqual(items["sonic_local_index"]["public_source"], "configured runtime endpoint")
+        self.assertEqual(items["mineru_document_parse"]["public_license"], "internal attribution required")
+        self.assertTrue(any("Voice ASR" in warning for warning in readiness["warnings"]))
+        self.assertTrue(any("Document parser" in warning for warning in readiness["warnings"]))
+        self.assertTrue(any("Local index" in warning for warning in readiness["warnings"]))
+        raw = json.dumps(
+            {
+                "blockers": readiness["blockers"],
+                "warnings": readiness["warnings"],
+                "display": [
+                    {
+                        "display_name": item["display_name"],
+                        "display_detail": item["display_detail"],
+                        "public_source": item["public_source"],
+                        "public_license": item["public_license"],
+                    }
+                    for item in readiness["items"]
+                ],
+            },
+            ensure_ascii=False,
+        )
+        for brand in ("EverOS", "FunASR", "MinerU", "TrendRadar", "MiroFish", "SearXNG", "Sonic", "Hermes", "MOXI", "BaiLongma", "白龙马", "小白龙"):
+            self.assertNotIn(brand, raw)
 
     def test_cli_status_prints_runtime_status(self):
         with tempfile.TemporaryDirectory() as tmp:

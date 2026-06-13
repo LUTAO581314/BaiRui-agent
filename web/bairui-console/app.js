@@ -3959,7 +3959,7 @@ function renderSettingsRuntimeMatrix() {
     runtimeRow("code_structure", state.runtimeStatus.codegraph?.codegraph?.status, state.runtimeStatus.codegraph?.codegraph?.detail, false),
   ];
   const rows = readinessItems.length
-    ? readinessItems.map((item) => runtimeRow(item.name, item.status, item.detail, item.required_for_usable))
+    ? readinessItems.map((item) => runtimeRow(item.name, item.status, item.display_detail || item.detail, item.required_for_usable, item.display_name))
     : directItems;
   return `
     <div class="settings-runtime-matrix">
@@ -3971,7 +3971,7 @@ function renderSettingsRuntimeMatrix() {
                 ${pill(item.status || "missing_config")}
                 <span class="chip">${item.required ? "required" : "optional"}</span>
               </div>
-              <strong>${escapeHtml(runtimeDisplayName(item.name))}</strong>
+              <strong>${escapeHtml(item.displayName || runtimeDisplayName(item.name))}</strong>
               <p>${escapeHtml(customerSafeRuntimeText(item.detail || "Status endpoint connected."))}</p>
             </div>`,
         )
@@ -4021,8 +4021,8 @@ function renderSettingsNextActions(readiness) {
     </div>`;
 }
 
-function runtimeRow(name, status, detail, required = false) {
-  return { name, status: status || "missing_config", detail: detail || "", required: Boolean(required) };
+function runtimeRow(name, status, detail, required = false, displayName = "") {
+  return { name, status: status || "missing_config", detail: detail || "", required: Boolean(required), displayName };
 }
 
 function capabilityByName(name) {
