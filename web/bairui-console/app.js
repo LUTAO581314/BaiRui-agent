@@ -136,6 +136,7 @@ const state = {
   activationAction: null,
   activationMode: "server_production",
   configApplyResult: null,
+  configApplyVerification: null,
   settingsConfigDraft: {},
   databaseMigrationResult: null,
   backupStatus: null,
@@ -4977,7 +4978,45 @@ function renderSettingsConfigApplyResult() {
       ${result.path_scope_policy ? `<p class="muted compact-copy">path_scope=${escapeHtml(result.path_scope_policy)}</p>` : ""}
       <p>${escapeHtml(result.path || result.secret_policy || "Configuration saved.")}</p>
       <p class="muted compact-copy">next_step=${escapeHtml(next)}</p>
+      ${renderSettingsConfigApplyVerification()}
     </div>`;
+}
+
+function renderSettingsConfigApplyVerification() {
+  const verification = state.configApplyVerification;
+  if (!verification) return "";
+  const blockers = verification.blockers || [];
+  return `
+    <div class="settings-apply-verification">
+      <div><span>Auto verification</span><strong>${escapeHtml(verification.status || "partial")}</strong><p>${escapeHtml(verification.summary || "Verification data refreshed after save.")}</p></div>
+      <div><span>/config/status</span><strong>${escapeHtml(verification.config_status || "partial")}</strong><p>${escapeHtml(verification.config_missing_required || "missing_required not loaded")}</p></div>
+      <div><span>/ready</span><strong>${escapeHtml(verification.ready_status || "partial")}</strong><p>${escapeHtml(verification.ready_database || "database status pending")}</p></div>
+      <div><span>/runtime/readiness</span><strong>${escapeHtml(verification.runtime_status || "partial")}</strong><p>${escapeHtml(blockers.length ? blockers.slice(0, 3).join(" | ") : "no required blockers reported")}</p></div>
+    </div>`;
+}
+
+async function verifySettingsConfigApply() {
+  const [configStatus, ready, readiness] = await Promise.all([
+    safe(() => api.get("/config/status"), state.configStatus, "config-status"),
+    safe(() => api.get("/ready"), state.ready, "ready"),
+    safe(() => api.get("/runtime/readiness"), state.readiness, "runtime-readiness"),
+  ]);
+  state.configStatus = configStatus;
+  state.ready = ready;
+  state.readiness = readiness;
+  const config = configStatus?.config_status || {};
+  const runtime = readiness?.runtime_readiness || {};
+  const blockers = runtime.blockers || [];
+  state.configApplyVerification = {
+    status: blockers.length ? "blocked" : runtime.status || ready?.status || config.status || "partial",
+    summary: blockers.length ? `${blockers.length} runtime blockers remain after save.` : "Save completed and runtime diagnostics were refreshed automatically.",
+    config_status: config.status || "partial",
+    config_missing_required: (config.checklist?.missing_required || []).join(", ") || "none",
+    ready_status: ready?.status || "partial",
+    ready_database: ready?.database?.status || ready?.database || "unknown",
+    runtime_status: runtime.status || "partial",
+    blockers,
+  };
 }
 
 function renderSettingsSelfServiceClosure() {
@@ -5141,12 +5180,14 @@ async function saveSettingsConfig() {
   setBusy("config-apply", true);
   state.errors["config-apply"] = "";
   state.errorDetails["config-apply"] = null;
+  state.configApplyVerification = null;
   render();
   try {
     const result = await api.post("/config/apply", payload);
     state.configApplyResult = result?.config_apply || null;
     state.configStatus = result?.config_status ? { config_status: result.config_status } : state.configStatus;
     state.settingsConfigDraft = {};
+    await verifySettingsConfigApply();
     await refreshScreenData();
   } catch (error) {
     state.configApplyResult = error?.payload?.config_apply || null;
