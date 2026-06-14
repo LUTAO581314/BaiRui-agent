@@ -2717,10 +2717,15 @@ function findResourceEntity(resourceType, resourceId) {
   const collections = {
     job: state.jobs.map((item) => ({ type: "job", title: item.title, status: item.status, ref: item.id, raw: item })),
     report: state.reports.map((item) => ({ type: "report", title: item.title, status: item.status, ref: item.id || item.path, raw: item })),
+    source: state.sourceRefs.map((item) => ({ type: "source", title: item.title || item.source_ref || item.id, status: item.confidence || "source_ready", ref: item.source_ref || item.id, raw: item })),
     document_memory_candidate: state.memoryCandidates.map((item) => ({ type: "memory", title: item.candidate_type, status: item.status, ref: item.id, raw: item })),
     channel_approval_request: state.channelApprovals.map((item) => ({ type: "channel", title: item.media_kind, status: item.review_status || item.status, ref: item.id, raw: item })),
+    audit: state.audit.map((item) => ({ type: "audit", title: item.action, status: item.risk_level || "low", ref: item.id, raw: item })),
   };
-  return (collections[resourceType] || []).find((item) => String(item.ref) === String(resourceId) || String(item.raw?.id) === String(resourceId));
+  return (collections[resourceType] || []).find((item) => {
+    const values = [item.ref, item.raw?.id, item.raw?.path, item.raw?.source_ref, item.raw?.resource_ref].filter(Boolean).map(String);
+    return values.includes(String(resourceId));
+  });
 }
 
 function entityTypeForResource(resourceType) {
@@ -2730,6 +2735,27 @@ function entityTypeForResource(resourceType) {
       channel_approval_request: "channel",
     }[resourceType] || resourceType
   );
+}
+
+function resourceTypeForEntityType(entityType) {
+  return (
+    {
+      memory: "document_memory_candidate",
+      channel: "channel_approval_request",
+      source: "source",
+      audit: "audit",
+    }[entityType] || entityType
+  );
+}
+
+function hydrateSelectedEntity() {
+  if (!state.selectedEntity?.type) return;
+  const ref = String(state.selectedEntity.ref || state.selectedEntity.raw?.id || state.selectedEntity.raw?.path || state.selectedEntity.raw?.source_ref || "");
+  if (!ref) return;
+  const resourceType = resourceTypeForEntityType(state.selectedEntity.type);
+  const hydrated = findResourceEntity(resourceType, ref);
+  if (!hydrated) return;
+  state.selectedEntity = { ...hydrated, title: hydrated.title || state.selectedEntity.title, status: hydrated.status || state.selectedEntity.status };
 }
 
 function enrichPromotionEntity(entity, promotion) {
@@ -6403,6 +6429,7 @@ async function refreshScreenData() {
   if (state.screen === "command") await loadAgents();
   if (state.screen === "events") {
     state.audit = await safe(() => api.get("/audit").then((data) => data.audit || []), state.audit, "audit");
+    hydrateSelectedEntity();
   }
   render();
 }
@@ -6418,6 +6445,7 @@ async function loadDashboard() {
     safe(() => api.get("/channels/approvals").then((data) => data.channel_approvals || []), state.channelApprovals, "dashboard-channels"),
   ]);
   Object.assign(state, { readiness, capabilities, jobs, audit, reports, memoryCandidates, channelApprovals });
+  hydrateSelectedEntity();
 }
 
 async function loadDocuments() {
@@ -6451,6 +6479,7 @@ async function loadMemory() {
   state.memoryQueue = queue;
   state.memoryCandidates = candidates || [];
   state.memoryReviews = reviews || [];
+  hydrateSelectedEntity();
 }
 
 async function loadReports() {
@@ -6460,22 +6489,7 @@ async function loadReports() {
   ]);
   state.reports = reports || [];
   state.sourceRefs = refs || [];
-  hydrateSelectedReportEntity();
-}
-
-function hydrateSelectedReportEntity() {
-  if (state.selectedEntity?.type !== "report") return;
-  const ref = String(state.selectedEntity.ref || state.selectedEntity.raw?.id || state.selectedEntity.raw?.path || "");
-  if (!ref) return;
-  const report = state.reports.find((item) => String(item.id || "") === ref || String(item.path || "") === ref);
-  if (!report) return;
-  state.selectedEntity = {
-    type: "report",
-    title: report.title || state.selectedEntity.title,
-    status: report.status || state.selectedEntity.status,
-    ref: report.id || report.path || ref,
-    raw: report,
-  };
+  hydrateSelectedEntity();
 }
 
 async function loadChannels() {
@@ -6491,6 +6505,7 @@ async function loadChannels() {
   state.channelDiagnostics = diagnostics || [];
   state.channelApprovals = approvals || [];
   state.channelApprovalReviews = reviews || [];
+  hydrateSelectedEntity();
 }
 
 async function loadAgents() {
