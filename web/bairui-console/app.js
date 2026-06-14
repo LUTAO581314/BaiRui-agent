@@ -4674,6 +4674,7 @@ function renderSettings() {
       ${renderSettingsAdminSession()}
       ${renderSettingsNextActions(readiness)}
     </section>
+    ${renderSettingsActivationProfile()}
     <div class="grid two">
       <section class="panel pad">
         <h2 class="panel-title">Runtime readiness</h2>
@@ -4863,6 +4864,97 @@ function renderSettingsConfigForm() {
       </div>
       ${renderSettingsConfigApplyResult()}
     </section>`;
+}
+
+function renderSettingsActivationProfile() {
+  const mode = selectedActivationMode();
+  const required = settingsActivationRequiredFields(mode.id);
+  const restartFields = settingsActivationRestartFields(mode.id);
+  const readyCount = required.filter((field) => settingsActivationFieldReady(field)).length;
+  return `
+    <section class="panel pad settings-activation-profile top-gap">
+      <div class="conversation-head">
+        <div>
+          <span class="section-label">激活方式配置画像</span>
+          <h2 class="panel-title">${escapeHtml(mode.title)}</h2>
+          <p class="muted compact-copy">${escapeHtml(mode.detail)} 这里把第一步选择转换成客户可执行的配置清单。</p>
+        </div>
+        ${pill(readyCount === required.length ? "ready" : "partial", `${readyCount}/${required.length} ready`)}
+      </div>
+      <div class="settings-activation-grid">
+        <div>
+          <span>必填配置</span>
+          <strong>${escapeHtml(required.join(", "))}</strong>
+          <p>${escapeHtml(settingsActivationModeInstruction(mode.id))}</p>
+        </div>
+        <div>
+          <span>重启字段</span>
+          <strong>${escapeHtml(restartFields.join(", ") || "none")}</strong>
+          <p>修改 owner token、PostgreSQL、长期记忆、渠道目标或 CodeGraph 后，需要按保存结果提示重启或复查。</p>
+        </div>
+        <div>
+          <span>验证路径</span>
+          <strong>Save -> Refresh -> Activation</strong>
+          <p>保存后先刷新 Settings，再回到 Activation 检查缺失配置、审批边界和 readiness 是否闭合。</p>
+        </div>
+      </div>
+      <div class="settings-activation-field-grid">
+        ${required.map((field) => renderSettingsActivationField(field)).join("")}
+      </div>
+    </section>`;
+}
+
+function settingsActivationRequiredFields(modeId) {
+  const common = ["model_base_url", "model_name", "model_api_key", "document_output_dir"];
+  if (modeId === "local_trial") return [...common, "memory_vault_dir", "avatar_assets_dir"];
+  if (modeId === "local_production") return [...common, "memory_vault_dir", "avatar_assets_dir", "codegraph_root"];
+  return [...common, "database_url", "owner_token", "memory_vault_dir", "channel_targets_json", "avatar_assets_dir", "codegraph_root"];
+}
+
+function settingsActivationRestartFields(modeId) {
+  const fields = ["memory_vault_dir"];
+  if (modeId !== "local_trial") fields.push("codegraph_root");
+  if (modeId === "server_production") fields.push("database_url", "owner_token", "channel_targets_json");
+  return fields;
+}
+
+function settingsActivationModeInstruction(modeId) {
+  if (modeId === "local_trial") return "试用模式先跑通最小模型、文档、记忆审核和 Avatar；真实外发渠道保持审批关闭。";
+  if (modeId === "local_production") return "本地生产模式重点确认本机路径、模型网关、长期记忆和代码索引目录都在受控范围内。";
+  return "服务器生产模式必须补齐数据库、管理员令牌、数据目录、渠道审批和运行时健康检查，适合客户试点交付。";
+}
+
+function settingsActivationFieldReady(field) {
+  if (field === "model_api_key") return settingsConfigSecretState("model_gateway", "api_key") === "configured";
+  if (field === "database_url") return settingsConfigSecretState("database", "database_url") === "configured";
+  if (field === "owner_token") return settingsConfigSecretState("owner_gate", "owner_token") === "configured" || Boolean(getOwnerToken());
+  if (field === "channel_targets_json") {
+    const item = configStatusItem("channel_targets");
+    return ["ready", "configured", "partial"].includes(String(item?.status || ""));
+  }
+  return Boolean(settingsConfigFieldValue(field));
+}
+
+function renderSettingsActivationField(field) {
+  const ready = settingsActivationFieldReady(field);
+  const labels = {
+    model_base_url: "模型网关地址",
+    model_name: "模型名称",
+    model_api_key: "模型密钥",
+    document_output_dir: "文档输出目录",
+    memory_vault_dir: "长期记忆目录",
+    avatar_assets_dir: "Avatar 资源目录",
+    codegraph_root: "CodeGraph 根目录",
+    database_url: "PostgreSQL URL",
+    owner_token: "管理员令牌",
+    channel_targets_json: "渠道目标 JSON",
+  };
+  return `
+    <div class="${ready ? "ready" : "missing"}">
+      <span>${escapeHtml(field)}</span>
+      <strong>${escapeHtml(labels[field] || field)}</strong>
+      ${pill(ready ? "ready" : "missing_config", ready ? "已配置" : "待填写")}
+    </div>`;
 }
 
 function renderSettingsConfigApplyResult() {
