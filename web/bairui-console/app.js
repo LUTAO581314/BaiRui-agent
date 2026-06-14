@@ -3602,7 +3602,7 @@ function renderIntel() {
 
 function renderChannels() {
   setScreenHead("Channels", "approval-controlled outbound plans");
-  el.actions.innerHTML = `<button class="ghost-btn" id="refresh-channels" type="button">Refresh</button><button class="ghost-btn" id="export-channel-approval" type="button" ${state.selectedEntity?.type !== "channel" ? "disabled" : ""}>Export Approval</button>`;
+  el.actions.innerHTML = `<button class="ghost-btn" id="refresh-channels" type="button">Refresh</button><button class="ghost-btn" id="export-channel-queue" type="button">Export Queue</button><button class="ghost-btn" id="export-channel-approval" type="button" ${state.selectedEntity?.type !== "channel" ? "disabled" : ""}>Export Approval</button>`;
   const firstTarget = state.channelTargets[0]?.id || "";
   const pendingApprovals = state.channelApprovals.filter((item) => (item.review_status || "pending_review") === "pending_review");
   const reviewedApprovals = state.channelApprovals.length - pendingApprovals.length;
@@ -3623,6 +3623,7 @@ function renderChannels() {
         reviewed: reviewedApprovals,
       })}
       ${renderChannelSafetyMatrix()}
+      ${renderChannelMediaBoundary()}
     </section>
     <div class="channels-layout">
       <section class="panel pad">
@@ -3665,6 +3666,7 @@ function renderChannels() {
     ${state.selectedEntity?.type === "channel" ? renderSelectedEntityPanel() : ""}`;
   bindEntityActions();
   document.getElementById("refresh-channels")?.addEventListener("click", refreshScreenData);
+  document.getElementById("export-channel-queue")?.addEventListener("click", exportChannelQueueEvidence);
   document.getElementById("export-channel-approval")?.addEventListener("click", exportSelectedChannelApproval);
   document.getElementById("plan-channel")?.addEventListener("click", async () => {
     const result = await runAction("channel", () =>
@@ -3759,6 +3761,19 @@ function renderChannelSafetyMatrix() {
     </div>`;
 }
 
+function renderChannelMediaBoundary() {
+  const supported = new Set();
+  state.channelDiagnostics.forEach((item) => (item.supports || []).forEach((kind) => supported.add(kind)));
+  const supportedKinds = [...supported];
+  const missingAttachments = state.channelApprovals.filter((item) => item.media_kind && item.media_kind !== "text" && !item.attachment_path).length;
+  return `
+    <div class="channel-media-boundary">
+      <div><span>Media support</span><strong>${escapeHtml(supportedKinds.join(", ") || "text, image, video, file")}</strong><p>Targets declare supported media; unsupported kinds are blocked before any approval record can imply dispatch.</p></div>
+      <div><span>Attachment rule</span><strong>${escapeHtml(String(missingAttachments))} missing</strong><p>Image, video, and file drafts require a local attachment path; exports include metadata only.</p></div>
+      <div><span>Queue evidence</span><strong>${escapeHtml(String(state.channelApprovals.length))} drafts</strong><p>Export Queue captures pending, reviewed, target diagnostics, and no-send safety state for trial handoff.</p></div>
+    </div>`;
+}
+
 function renderChannelPlanResult() {
   const result = state.channelPlanResult;
   if (!result) return "";
@@ -3814,6 +3829,39 @@ function exportSelectedChannelApproval() {
       requires_owner_review: true,
       evidence_basis: "approval draft, review record, target diagnostics, and no-send safety state",
     },
+  });
+}
+
+function exportChannelQueueEvidence() {
+  const reviewsByRequest = new Map(state.channelApprovalReviews.map((item) => [String(item.request_id || ""), item]));
+  const pending = state.channelApprovals.filter((item) => (item.review_status || "pending_review") === "pending_review");
+  const reviewed = state.channelApprovals.filter((item) => reviewsByRequest.has(String(item.id)));
+  exportConsoleData("channel-approval-queue", {
+    handoff_type: "channel_approval_queue_evidence",
+    generated_from_screen: "channels",
+    targets: state.channelTargets,
+    diagnostics: state.channelDiagnostics,
+    pending_approvals: pending,
+    reviewed_approvals: reviewed,
+    reviews: state.channelApprovalReviews,
+    selected_approval: state.selectedEntity?.type === "channel" ? state.selectedEntity.raw || state.selectedEntity : null,
+    media_policy: {
+      supported_media_kinds: ["text", "image", "video", "file"],
+      attachment_required_for: ["image", "video", "file"],
+      includes_attachment_contents: false,
+    },
+    safety_acceptance: {
+      external_send_performed: false,
+      will_send: false,
+      requires_owner_review: true,
+      approval_bypass_allowed: false,
+      customer_public_brand: "bairui",
+    },
+    operator_next_steps: [
+      "Review every pending approval before using customer-facing channel dispatch in a later product stage.",
+      "Reject drafts with missing attachments or unsupported media.",
+      "Use Settings to configure channel targets; secret values never echo in this export.",
+    ],
   });
 }
 

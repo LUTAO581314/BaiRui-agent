@@ -1745,8 +1745,16 @@ h1 {
   margin-top: 12px;
 }
 
+.channel-media-boundary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .channel-command-grid div,
 .channel-safety-grid div,
+.channel-media-boundary div,
 .channel-result-card {
   min-width: 0;
   border: 1px solid color-mix(in srgb, var(--accent-2) 28%, var(--line));
@@ -1756,7 +1764,8 @@ h1 {
 }
 
 .channel-command-grid span,
-.channel-safety-grid span {
+.channel-safety-grid span,
+.channel-media-boundary span {
   display: block;
   color: var(--muted);
   font: 10px/1.2 var(--font-mono);
@@ -1764,7 +1773,8 @@ h1 {
 }
 
 .channel-command-grid strong,
-.channel-safety-grid strong {
+.channel-safety-grid strong,
+.channel-media-boundary strong {
   display: block;
   margin-top: 6px;
   color: var(--text);
@@ -1774,6 +1784,7 @@ h1 {
 
 .channel-command-grid p,
 .channel-safety-grid p,
+.channel-media-boundary p,
 .channel-result-card p {
   margin: 6px 0 0;
   color: var(--muted);
@@ -3141,6 +3152,7 @@ h1 {
   .channels-layout,
   .channel-command-grid,
   .channel-safety-grid,
+  .channel-media-boundary,
   .codegraph-boundary-grid,
   .avatar-boundary-grid,
   .event-layout,
