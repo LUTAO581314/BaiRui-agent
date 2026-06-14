@@ -2177,6 +2177,7 @@ function renderDocuments() {
     <button class="primary-btn" id="create-document-plan" type="button">Create Plan</button>
     <button class="primary-btn" id="run-next-document" type="button" ${!state.selectedIngestId ? "disabled" : ""}>Run Next</button>
     <button class="ghost-btn" id="run-until-blocked" type="button" ${!state.selectedIngestId ? "disabled" : ""}>Run Until Blocked</button>
+    <button class="ghost-btn" id="export-document-ingest-pack" type="button" ${!selected ? "disabled" : ""}>Export Ingest Pack</button>
     <button class="ghost-btn" id="open-document-memory" type="button" ${!selected?.review_queue?.pending_count ? "disabled" : ""}>Review Memory</button>`;
   el.body.innerHTML = `
     ${renderDocumentWorkbenchCommandCenter(selected)}
@@ -2220,6 +2221,7 @@ function renderDocuments() {
           ${renderProductError("doc-command")}
           ${renderProductError("doc-source-refs")}
           ${renderProductError("doc-ingest-report")}
+          ${renderProductError("doc-ingest-export")}
         </div>
         <hr class="rule" />
         <h2 class="panel-title">Ingest sessions</h2>
@@ -2251,6 +2253,7 @@ function renderDocuments() {
           <h3 class="sub-title">Next actions</h3>
           ${renderActionList(selected.workbench?.next_actions || (selected.primary_action ? [selected.primary_action] : []))}
           ${renderDocumentActionResult()}
+          ${renderDocumentIngestPackSummary(selected)}
           <div class="action-row top-gap">
             <button class="ghost-btn" type="button" data-document-action="source-refs">Generate Source Refs</button>
             <button class="ghost-btn" type="button" data-document-action="ingest-report">Generate Report</button>
@@ -2298,6 +2301,7 @@ function renderDocuments() {
   document.getElementById("create-document-plan")?.addEventListener("click", createDocumentPlan);
   document.getElementById("run-next-document")?.addEventListener("click", () => runDocumentStep("/document/parse/workbench-next", "doc-next"));
   document.getElementById("run-until-blocked")?.addEventListener("click", () => runDocumentStep("/document/parse/workbench-run-until-blocked", "doc-run"));
+  document.getElementById("export-document-ingest-pack")?.addEventListener("click", exportDocumentIngestPack);
   document.getElementById("open-document-memory")?.addEventListener("click", openDocumentMemoryReview);
   el.body.querySelectorAll("[data-document-action]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -2489,6 +2493,62 @@ function renderDocumentActionResult() {
       </div>
       <p>${escapeHtml(result.detail || "Document action completed.")}</p>
     </div>`;
+}
+
+function renderDocumentIngestPackSummary(session) {
+  if (!session) return "";
+  const counts = session.counts || {};
+  return `
+    <div class="document-ingest-pack">
+      <div><span>Ingest pack</span><strong>${escapeHtml(session.current_stage || session.status || "partial")}</strong><p>Exports plan, stages, source refs, report link, memory candidates, reviews, and audit evidence for this session.</p></div>
+      <div><span>Evidence</span><strong>${escapeHtml(String(counts.source_refs || 0))} refs / ${escapeHtml(String(counts.memory_candidates || 0))} candidates</strong><p>Metadata only; original local document contents are not embedded in the export.</p></div>
+      <div><span>Safety</span><strong>no send / no auto memory write</strong><p>Exporting a pack never dispatches channels, writes long-term memory, or changes runtime state.</p></div>
+    </div>`;
+}
+
+async function exportDocumentIngestPack() {
+  const session = state.documentSession;
+  if (!session) {
+    state.errors["doc-ingest-export"] = "Select an ingest session before exporting evidence.";
+    renderDocuments();
+    return;
+  }
+  state.errors["doc-ingest-export"] = "";
+  await Promise.all([loadReports(), loadMemory()]);
+  const ingestId = session.ingest_id || state.selectedIngestId || "";
+  const relatedSourceRefs = state.sourceRefs.filter((item) => item.metadata?.ingest_id === ingestId);
+  const relatedCandidates = state.memoryCandidates.filter((item) => item.ingest_id === ingestId || item.source?.ingest_id === ingestId);
+  const candidateIds = new Set(relatedCandidates.map((item) => item.id));
+  const relatedReviews = state.memoryReviews.filter((item) => candidateIds.has(item.candidate_id));
+  const relatedReports = state.reports.filter((item) => item.ingest_id === ingestId || item.metadata?.ingest_id === ingestId || item.id === session.report?.id || item.path === session.report?.path);
+  const relatedAudit = state.audit.filter((event) => {
+    const raw = JSON.stringify(event || {});
+    return ingestId && raw.includes(ingestId);
+  });
+  exportConsoleData("document-ingest-pack", {
+    handoff_type: "document_ingest_evidence",
+    ingest_id: ingestId,
+    generated_from_screen: "documents",
+    session,
+    reports: relatedReports.length ? relatedReports : session.report ? [session.report] : [],
+    source_refs: relatedSourceRefs,
+    memory_candidates: relatedCandidates,
+    memory_reviews: relatedReviews,
+    audit_evidence: relatedAudit,
+    selected_entity: state.selectedEntity || null,
+    safety_acceptance: {
+      includes_local_file_contents: false,
+      external_send_performed: false,
+      long_term_memory_auto_write: false,
+      changes_runtime_state: false,
+      customer_public_brand: "bairui",
+    },
+    operator_next_steps: [
+      "Generate source refs when source_refs is empty.",
+      "Generate an ingest report before customer handoff.",
+      "Approve or reject memory candidates explicitly in Memory Review before any long-term memory write.",
+    ],
+  });
 }
 
 async function openDocumentMemoryReview() {

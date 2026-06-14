@@ -1311,6 +1311,44 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.document-ingest-pack {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.document-ingest-pack div {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-radius: var(--radius-sm);
+  background: rgba(53, 230, 199, 0.03);
+  padding: 9px;
+}
+
+.document-ingest-pack span {
+  display: block;
+  color: var(--muted);
+  font: 10px/1.2 var(--font-mono);
+  text-transform: uppercase;
+}
+
+.document-ingest-pack strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.document-ingest-pack p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .conversation-head,
 .message-titleline {
   display: flex;
