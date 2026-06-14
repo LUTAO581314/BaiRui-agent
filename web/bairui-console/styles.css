@@ -524,7 +524,7 @@ h1 {
 
 .activation-core-stage {
   align-content: space-between;
-  grid-template-rows: auto minmax(420px, 1fr) auto auto;
+  grid-template-rows: auto minmax(500px, 1fr) auto auto;
   gap: 14px;
   padding: 16px;
   min-height: calc(100vh - 168px);
@@ -533,7 +533,8 @@ h1 {
   position: sticky;
   top: 86px;
   background:
-    radial-gradient(circle at 50% 45%, rgba(53, 230, 199, 0.09), transparent 34%),
+    radial-gradient(circle at 50% 44%, rgba(53, 230, 199, 0.15), transparent 31%),
+    radial-gradient(circle at 44% 62%, rgba(103, 168, 255, 0.1), transparent 42%),
     linear-gradient(180deg, rgba(103, 168, 255, 0.035), rgba(7, 10, 15, 0.08));
 }
 
@@ -560,14 +561,23 @@ h1 {
   --core-pointer-y: 0deg;
   --core-focus-z: 24px;
   width: 100%;
-  min-height: 420px;
+  min-height: 500px;
   height: 100%;
   display: grid;
   place-items: center;
-  perspective: 1100px;
+  perspective: 1300px;
   perspective-origin: 50% 42%;
   position: relative;
   isolation: isolate;
+  cursor: grab;
+}
+
+.activation-core-viewport:active {
+  cursor: grabbing;
+}
+
+.activation-core-viewport.is-picking-core {
+  cursor: pointer;
 }
 
 .activation-three-canvas {
@@ -575,15 +585,19 @@ h1 {
   inset: 0;
   width: 100%;
   height: 100%;
-  min-height: 420px;
+  min-height: 500px;
   display: block;
   border-radius: calc(var(--radius) + 2px);
   background:
-    radial-gradient(circle at 50% 44%, rgba(53, 230, 199, 0.12), transparent 30%),
-    radial-gradient(circle at 50% 80%, rgba(103, 168, 255, 0.1), transparent 46%),
-    linear-gradient(180deg, rgba(7, 10, 15, 0.1), rgba(7, 10, 15, 0.62));
+    radial-gradient(circle at 50% 38%, rgba(234, 242, 248, 0.06), transparent 18%),
+    radial-gradient(circle at 50% 46%, rgba(53, 230, 199, 0.17), transparent 31%),
+    radial-gradient(circle at 50% 84%, rgba(103, 168, 255, 0.14), transparent 48%),
+    linear-gradient(180deg, rgba(2, 7, 12, 0.18), rgba(7, 10, 15, 0.72));
   z-index: 0;
   touch-action: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(234, 242, 248, 0.04),
+    inset 0 -80px 120px rgba(0, 0, 0, 0.36);
 }
 
 .activation-three-overlay {
@@ -599,11 +613,12 @@ h1 {
   transform: translate(-50%, -50%);
   border: 1px solid rgba(234, 242, 248, 0.14);
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(7, 10, 15, 0.72), rgba(7, 10, 15, 0.18) 66%, transparent);
-  box-shadow: 0 0 48px rgba(53, 230, 199, 0.18);
+  background: radial-gradient(circle, rgba(7, 10, 15, 0.54), rgba(7, 10, 15, 0.12) 66%, transparent);
+  box-shadow: 0 0 42px rgba(53, 230, 199, 0.13);
   color: var(--text);
   text-align: center;
   pointer-events: none;
+  opacity: 0.72;
 }
 
 .activation-three-overlay span {
@@ -624,20 +639,20 @@ h1 {
 .activation-core-viewport::before {
   content: "";
   position: absolute;
-  inset: 12% 4%;
+  inset: 16% 2% 2%;
   background:
     linear-gradient(rgba(53, 230, 199, 0.075) 1px, transparent 1px),
     linear-gradient(90deg, rgba(103, 168, 255, 0.06) 1px, transparent 1px);
-  background-size: 34px 34px;
-  transform: rotateX(68deg) translateY(80px);
+  background-size: 42px 42px;
+  transform: rotateX(72deg) translateY(110px) translateZ(-120px);
   transform-origin: center;
   opacity: 0.45;
-  mask-image: radial-gradient(circle, #000 0 52%, transparent 74%);
+  mask-image: radial-gradient(ellipse, #000 0 42%, transparent 76%);
   z-index: -1;
 }
 
 .activation-core-shell {
-  width: min(330px, 72vw);
+  width: min(460px, 78vw);
   aspect-ratio: 1;
   position: relative;
   display: grid;
@@ -649,7 +664,8 @@ h1 {
     translateZ(var(--core-focus-z));
   transition: transform 420ms ease, filter 240ms ease;
   filter: drop-shadow(0 26px 80px rgba(53, 230, 199, 0.16));
-  z-index: 3;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .activation-core-shell::before,
@@ -662,22 +678,22 @@ h1 {
 }
 
 .activation-core-shell::before {
-  inset: 29%;
+  inset: 34%;
   background:
     radial-gradient(circle, rgba(234, 242, 248, 0.9), rgba(53, 230, 199, 0.28) 22%, transparent 58%),
     linear-gradient(145deg, rgba(53, 230, 199, 0.22), rgba(103, 168, 255, 0.07));
   border: 1px solid rgba(234, 242, 248, 0.2);
   box-shadow: inset 0 0 35px rgba(53, 230, 199, 0.14), 0 0 55px rgba(53, 230, 199, 0.12);
   transform: translateZ(36px);
-  opacity: 0.22;
+  opacity: 0.08;
 }
 
 .activation-core-shell::after {
-  inset: 39%;
+  inset: 42%;
   background: rgba(7, 10, 15, 0.74);
   border: 1px solid rgba(103, 168, 255, 0.22);
   transform: translateZ(58px);
-  opacity: 0.2;
+  opacity: 0.08;
 }
 
 .activation-core-ring {
@@ -689,18 +705,20 @@ h1 {
 }
 
 .activation-core-ring.ring-outer {
-  inset: 2%;
+  inset: 8%;
   background:
     conic-gradient(from 20deg, rgba(94, 240, 164, 0.76), rgba(53, 230, 199, 0.2), rgba(246, 200, 95, 0.72), rgba(255, 92, 122, 0.58), rgba(103, 168, 255, 0.7), rgba(94, 240, 164, 0.76));
-  mask: radial-gradient(circle, transparent 0 45%, #000 46% 48%, transparent 49%);
+  mask: radial-gradient(circle, transparent 0 45%, #000 46% 47%, transparent 48%);
+  opacity: 0.34;
   animation: activation-core-spin 30s linear infinite;
 }
 
 .activation-core-ring.ring-inner {
-  inset: 15%;
+  inset: 22%;
   background:
     conic-gradient(from 180deg, transparent 0 9%, rgba(103, 168, 255, 0.72) 10% 13%, transparent 14% 26%, rgba(53, 230, 199, 0.76) 27% 30%, transparent 31% 100%);
-  mask: radial-gradient(circle, transparent 0 39%, #000 40% 44%, transparent 45%);
+  mask: radial-gradient(circle, transparent 0 39%, #000 40% 42%, transparent 43%);
+  opacity: 0.28;
   animation: activation-core-spin 22s linear reverse infinite;
   transform: translateZ(18px) rotateX(63deg);
 }
@@ -747,26 +765,32 @@ h1 {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 136px;
-  min-height: 48px;
+  width: 34px;
+  height: 34px;
+  min-height: 0;
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
+  place-items: center;
   border: 1px solid color-mix(in srgb, var(--layer-color) 44%, var(--line));
-  border-radius: var(--radius-sm);
-  background: rgba(7, 10, 15, 0.58);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(234, 242, 248, 0.5), transparent 24%),
+    color-mix(in srgb, var(--layer-color) 12%, rgba(7, 10, 15, 0.58));
   backdrop-filter: blur(12px);
   color: var(--text);
-  padding: 7px;
+  padding: 0;
   cursor: pointer;
   transform:
     rotate(var(--layer-angle))
-    translateX(192px)
+    translateX(222px)
     rotate(calc(var(--layer-angle) * -1))
     translateZ(var(--layer-depth));
   transform-style: preserve-3d;
-  transition: border-color var(--motion), background var(--motion), transform 420ms ease, opacity var(--motion);
+  transition: border-color var(--motion), background var(--motion), box-shadow var(--motion), transform 420ms ease, opacity var(--motion);
+  opacity: 0.82;
+  pointer-events: auto;
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--layer-color) 32%, transparent),
+    inset 0 0 14px rgba(255, 255, 255, 0.06);
 }
 
 .activation-core-layer:hover,
@@ -774,10 +798,14 @@ h1 {
 .activation-core-layer.active {
   background: color-mix(in srgb, var(--layer-color) 12%, rgba(7, 10, 15, 0.84));
   border-color: var(--layer-color);
+  opacity: 1;
   outline: none;
+  box-shadow:
+    0 0 34px color-mix(in srgb, var(--layer-color) 58%, transparent),
+    inset 0 0 18px rgba(255, 255, 255, 0.1);
   transform:
     rotate(var(--layer-angle))
-    translateX(204px)
+    translateX(238px)
     rotate(calc(var(--layer-angle) * -1))
     translateZ(calc(var(--layer-depth) + 20px));
 }
@@ -800,18 +828,38 @@ h1 {
 }
 
 .activation-core-node {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
   background: var(--layer-color);
   box-shadow: 0 0 18px color-mix(in srgb, var(--layer-color) 65%, transparent);
 }
 
 .activation-core-layer-copy {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  width: 162px;
   min-width: 0;
   display: grid;
   gap: 3px;
   text-align: left;
+  border: 1px solid color-mix(in srgb, var(--layer-color) 34%, var(--line));
+  border-radius: var(--radius-sm);
+  background: rgba(7, 10, 15, 0.72);
+  box-shadow: 0 16px 46px rgba(0, 0, 0, 0.35);
+  padding: 8px;
+  transform: translateX(-50%) translateY(-4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion), transform var(--motion);
+}
+
+.activation-core-layer:hover .activation-core-layer-copy,
+.activation-core-layer:focus-visible .activation-core-layer-copy,
+.activation-core-layer.active .activation-core-layer-copy {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .activation-core-layer-copy strong {
@@ -836,6 +884,7 @@ h1 {
   font-style: normal;
   font-size: 9px;
   line-height: 1.25;
+  opacity: 0.82;
 }
 
 .activation-core-footer {
@@ -2235,7 +2284,15 @@ h1 {
   margin-top: 12px;
 }
 
+.handoff-pack-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .event-safety-grid div,
+.handoff-pack-strip div,
 .event-evidence-card,
 .live-event-list div {
   min-width: 0;
@@ -2245,14 +2302,21 @@ h1 {
   padding: 9px;
 }
 
-.event-safety-grid span {
+.handoff-pack-strip div {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  background: rgba(53, 230, 199, 0.035);
+}
+
+.event-safety-grid span,
+.handoff-pack-strip span {
   display: block;
   color: var(--muted);
   font: 10px/1.2 var(--font-mono);
   text-transform: uppercase;
 }
 
-.event-safety-grid strong {
+.event-safety-grid strong,
+.handoff-pack-strip strong {
   display: block;
   margin-top: 6px;
   color: var(--text);
@@ -2260,6 +2324,7 @@ h1 {
 }
 
 .event-safety-grid p,
+.handoff-pack-strip p,
 .event-evidence-card p {
   margin: 6px 0 0;
   color: var(--muted);
@@ -3077,10 +3142,11 @@ h1 {
   }
 
   .activation-core-layer {
-    width: 108px;
+    width: 30px;
+    height: 30px;
     transform:
       rotate(var(--layer-angle))
-      translateX(168px)
+      translateX(178px)
       rotate(calc(var(--layer-angle) * -1))
       translateZ(var(--layer-depth));
   }
@@ -3090,7 +3156,7 @@ h1 {
   .activation-core-layer.active {
     transform:
       rotate(var(--layer-angle))
-      translateX(178px)
+      translateX(190px)
       rotate(calc(var(--layer-angle) * -1))
       translateZ(calc(var(--layer-depth) + 16px));
   }

@@ -669,8 +669,13 @@ function renderActivationCoreStage(flow, selected) {
 function initActivationThreeCore(flow, selected) {
   const canvas = el.body.querySelector("[data-activation-three]");
   if (!canvas) return;
+  const viewport = el.body.querySelector("[data-core-viewport]");
   const steps = flow.length ? flow : [{ id: "loading", title: "Contract" }];
   const selectedId = selected?.id || steps[0]?.id || "loading";
+  const selectedIndex = Math.max(
+    0,
+    steps.findIndex((step) => step.id === selectedId),
+  );
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
   const renderer = new THREE.WebGLRenderer({
     canvas,
@@ -681,52 +686,74 @@ function initActivationThreeCore(flow, selected) {
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.setClearColor(0x07101a, 0.22);
+  renderer.shadowMap.enabled = true;
+  renderer.setClearColor(0x02070c, 0.18);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
-  camera.position.set(0, 0.35, 8.2);
-  scene.add(new THREE.AmbientLight(0x9fdcff, 0.72));
+  scene.fog = new THREE.FogExp2(0x061018, 0.046);
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 120);
+  camera.position.set(0, 1.4, 9.2);
+  scene.add(new THREE.AmbientLight(0x8fd7ff, 0.56));
 
   const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
   keyLight.position.set(4, 5, 6);
+  keyLight.castShadow = true;
   scene.add(keyLight);
-  const rimLight = new THREE.PointLight(0x35e6c7, 3.6, 20);
-  rimLight.position.set(-3.4, 1.5, 3.4);
+  const rimLight = new THREE.PointLight(0x35e6c7, 4.8, 24);
+  rimLight.position.set(-4.2, 2.4, 4.8);
   scene.add(rimLight);
+  const warningLight = new THREE.PointLight(0xf6c85f, 1.8, 18);
+  warningLight.position.set(4, -1.2, 2.2);
+  scene.add(warningLight);
 
   const root = new THREE.Group();
   scene.add(root);
 
   const coreMaterial = new THREE.MeshStandardMaterial({
-    color: 0x0d1720,
-    emissive: 0x123c42,
-    emissiveIntensity: 0.55,
-    metalness: 0.78,
-    roughness: 0.32,
+    color: 0x101923,
+    emissive: 0x0c4b52,
+    emissiveIntensity: 0.82,
+    metalness: 0.9,
+    roughness: 0.18,
     transparent: true,
-    opacity: 0.94,
+    opacity: 0.96,
   });
-  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.08, 4), coreMaterial);
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.02, 5), coreMaterial);
+  core.castShadow = true;
+  core.receiveShadow = true;
   root.add(core);
 
+  const coreWire = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.08, 3)),
+    new THREE.LineBasicMaterial({ color: 0xa8fff0, transparent: true, opacity: 0.34 }),
+  );
+  root.add(coreWire);
+
   const innerGlow = new THREE.Mesh(
-    new THREE.SphereGeometry(0.72, 48, 24),
-    new THREE.MeshBasicMaterial({ color: 0x35e6c7, transparent: true, opacity: 0.08 }),
+    new THREE.SphereGeometry(0.68, 48, 24),
+    new THREE.MeshBasicMaterial({ color: 0x35e6c7, transparent: true, opacity: 0.14 }),
   );
   root.add(innerGlow);
+
+  const floor = new THREE.GridHelper(9.4, 28, 0x35e6c7, 0x16384a);
+  floor.position.y = -1.9;
+  floor.material.transparent = true;
+  floor.material.opacity = 0.22;
+  floor.rotation.x = 0.02;
+  scene.add(floor);
 
   const orbitGroup = new THREE.Group();
   root.add(orbitGroup);
   const ringSpecs = [
-    [2.55, 0x35e6c7, Math.PI / 2.4, 0.3],
-    [3.12, 0x67a8ff, Math.PI / 2, -0.54],
-    [3.72, 0xf6c85f, Math.PI / 2.15, 0.95],
+    [2.4, 0x35e6c7, Math.PI / 2.5, 0.28],
+    [3.08, 0x67a8ff, Math.PI / 2.04, -0.54],
+    [3.78, 0xf6c85f, Math.PI / 2.18, 0.95],
+    [4.32, 0xff5c7a, Math.PI / 2.8, -1.2],
   ];
   const rings = ringSpecs.map(([radius, color, x, z]) => {
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(radius, 0.012, 8, 160),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.34 }),
+      new THREE.TorusGeometry(radius, 0.014, 10, 180),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4 }),
     );
     ring.rotation.x = x;
     ring.rotation.z = z;
@@ -734,37 +761,71 @@ function initActivationThreeCore(flow, selected) {
     return ring;
   });
 
+  const pickables = [];
   const nodes = steps.map((step, index) => {
     const status = step?.id === "loading" ? "partial" : inferStepState(step);
     const statusColor = activationThreeColor(status);
     const isActive = step.id === selectedId;
     const angle = (Math.PI * 2 * index) / Math.max(steps.length, 1) - Math.PI / 2;
-    const radius = 3.05 + (index % 3) * 0.23;
-    const y = Math.sin(index * 1.7) * 0.56;
+    const radius = 3.1 + (index % 3) * 0.28;
+    const y = Math.sin(index * 1.7) * 0.52;
+    const group = new THREE.Group();
+    group.userData = { id: step.id, active: isActive };
     const material = new THREE.MeshStandardMaterial({
       color: statusColor,
       emissive: statusColor,
-      emissiveIntensity: isActive ? 2.4 : 1.15,
-      metalness: 0.22,
-      roughness: 0.28,
+      emissiveIntensity: isActive ? 2.9 : 1.2,
+      metalness: 0.34,
+      roughness: 0.22,
     });
-    const node = new THREE.Mesh(new THREE.SphereGeometry(isActive ? 0.15 : 0.105, 32, 16), material);
-    node.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius * 0.64);
-    node.userData = { id: step.id, angle, radius, y, active: isActive, baseScale: isActive ? 1.24 : 1 };
-    orbitGroup.add(node);
+    const node = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, isActive ? 0.62 : 0.42, 6), material);
+    node.rotation.x = Math.PI / 2;
+    node.userData = { id: step.id, angle, radius, y, active: isActive, baseScale: isActive ? 1.26 : 1 };
+    node.castShadow = true;
+    group.add(node);
+
+    const cap = new THREE.Mesh(
+      new THREE.SphereGeometry(isActive ? 0.2 : 0.14, 32, 16),
+      new THREE.MeshStandardMaterial({
+        color: 0xeaf2f8,
+        emissive: statusColor,
+        emissiveIntensity: isActive ? 1.8 : 0.78,
+        metalness: 0.5,
+        roughness: 0.2,
+      }),
+    );
+    cap.position.z = isActive ? 0.42 : 0.3;
+    cap.userData = { id: step.id, active: isActive };
+    group.add(cap);
 
     const halo = new THREE.Mesh(
-      new THREE.SphereGeometry(isActive ? 0.34 : 0.24, 32, 16),
-      new THREE.MeshBasicMaterial({ color: statusColor, transparent: true, opacity: isActive ? 0.18 : 0.09 }),
+      new THREE.TorusGeometry(isActive ? 0.42 : 0.32, 0.009, 8, 72),
+      new THREE.MeshBasicMaterial({ color: statusColor, transparent: true, opacity: isActive ? 0.46 : 0.2 }),
     );
-    halo.position.copy(node.position);
-    halo.userData = { follows: node };
-    orbitGroup.add(halo);
-    return { node, halo, status, id: step.id };
+    halo.userData = { id: step.id, active: isActive };
+    group.add(halo);
+
+    group.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius * 0.68);
+    group.lookAt(0, y * 0.25, 0);
+    orbitGroup.add(group);
+
+    const lineGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), group.position.clone()]);
+    const line = new THREE.Line(
+      lineGeometry,
+      new THREE.LineBasicMaterial({ color: statusColor, transparent: true, opacity: isActive ? 0.42 : 0.16 }),
+    );
+    orbitGroup.add(line);
+    pickables.push(node, cap, halo);
+    return { group, node, cap, halo, line, status, id: step.id, angle };
   });
 
-  const pointer = { x: 0, y: 0 };
-  const target = { x: 0, y: 0 };
+  const pointer = { x: 0, y: 0, zoom: 0 };
+  const target = { x: 0, y: 0, zoom: 0 };
+  const drag = { active: false, x: 0, y: 0, moved: false };
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  const selectedAngle = nodes[selectedIndex]?.angle ?? -Math.PI / 2;
+  const baseRotationY = Math.PI / 2 - selectedAngle;
   let frame = 0;
   let width = 0;
   let height = 0;
@@ -775,7 +836,8 @@ function initActivationThreeCore(flow, selected) {
     height = Math.max(1, Math.floor(rect.height));
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
-    camera.position.z = width < 440 ? 9.4 : 8.2;
+    camera.position.z = width < 440 ? 10.6 : 9.2;
+    camera.position.y = width < 440 ? 1.2 : 1.4;
     camera.updateProjectionMatrix();
     renderer.render(scene, camera);
   }
@@ -784,36 +846,101 @@ function initActivationThreeCore(flow, selected) {
   resizeObserver.observe(canvas);
   resize();
 
-  function onPointerMove(event) {
+  function pointerEventPoint(event) {
     const rect = canvas.getBoundingClientRect();
-    target.x = ((event.clientX - rect.left) / Math.max(rect.width, 1) - 0.5) * 0.48;
-    target.y = ((event.clientY - rect.top) / Math.max(rect.height, 1) - 0.5) * 0.32;
+    return {
+      x: (event.clientX - rect.left) / Math.max(rect.width, 1),
+      y: (event.clientY - rect.top) / Math.max(rect.height, 1),
+    };
+  }
+
+  function onPointerMove(event) {
+    const point = pointerEventPoint(event);
+    if (drag.active) {
+      const dx = event.clientX - drag.x;
+      const dy = event.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+      target.x += dx * 0.006;
+      target.y = Math.max(-0.52, Math.min(0.52, target.y + dy * 0.003));
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+      return;
+    }
+    target.x = (point.x - 0.5) * 0.34;
+    target.y = (point.y - 0.5) * 0.22;
+    mouse.x = point.x * 2 - 1;
+    mouse.y = -(point.y * 2 - 1);
+    raycaster.setFromCamera(mouse, camera);
+    const hit = raycaster.intersectObjects(pickables, false)[0];
+    if (viewport) viewport.classList.toggle("is-picking-core", Boolean(hit));
   }
 
   function onPointerLeave() {
-    target.x = 0;
-    target.y = 0;
+    if (!drag.active) {
+      target.x = 0;
+      target.y = 0;
+    }
+    if (viewport) viewport.classList.remove("is-picking-core");
+  }
+
+  function onPointerDown(event) {
+    drag.active = true;
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+    drag.moved = false;
+    canvas.setPointerCapture?.(event.pointerId);
+  }
+
+  function onPointerUp(event) {
+    drag.active = false;
+    canvas.releasePointerCapture?.(event.pointerId);
+    if (drag.moved) return;
+    const point = pointerEventPoint(event);
+    mouse.x = point.x * 2 - 1;
+    mouse.y = -(point.y * 2 - 1);
+    raycaster.setFromCamera(mouse, camera);
+    const hit = raycaster.intersectObjects(pickables, false)[0];
+    const stepId = hit?.object?.userData?.id;
+    if (!stepId || stepId === "loading") return;
+    state.selectedStep = stepId;
+    persistUiState();
+    renderActivation();
+  }
+
+  function onWheel(event) {
+    event.preventDefault();
+    target.zoom = Math.max(-1.2, Math.min(1.1, target.zoom + Math.sign(event.deltaY) * 0.22));
   }
 
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerleave", onPointerLeave);
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("wheel", onWheel, { passive: false });
 
   function animate(time = 0) {
     pointer.x += (target.x - pointer.x) * 0.08;
     pointer.y += (target.y - pointer.y) * 0.08;
-    root.rotation.y = pointer.x + time * 0.00013;
-    root.rotation.x = -0.15 + pointer.y;
-    core.rotation.y += 0.004;
-    core.rotation.x += 0.0015;
-    innerGlow.scale.setScalar(1 + Math.sin(time * 0.002) * 0.04);
+    pointer.zoom += (target.zoom - pointer.zoom) * 0.1;
+    root.rotation.y = baseRotationY + pointer.x + time * 0.00008;
+    root.rotation.x = -0.22 + pointer.y;
+    camera.position.z = (width < 440 ? 10.6 : 9.2) + pointer.zoom;
+    core.rotation.y += 0.0052;
+    core.rotation.x += 0.002;
+    coreWire.rotation.copy(core.rotation);
+    innerGlow.scale.setScalar(1 + Math.sin(time * 0.002) * 0.055);
+    floor.rotation.z += 0.00018;
     rings.forEach((ring, index) => {
-      ring.rotation.z += index % 2 ? -0.0018 : 0.0022;
+      ring.rotation.z += index % 2 ? -0.0024 : 0.0028;
     });
-    nodes.forEach(({ node, halo }, index) => {
-      const pulse = 1 + Math.sin(time * 0.003 + index) * (node.userData.active ? 0.13 : 0.06);
+    nodes.forEach(({ group, node, cap, halo, line }, index) => {
+      const pulse = 1 + Math.sin(time * 0.003 + index) * (node.userData.active ? 0.16 : 0.07);
       node.scale.setScalar(node.userData.baseScale * pulse);
-      halo.position.copy(node.position);
-      halo.scale.setScalar(1 + Math.sin(time * 0.0025 + index) * 0.1);
+      cap.scale.setScalar((node.userData.active ? 1.12 : 1) * pulse);
+      halo.rotation.z += node.userData.active ? 0.018 : 0.008;
+      halo.scale.setScalar(1 + Math.sin(time * 0.0025 + index) * 0.13);
+      group.position.y += Math.sin(time * 0.0016 + index) * 0.0009;
+      line.material.opacity = node.userData.active ? 0.42 + Math.sin(time * 0.003) * 0.08 : 0.16;
     });
     renderer.render(scene, camera);
     if (!reduceMotion) frame = requestAnimationFrame(animate);
@@ -833,6 +960,9 @@ function initActivationThreeCore(flow, selected) {
       resizeObserver.disconnect();
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerleave", onPointerLeave);
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("wheel", onWheel);
       scene.traverse((object) => {
         if (object.geometry) object.geometry.dispose();
         if (object.material) {
@@ -4762,6 +4892,7 @@ function renderEvents() {
     <button class="primary-btn" id="refresh-events" type="button">Refresh Audit</button>
     <button class="ghost-btn" id="load-metrics" type="button">Load Metrics</button>
     <button class="ghost-btn" id="export-diagnostics" type="button">Export Diagnostics</button>
+    <button class="ghost-btn" id="export-handoff-pack" type="button">Export Handoff Pack</button>
     <button class="ghost-btn" id="export-events" type="button">Export Events</button>
     <button class="ghost-btn" id="events-open-settings" type="button">Open Settings</button>
     <button class="ghost-btn" id="events-open-command" type="button">Open Command</button>`;
@@ -4778,8 +4909,10 @@ function renderEvents() {
       ${renderEventSummary()}
       ${renderMetricsSummary()}
       ${renderEventSafetyBoundary()}
+      ${renderHandoffPackSummary()}
       ${renderProductError("metrics")}
       ${renderProductError("diagnostics-export")}
+      ${renderProductError("handoff-export")}
     </section>
     <div class="event-layout">
       <section class="panel pad">
@@ -4805,6 +4938,7 @@ function renderEvents() {
   document.getElementById("export-events")?.addEventListener("click", exportEventsData);
   document.getElementById("load-metrics")?.addEventListener("click", loadMetrics);
   document.getElementById("export-diagnostics")?.addEventListener("click", exportDiagnosticBundle);
+  document.getElementById("export-handoff-pack")?.addEventListener("click", exportTrialHandoffPack);
   document.getElementById("events-open-settings")?.addEventListener("click", async () => {
     state.screen = "settings";
     persistUiState();
@@ -4838,6 +4972,55 @@ async function exportDiagnosticBundle() {
     diagnostic_bundle: result.diagnostic_bundle,
     note: "Redacted support bundle. Secrets are excluded; safety flags remain visible.",
   });
+}
+
+async function exportTrialHandoffPack() {
+  const [diagnostics, metrics, backup] = await Promise.all([
+    safe(() => api.get("/diagnostics/bundle").then((data) => data.diagnostic_bundle), null, "handoff-diagnostics"),
+    safe(() => api.get("/metrics").then((data) => data.metrics), state.metrics, "handoff-metrics"),
+    safe(() => api.get("/backup/status").then((data) => data.backup), state.backupStatus?.backup || null, "handoff-backup"),
+  ]);
+  state.metrics = metrics || state.metrics;
+  state.backupStatus = backup ? { backup } : state.backupStatus;
+  exportConsoleData("trial-handoff", {
+    handoff_type: "commercial_trial_evidence",
+    generated_from_screen: "events",
+    diagnostic_bundle: diagnostics,
+    config_status: state.configStatus?.config_status || null,
+    backup_status: backup || null,
+    metrics: metrics || null,
+    reports: state.reports || [],
+    source_refs: state.sourceRefs || [],
+    memory_candidates: state.memoryCandidates || [],
+    memory_reviews: state.memoryReviews || [],
+    channel_approvals: state.channelApprovals || [],
+    channel_reviews: state.channelApprovalReviews || [],
+    audit: state.audit || [],
+    live_events: state.events || [],
+    selected_entity: state.selectedEntity || null,
+    safety_acceptance: {
+      secrets_included: false,
+      external_send_performed: false,
+      long_term_memory_auto_write: false,
+      restore_executed: false,
+      customer_public_brand: "bairui",
+    },
+    operator_next_steps: [
+      "Review blockers in diagnostic_bundle.support_next_steps.",
+      "Use Settings for config, migration, backup, and owner-token checks.",
+      "Use Reports, Memory Review, Channels, and Events for item-level evidence exports.",
+    ],
+  });
+  render();
+}
+
+function renderHandoffPackSummary() {
+  return `
+    <div class="handoff-pack-strip">
+      <div><span>Handoff pack</span><strong>reports + memory + events + diagnostics</strong><p>One redacted JSON bundle for commercial trial acceptance and support escalation.</p></div>
+      <div><span>Secret policy</span><strong>secret_echo=false</strong><p>Uses the same customer-safe export sanitizer as reports, memory, channels, and diagnostics.</p></div>
+      <div><span>Safety flags</span><strong>no send / no auto memory write</strong><p>Exporting evidence never dispatches channels, writes memory, restores data, or changes runtime state.</p></div>
+    </div>`;
 }
 
 function renderMetricsSummary() {
