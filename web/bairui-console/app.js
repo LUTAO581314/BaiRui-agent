@@ -90,6 +90,7 @@ const state = {
   audit: [],
   events: [],
   metrics: null,
+  errorLogs: [],
   agents: [],
   agentSessions: [],
   selectedAgentSessionId: "",
@@ -5838,6 +5839,7 @@ function renderEvents() {
   el.actions.innerHTML = `
     <button class="primary-btn" id="refresh-events" type="button">Refresh Audit</button>
     <button class="ghost-btn" id="load-metrics" type="button">Load Metrics</button>
+    <button class="ghost-btn" id="load-errors" type="button">Load Errors</button>
     <button class="ghost-btn" id="export-diagnostics" type="button">Export Diagnostics</button>
     <button class="ghost-btn" id="export-handoff-pack" type="button">Export Handoff Pack</button>
     <button class="ghost-btn" id="export-events" type="button">Export Events</button>
@@ -5855,9 +5857,11 @@ function renderEvents() {
       </div>
       ${renderEventSummary()}
       ${renderMetricsSummary()}
+      ${renderErrorLogSummary()}
       ${renderEventSafetyBoundary()}
       ${renderHandoffPackSummary()}
       ${renderProductError("metrics")}
+      ${renderProductError("errors")}
       ${renderProductError("diagnostics-export")}
       ${renderProductError("handoff-export")}
     </section>
@@ -5884,6 +5888,7 @@ function renderEvents() {
   });
   document.getElementById("export-events")?.addEventListener("click", exportEventsData);
   document.getElementById("load-metrics")?.addEventListener("click", loadMetrics);
+  document.getElementById("load-errors")?.addEventListener("click", loadErrorLogs);
   document.getElementById("export-diagnostics")?.addEventListener("click", exportDiagnosticBundle);
   document.getElementById("export-handoff-pack")?.addEventListener("click", exportTrialHandoffPack);
   document.getElementById("events-open-settings")?.addEventListener("click", async () => {
@@ -5912,6 +5917,12 @@ async function loadMetrics() {
   render();
 }
 
+async function loadErrorLogs() {
+  const result = await runAction("errors", () => api.get("/errors"), async () => {});
+  state.errorLogs = result?.errors || state.errorLogs || [];
+  render();
+}
+
 async function exportDiagnosticBundle() {
   const result = await runAction("diagnostics-export", () => api.get("/diagnostics/bundle"), async () => {});
   if (!result?.diagnostic_bundle) return;
@@ -5936,6 +5947,7 @@ async function exportTrialHandoffPack() {
     config_status: state.configStatus?.config_status || null,
     backup_status: backup || null,
     metrics: metrics || null,
+    errors: state.errorLogs || [],
     reports: state.reports || [],
     source_refs: state.sourceRefs || [],
     memory_candidates: state.memoryCandidates || [],
@@ -5982,14 +5994,44 @@ function renderMetricsSummary() {
     </div>`;
 }
 
+function renderErrorLogSummary() {
+  const errors = state.errorLogs || [];
+  if (!errors.length) return `<div class="empty-state top-gap">Error logs not loaded yet. Use Load Errors to inspect recent redacted failures without exposing secrets.</div>`;
+  return `
+    <div class="error-log-summary top-gap">
+      <div class="conversation-head">
+        <div>
+          <h3 class="sub-title">Recent redacted errors</h3>
+          <p class="muted compact-copy">Shows server-side failures, denied actions, and blocked paths. Exported handoff packs include these records for support triage.</p>
+        </div>
+        ${pill("ready", `${errors.length} errors`)}
+      </div>
+      <div class="error-log-list">
+        ${errors
+          .slice(-5)
+          .reverse()
+          .map(
+            (item) => `
+              <div>
+                <span>${escapeHtml(item.created_at || item.timestamp || "unknown time")}</span>
+                <strong>${escapeHtml(item.path || item.action || item.error || "runtime error")}</strong>
+                <p>${escapeHtml(item.message || item.detail || item.status || "redacted error record")}</p>
+              </div>`,
+          )
+          .join("")}
+      </div>
+    </div>`;
+}
+
 function exportEventsData() {
   exportConsoleData("events", {
     audit_filter: state.auditFilter || "all",
     audit: state.audit || [],
     filtered_audit: filteredAuditTimeline(),
     live_events: state.events || [],
+    errors: state.errorLogs || [],
     selected_audit: state.selectedEntity?.type === "audit" ? state.selectedEntity.raw || state.selectedEntity : null,
-    note: "Event export combines durable audit records and this browser session's live SSE messages.",
+    note: "Event export combines durable audit records, recent redacted error logs, and this browser session's live SSE messages.",
   });
 }
 

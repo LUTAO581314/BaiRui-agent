@@ -2634,6 +2634,50 @@ h1 {
   font-size: 14px;
 }
 
+.error-log-summary {
+  border: 1px solid color-mix(in srgb, var(--danger) 26%, var(--line));
+  border-radius: var(--radius-sm);
+  background: rgba(255, 92, 122, 0.028);
+  padding: 10px;
+}
+
+.error-log-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.error-log-list div {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--danger) 22%, var(--line));
+  border-radius: var(--radius-sm);
+  background: rgba(7, 10, 15, 0.26);
+  padding: 9px;
+}
+
+.error-log-list span {
+  display: block;
+  color: var(--muted);
+  font: 10px/1.2 var(--font-mono);
+  text-transform: uppercase;
+}
+
+.error-log-list strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.error-log-list p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+
 .live-event-list div {
   display: flex;
   gap: 8px;
