@@ -699,6 +699,17 @@ function initActivationThreeCore(flow, selected) {
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 120);
   camera.position.set(0, 1.4, 9.2);
   camera.lookAt(0, 0, 0);
+
+  const postScene = new THREE.Scene();
+  const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const postMaterial = createActivationPostMaterial();
+  const postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMaterial);
+  postScene.add(postQuad);
+  const renderTarget = new THREE.WebGLRenderTarget(1, 1, {
+    colorSpace: THREE.SRGBColorSpace,
+    samples: 2,
+  });
+  postMaterial.uniforms.tDiffuse.value = renderTarget.texture;
   scene.add(new THREE.AmbientLight(0x8fd7ff, 0.56));
 
   const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -1022,6 +1033,8 @@ function initActivationThreeCore(flow, selected) {
     width = Math.max(1, Math.floor(rect.width));
     height = Math.max(1, Math.floor(rect.height));
     renderer.setSize(width, height, false);
+    renderTarget.setSize(width, height);
+    postMaterial.uniforms.uResolution.value.set(width, height);
     camera.aspect = width / height;
     cameraRig.baseZ = width < 440 ? 10.8 : 9.4;
     cameraRig.baseY = width < 440 ? 1.24 : 1.46;
@@ -1166,11 +1179,19 @@ function initActivationThreeCore(flow, selected) {
       group.position.y += Math.sin(time * 0.0016 + index) * 0.0009;
       line.material.opacity = node.userData.active ? 0.42 + Math.sin(time * 0.003) * 0.08 : 0.16;
     });
+    postMaterial.uniforms.uTime.value = time * 0.001;
+    postMaterial.uniforms.uBoost.value = 0.74 + Math.sin(time * 0.0012) * 0.05 + Math.abs(pointer.x) * 0.08;
+    renderer.setRenderTarget(renderTarget);
     renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    renderer.render(postScene, postCamera);
     if (!reduceMotion) frame = requestAnimationFrame(animate);
   }
 
+  renderer.setRenderTarget(renderTarget);
   renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  renderer.render(postScene, postCamera);
   if (!reduceMotion) frame = requestAnimationFrame(animate);
 
   activationThreeCore = {
@@ -1197,6 +1218,9 @@ function initActivationThreeCore(flow, selected) {
           });
         }
       });
+      postQuad.geometry.dispose();
+      postMaterial.dispose();
+      renderTarget.dispose();
       renderer.dispose();
     },
   };
@@ -1211,6 +1235,70 @@ function activationCoreSteps(flow) {
     { id: "loading_runtime", title: "Runtime", status: "checking", complete_when: "Runtime readiness is loading." },
     { id: "loading_review", title: "Review", status: "partial", complete_when: "Owner review gates remain closed until loaded." },
   ];
+}
+
+function createActivationPostMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      tDiffuse: { value: null },
+      uResolution: { value: new THREE.Vector2(1, 1) },
+      uTime: { value: 0 },
+      uBoost: { value: 0.75 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform vec2 uResolution;
+      uniform float uTime;
+      uniform float uBoost;
+      varying vec2 vUv;
+
+      float random(vec2 value) {
+        return fract(sin(dot(value, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+
+      void main() {
+        vec2 uv = vUv;
+        vec2 center = uv - 0.5;
+        float dist = length(center);
+        vec2 aberration = center * 0.0045 * smoothstep(0.16, 0.78, dist);
+
+        vec3 base;
+        base.r = texture2D(tDiffuse, uv + aberration).r;
+        base.g = texture2D(tDiffuse, uv).g;
+        base.b = texture2D(tDiffuse, uv - aberration).b;
+
+        vec2 texel = 1.0 / max(uResolution, vec2(1.0));
+        vec3 glow = vec3(0.0);
+        glow += texture2D(tDiffuse, uv + texel * vec2(0.0, 2.0)).rgb;
+        glow += texture2D(tDiffuse, uv + texel * vec2(0.0, -2.0)).rgb;
+        glow += texture2D(tDiffuse, uv + texel * vec2(2.0, 0.0)).rgb;
+        glow += texture2D(tDiffuse, uv + texel * vec2(-2.0, 0.0)).rgb;
+        glow += texture2D(tDiffuse, uv + texel * vec2(3.0, 3.0)).rgb;
+        glow += texture2D(tDiffuse, uv + texel * vec2(-3.0, -3.0)).rgb;
+        glow /= 6.0;
+
+        float luminance = dot(glow, vec3(0.2126, 0.7152, 0.0722));
+        vec3 bloom = glow * smoothstep(0.14, 0.78, luminance) * (0.72 + uBoost * 0.46);
+        float vignette = smoothstep(0.98, 0.24, dist);
+        float scanline = sin((uv.y * uResolution.y + uTime * 34.0) * 1.65) * 0.006;
+        float grain = (random(uv * uResolution + uTime * 37.0) - 0.5) * 0.012;
+        vec3 grade = vec3(0.98, 1.08, 1.1);
+        vec3 color = (base + bloom) * grade;
+        color += scanline + grain;
+        color *= 0.82 + vignette * 0.34;
+        color = color / (color + vec3(1.0));
+        color = pow(color, vec3(0.72));
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `,
+  });
 }
 
 function createActivationGlowSprite(color, opacity, scale) {
