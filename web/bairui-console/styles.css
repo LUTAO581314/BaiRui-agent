@@ -456,6 +456,116 @@ h1 {
   align-items: start;
 }
 
+.activation-mode-panel {
+  margin-bottom: 14px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--line));
+  background:
+    linear-gradient(180deg, rgba(53, 230, 199, 0.06), rgba(7, 10, 15, 0.02)),
+    rgba(255, 255, 255, 0.02);
+}
+
+.activation-mode-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.activation-mode-current {
+  min-width: 160px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.activation-mode-current span,
+.activation-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 10px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.activation-mode-current span {
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.activation-mode-current strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.activation-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.activation-mode-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  text-align: left;
+  cursor: pointer;
+}
+
+.activation-mode-card.active {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+  background: rgba(53, 230, 199, 0.08);
+  box-shadow: 0 0 0 1px rgba(53, 230, 199, 0.1) inset;
+}
+
+.activation-mode-card strong {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.activation-mode-card p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.activation-mode-next {
+  margin: 10px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: var(--radius-sm);
+  background: rgba(53, 230, 199, 0.04);
+}
+
+.activation-mode-next span {
+  display: inline-block;
+  color: var(--muted);
+  font: 10px/1 var(--font-mono);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.activation-mode-next strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.activation-mode-next p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .activation-layout > .panel.pad:first-child {
   max-height: calc(100vh - 168px);
   overflow: auto;
@@ -3017,6 +3127,65 @@ h1 {
   padding: 10px;
 }
 
+.settings-self-service-closure {
+  border: 1px solid color-mix(in srgb, var(--success) 28%, var(--line));
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(135deg, rgba(94, 240, 164, 0.055), transparent 44%),
+    rgba(7, 10, 15, 0.24);
+  padding: 10px;
+}
+
+.settings-closure-grid,
+.settings-closure-next {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.settings-closure-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.settings-closure-next {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settings-closure-grid div,
+.settings-closure-next div {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--success) 24%, var(--line));
+  border-radius: var(--radius-sm);
+  background: rgba(94, 240, 164, 0.026);
+  padding: 9px;
+}
+
+.settings-closure-grid span,
+.settings-closure-next span {
+  display: block;
+  color: var(--muted);
+  font: 10px/1.2 var(--font-mono);
+  text-transform: uppercase;
+}
+
+.settings-closure-grid strong,
+.settings-closure-next strong {
+  display: block;
+  margin-top: 7px;
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.settings-closure-grid p,
+.settings-closure-next p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .settings-action-guide-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3342,6 +3511,23 @@ h1 {
 
   .workbench {
     padding: 12px;
+  }
+
+  .activation-mode-panel {
+    padding: 12px;
+  }
+
+  .activation-mode-head {
+    flex-direction: column;
+  }
+
+  .activation-mode-current {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .activation-mode-grid {
+    grid-template-columns: 1fr;
   }
 
   .command-bar {

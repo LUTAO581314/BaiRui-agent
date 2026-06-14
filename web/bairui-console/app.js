@@ -134,6 +134,7 @@ const state = {
   codegraphActionResult: null,
   activationProbe: null,
   activationAction: null,
+  activationMode: "server_production",
   configApplyResult: null,
   settingsConfigDraft: {},
   databaseMigrationResult: null,
@@ -264,6 +265,7 @@ function persistUiState() {
     const snapshot = {
       screen: validScreenIds.has(state.screen) ? state.screen : "activation",
       selectedStep: state.selectedStep || "brand_lock",
+      activationMode: state.activationMode || "server_production",
       selectedIngestId: state.selectedIngestId || "",
       selectedAgentSessionId: state.selectedAgentSessionId || "",
       selectedAgentIds: Array.isArray(state.selectedAgentIds) ? state.selectedAgentIds.slice(0, 12) : [],
@@ -284,6 +286,7 @@ function restoreUiState() {
     if (!snapshot || typeof snapshot !== "object") return;
     if (validScreenIds.has(snapshot.screen)) state.screen = snapshot.screen;
     if (typeof snapshot.selectedStep === "string") state.selectedStep = snapshot.selectedStep || state.selectedStep;
+    if (activationDeploymentModes().some((mode) => mode.id === snapshot.activationMode)) state.activationMode = snapshot.activationMode;
     if (typeof snapshot.selectedIngestId === "string") state.selectedIngestId = snapshot.selectedIngestId;
     if (typeof snapshot.selectedAgentSessionId === "string") state.selectedAgentSessionId = snapshot.selectedAgentSessionId;
     if (Array.isArray(snapshot.selectedAgentIds)) state.selectedAgentIds = snapshot.selectedAgentIds.filter(Boolean).slice(0, 12);
@@ -547,19 +550,20 @@ function setScreenHead(title, kicker = "bairui") {
 
 function renderActivation() {
   disposeActivationThreeCore();
-  setScreenHead("Activation", "startup sequence");
+  setScreenHead("bairui 激活", "生产启动");
   const flow = state.contract?.activation_flow || [];
   const selected = flow.find((step) => step.id === state.selectedStep) || flow[0];
   if (!state.selectedStep && selected) state.selectedStep = selected.id;
   const selectedState = inferStepState(selected || {});
   const targetScreen = activationTargetScreen(selected?.id || "");
   el.actions.innerHTML = `
-    <button class="ghost-btn" type="button" id="refresh-activation">Refresh</button>
-    <button class="primary-btn" type="button" id="open-activation-target" ${!targetScreen ? "disabled" : ""}>Open Step</button>`;
+    <button class="ghost-btn" type="button" id="refresh-activation">刷新状态</button>
+    <button class="primary-btn" type="button" id="open-activation-target" ${!targetScreen ? "disabled" : ""}>处理当前步骤</button>`;
   el.body.innerHTML = `
+    ${renderActivationModeSelector()}
     <div class="activation-layout">
       <section class="panel pad">
-        <h2 class="panel-title">Activation steps</h2>
+        <h2 class="panel-title">激活步骤</h2>
         ${renderActivationProgress(flow)}
         <div class="step-list">
           ${flow
@@ -582,9 +586,10 @@ function renderActivation() {
       </section>
       ${renderActivationCoreStage(flow, selected)}
       <section class="panel pad">
-        <h2 class="panel-title">${escapeHtml(selected?.title || "Activation detail")}</h2>
+        <h2 class="panel-title">${escapeHtml(selected?.title || "激活详情")}</h2>
         <div class="agent-meta">${pill(selectedState)}<span class="chip">${escapeHtml(selected?.blocking ? "blocking" : "guided")}</span></div>
-        <p class="muted">${escapeHtml(selected?.complete_when || "Load backend contract to inspect activation.")}</p>
+        <p class="muted">${escapeHtml(selected?.complete_when || "加载后端契约后检查激活状态。")}</p>
+        ${renderActivationModeNextStep(selected)}
         ${renderActivationEvidence(selected?.id || "")}
         ${renderActivationDiagnostics(selected, selectedState)}
         ${renderActivationRepairCard(selected, selectedState, targetScreen)}
@@ -604,6 +609,15 @@ function renderActivation() {
       renderActivation();
     });
   });
+  el.body.querySelectorAll("[data-activation-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const mode = button.dataset.activationMode || "server_production";
+      if (!activationDeploymentModes().some((item) => item.id === mode)) return;
+      state.activationMode = mode;
+      persistUiState();
+      renderActivation();
+    });
+  });
   document.getElementById("refresh-activation")?.addEventListener("click", refresh);
   document.getElementById("open-activation-target")?.addEventListener("click", async () => {
     if (!targetScreen) return;
@@ -615,6 +629,85 @@ function renderActivation() {
   document.getElementById("activation-run-action")?.addEventListener("click", () => runActivationStepAction(selected));
   bindActivationCoreInteractions();
   initActivationThreeCore(flow, selected);
+}
+
+function activationDeploymentModes() {
+  return [
+    {
+      id: "server_production",
+      title: "服务器 / 域名生产环境",
+      badge: "推荐",
+      detail: "适合正式交付客户：服务器可访问，域名或内网解析已准备，启用 owner token、PostgreSQL、运行时健康检查和审计日志。",
+      checks: ["服务器地址", "域名解析", "PostgreSQL", "owner token", "运行时 readiness"],
+      settingsHint: "进入设置后优先填写模型网关、PostgreSQL、数据目录、渠道目标和 owner token。",
+    },
+    {
+      id: "local_production",
+      title: "本地生产环境",
+      badge: "内网",
+      detail: "适合公司内网或单机长期运行：服务只在本机或局域网开放，路径必须落在受控工作目录，仍然保留审计和显式审批。",
+      checks: ["本机服务", "本地路径", "模型网关", "知识库目录", "审计日志"],
+      settingsHint: "进入设置后优先确认文档输出目录、长期记忆目录、Avatar 资源目录和模型网关。",
+    },
+    {
+      id: "local_trial",
+      title: "本地试用 / 演示",
+      badge: "快速",
+      detail: "适合演示和功能验收：先跑通界面、命令、文档、记忆审核和 Avatar 状态，不默认开放真实外发渠道。",
+      checks: ["试用配置", "演示数据", "模型探针", "文档解析", "外发关闭"],
+      settingsHint: "进入设置后只填最小模型配置和本地目录；渠道发送保持 will_send=false。",
+    },
+  ];
+}
+
+function selectedActivationMode() {
+  return activationDeploymentModes().find((mode) => mode.id === state.activationMode) || activationDeploymentModes()[0];
+}
+
+function renderActivationModeSelector() {
+  const current = selectedActivationMode();
+  return `
+    <section class="panel pad activation-mode-panel" aria-label="选择 bairui 激活方式">
+      <div class="activation-mode-head">
+        <div>
+          <span class="section-label">第一步</span>
+          <h2 class="panel-title">先选择激活方式</h2>
+          <p class="muted compact-copy">这里决定后续检查口径：本地、服务器域名、试用演示的配置要求不一样。选好后再进入下面的技术步骤。</p>
+        </div>
+        <div class="activation-mode-current">
+          <span>当前模式</span>
+          <strong>${escapeHtml(current.title)}</strong>
+        </div>
+      </div>
+      <div class="activation-mode-grid">
+        ${activationDeploymentModes()
+          .map(
+            (mode) => `
+              <button class="activation-mode-card ${mode.id === current.id ? "active" : ""}" type="button" data-activation-mode="${escapeHtml(mode.id)}">
+                <span class="activation-mode-badge">${escapeHtml(mode.badge)}</span>
+                <strong>${escapeHtml(mode.title)}</strong>
+                <p>${escapeHtml(mode.detail)}</p>
+                <div class="agent-meta">
+                  ${mode.checks.map((check) => `<span class="chip">${escapeHtml(check)}</span>`).join("")}
+                </div>
+              </button>`,
+          )
+          .join("")}
+      </div>
+    </section>`;
+}
+
+function renderActivationModeNextStep(selected) {
+  const mode = selectedActivationMode();
+  const target = selected?.id ? activationTargetScreen(selected.id) : "settings";
+  const targetLabel = target ? screens.find(([id]) => id === target)?.[1] || target : "设置";
+  return `
+    <div class="activation-mode-next">
+      <span>当前激活方式</span>
+      <strong>${escapeHtml(mode.title)}</strong>
+      <p>${escapeHtml(mode.settingsHint)}</p>
+      <p class="muted compact-copy">当前步骤完成后进入 ${escapeHtml(targetLabel)}，继续处理缺失配置、探针验证或审批边界。</p>
+    </div>`;
 }
 
 function renderActivationCoreStage(flow, selected) {
@@ -1673,13 +1766,13 @@ function renderActivationProgress(flow) {
     <div class="activation-progress" aria-label="Activation progress">
       <div class="conversation-head">
         <div>
-          <span class="section-label">Startup readiness</span>
-          <strong>${escapeHtml(String(percent))}%</strong>
+          <span class="section-label">启动就绪</span>
+          <strong>${ready}/${flow.length}</strong>
         </div>
         <div class="agent-meta">
-          ${pill("ready", `${ready} ready`)}
-          ${pill(needsReview ? "needs_review" : "ready", `${needsReview} review`)}
-          ${pill(blocked ? "blocked" : "ready", `${blocked} blocked`)}
+          ${pill("ready", `${ready} 就绪`)}
+          ${pill(needsReview ? "needs_review" : "ready", `${needsReview} 待审核`)}
+          ${pill(blocked ? "blocked" : "ready", `${blocked} 阻塞`)}
         </div>
       </div>
       <div class="activation-progress-track"><span style="width: ${Math.max(0, Math.min(100, percent))}%"></span></div>
@@ -1692,19 +1785,19 @@ function renderActivationRepairCard(step, stepState, targetScreen) {
   return `
     <div class="activation-repair-card">
       <div>
-        <span>Repair</span>
+        <span>修复目标</span>
         <strong>${escapeHtml(repair.title)}</strong>
         <p>${escapeHtml(repair.fix)}</p>
       </div>
       <div>
-        <span>Mapped config</span>
+        <span>映射配置</span>
         ${pill(repair.status || "partial")}
         <p>${escapeHtml(repair.target || "workflow")}</p>
       </div>
       <div>
-        <span>Verify</span>
+        <span>验证命令</span>
         <strong>${escapeHtml(repair.verify)}</strong>
-        <p>Refresh Activation after the command reports ready or partial without required blockers.</p>
+        <p>命令返回 ready 或 partial 且不再出现必需阻塞后，刷新激活页。</p>
       </div>
     </div>`;
 }
@@ -1796,7 +1889,7 @@ function renderActivationDiagnostics(step, stepState) {
     <div class="activation-diagnostics">
       ${renderCountStrip(counts)}
       <div class="activation-next">
-        <span>Next</span>
+        <span>下一步</span>
         <strong>${escapeHtml(next.title)}</strong>
         <p>${escapeHtml(next.detail)}</p>
       </div>
@@ -1811,17 +1904,17 @@ function renderActivationStepOperations(step, stepState, targetScreen) {
   return `
     <div class="activation-operations">
       <div class="operation-card">
-        <span>Reads</span>
-        <strong>${escapeHtml(String((step.read || []).length))} status endpoints</strong>
-        <p>${escapeHtml((step.read || []).join(" | ") || "No read endpoint declared.")}</p>
+        <span>读取项</span>
+        <strong>${escapeHtml(String((step.read || []).length))} 个状态端点</strong>
+        <p>${escapeHtml((step.read || []).join(" | ") || "未声明读取端点。")}</p>
       </div>
       <div class="operation-card">
-        <span>Action</span>
-        <strong>${escapeHtml(action ? `${action.method} ${action.path}` : "Open linked workbench")}</strong>
-        <p>${escapeHtml(action?.id || `Continue in ${target}`)}</p>
+        <span>动作</span>
+        <strong>${escapeHtml(action ? `${action.method} ${action.path}` : "打开关联工作台")}</strong>
+        <p>${escapeHtml(action?.id || `继续进入 ${target}`)}</p>
       </div>
       <div class="operation-card">
-        <span>Safety</span>
+        <span>安全边界</span>
         <strong>${escapeHtml(safety.title)}</strong>
         <p>${escapeHtml(safety.detail)}</p>
       </div>
@@ -1860,13 +1953,13 @@ function renderActivationAction(step) {
   const action = state.activationAction;
   const error = state.errors[key];
   const status = probe?.status || action?.status || (error ? "missing_config" : "ready");
-  const buttonLabel = isProbe ? "Run Probe" : isAvatarState ? "Set Idle" : "";
-  const busyLabel = isProbe ? "Probing" : "Running";
+  const buttonLabel = isProbe ? "运行探针" : isAvatarState ? "设为空闲" : "";
+  const busyLabel = isProbe ? "探针运行中" : "执行中";
   return `
     <div class="activation-action-card">
       <div class="conversation-head">
         <div>
-          <span>Action</span>
+          <span>动作</span>
           <strong>${escapeHtml(step.action.method || "POST")} ${escapeHtml(step.action.path || "")}</strong>
           <p>${escapeHtml(step.action.id || "")}</p>
         </div>
@@ -4603,6 +4696,7 @@ function renderSettings() {
       ${renderSettingsConfigForm()}
       ${renderProductError("config-apply")}
       ${renderProductError("owner-token-local")}
+      ${renderSettingsSelfServiceClosure()}
       ${renderSettingsConfigCenter()}
       ${renderSettingsConfigChecklist()}
       ${renderSettingsConfigActionGuide()}
@@ -4792,6 +4886,68 @@ function renderSettingsConfigApplyResult() {
       <p>${escapeHtml(result.path || result.secret_policy || "Configuration saved.")}</p>
       <p class="muted compact-copy">next_step=${escapeHtml(next)}</p>
     </div>`;
+}
+
+function renderSettingsSelfServiceClosure() {
+  const result = state.configApplyResult || {};
+  const config = state.configStatus?.config_status || {};
+  const checklist = config.checklist || {};
+  const applied = result.applied || {};
+  const appliedEntries = Object.entries(applied);
+  const status = result.status || "not_saved";
+  const restart = result.restart_required === true;
+  const missingRequired = checklist.missing_required || [];
+  const optionalMissing = checklist.optional_missing || [];
+  const commands = checklist.commands || [];
+  const nextActions = settingsSelfServiceNextActions(result, config);
+  return `
+    <section class="settings-self-service-closure top-gap">
+      <div class="conversation-head">
+        <div>
+          <h3 class="panel-title">Self-service apply closure</h3>
+          <p class="muted compact-copy">This is the customer-facing save loop: fill fields, save without secret echo, review restart state, then run the exact verification steps.</p>
+        </div>
+        ${pill(restart ? "blocked" : status === "saved" ? "ready" : "partial", restart ? "restart required" : status)}
+      </div>
+      <div class="settings-closure-grid">
+        <div><span>Applied fields</span><strong>${escapeHtml(appliedEntries.length ? appliedEntries.map(([key]) => key).join(", ") : "none yet")}</strong><p>${escapeHtml(appliedEntries.length ? "Secret values show configured only; non-secret paths and names remain visible." : "Save configuration to generate an applied-field summary.")}</p></div>
+        <div><span>Restart</span><strong>${escapeHtml(restart ? "required" : "not required")}</strong><p>${escapeHtml(restart ? "Restart the bairui server, then refresh Settings and Activation." : "Refresh checks after saving to verify runtime state.")}</p></div>
+        <div><span>Required blockers</span><strong>${escapeHtml(missingRequired.join(", ") || "none")}</strong><p>${escapeHtml(optionalMissing.length ? `${optionalMissing.length} optional gaps remain.` : "Optional gaps are either complete or not loaded yet.")}</p></div>
+        <div><span>Verification commands</span><strong>${escapeHtml(commands.slice(0, 2).join(" | ") || "load checklist")}</strong><p>Use Copy Checklist for the full operator command list.</p></div>
+      </div>
+      <div class="settings-closure-next">
+        ${nextActions.map((item) => `<div><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.detail)}</p></div>`).join("")}
+      </div>
+    </section>`;
+}
+
+function settingsSelfServiceNextActions(result = {}, config = {}) {
+  if (result.status === "confirmation_required") {
+    return [
+      { label: "1", title: "Type confirmation", detail: "Type APPLY BAIRUI CONFIG, then re-enter any secret values before saving again." },
+      { label: "2", title: "Review risk fields", detail: `High-risk fields: ${(result.dangerous_fields || []).join(", ") || "unknown"}.` },
+      { label: "3", title: "No partial save", detail: "The backend did not save the high-risk change before confirmation." },
+    ];
+  }
+  if (result.restart_required) {
+    return [
+      { label: "1", title: "Restart server", detail: "Restart the bairui process so environment-backed settings are reloaded." },
+      { label: "2", title: "Refresh checks", detail: "Open Settings and run Refresh Checks, then verify /config/status and /runtime/readiness." },
+      { label: "3", title: "Return to Activation", detail: "Activation should move the configured layer out of missing_config after restart." },
+    ];
+  }
+  if (result.status === "saved") {
+    return [
+      { label: "1", title: "Refresh checks", detail: "Verify saved fields through safe status values, not by reading secrets back." },
+      { label: "2", title: "Open Activation", detail: "Use Activation to inspect the full startup sequence and remaining blockers." },
+      { label: "3", title: "Export diagnostics", detail: "Use Events to export a redacted diagnostic bundle if a customer issue remains." },
+    ];
+  }
+  return [
+    { label: "1", title: "Fill required fields", detail: "Model API, data paths, memory vault, Avatar assets, CodeGraph root, and channel targets can be entered here." },
+    { label: "2", title: "Save safely", detail: "Secrets are write-only; configured/missing state is returned instead of the value." },
+    { label: "3", title: "Verify status", detail: config.status ? `Current config status is ${config.status}.` : "Refresh Settings to load /config/status before customer trial." },
+  ];
 }
 
 function renderSettingsConfigActionGuide() {
