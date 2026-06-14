@@ -4082,6 +4082,7 @@ function renderSettings() {
       ${renderProductError("owner-token-local")}
       ${renderSettingsConfigCenter()}
       ${renderSettingsConfigChecklist()}
+      ${renderSettingsConfigActionGuide()}
       ${state.toast ? `<div class="settings-copy-result">${escapeHtml(state.toast)}</div>` : ""}
       ${renderProductError("settings-copy-checklist")}
     </section>
@@ -4268,6 +4269,32 @@ function renderSettingsConfigApplyResult() {
       <p>${escapeHtml(result.path || result.secret_policy || "Configuration saved.")}</p>
       <p class="muted compact-copy">next_step=${escapeHtml(next)}</p>
     </div>`;
+}
+
+function renderSettingsConfigActionGuide() {
+  const result = state.configApplyResult;
+  const readiness = state.readiness?.runtime_readiness || {};
+  const restartRequired = result?.restart_required === true;
+  const status = result?.status || "not_saved";
+  const headline = restartRequired ? "Restart required" : status === "saved" ? "Refresh diagnostics" : "Await configuration save";
+  const detail = restartRequired
+    ? "Configuration changed a restart-required field. Restart the bairui server, then refresh Settings to verify running state."
+    : "Safe fields update immediately. Refresh checks to confirm readiness, backup state, and any follow-up blockers.";
+  return `
+    <section class="settings-action-guide top-gap">
+      <div class="conversation-head">
+        <div>
+          <h3 class="panel-title">Save outcome guide</h3>
+          <p class="muted compact-copy">This keeps operator actions explicit after config changes so trial customers do not guess about restart or next steps.</p>
+        </div>
+        ${pill(restartRequired ? "blocked" : "ready", headline)}
+      </div>
+      <div class="settings-action-guide-grid">
+        <div><span>Saved state</span><strong>${escapeHtml(status)}</strong><p>${escapeHtml(result?.path || result?.secret_policy || "No configuration save has been run yet.")}</p></div>
+        <div><span>Runtime action</span><strong>${escapeHtml(restartRequired ? "restart" : "refresh")}</strong><p>${escapeHtml(detail)}</p></div>
+        <div><span>Readiness</span><strong>${escapeHtml(readiness.status || "partial")}</strong><p>${escapeHtml((readiness.blockers || []).length ? `${readiness.blockers.length} blockers remain` : "No new blockers from the current diagnostics.")}</p></div>
+      </div>
+    </section>`;
 }
 
 function settingsConfigStatusFields(itemId) {
