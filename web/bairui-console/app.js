@@ -2617,6 +2617,7 @@ function renderMemory() {
       <section class="panel pad">
         <h2 class="panel-title">Pending queue</h2>
         ${renderMemoryQueueSummary(queue, pending)}
+        ${renderMemoryQueueEvidenceSummary(queue, pending)}
         ${renderMemoryReviewResult()}
         ${renderProductError("memory-batch")}
         ${pending.length ? pending.map(renderMemoryCandidate).join("") : `<div class="empty-state">No pending candidates. Recent reviewed items stay visible on the right.</div>`}
@@ -2729,13 +2730,39 @@ function renderMemoryReviewCommandCenter(queue, pending) {
 }
 
 function exportMemoryData() {
+  const pending = state.memoryQueue?.candidates || [];
+  const pendingIds = new Set(pending.map((item) => item.id));
+  const reviewedIds = new Set((state.memoryReviews || []).map((item) => item.candidate_id));
+  const reviewedCandidates = (state.memoryCandidates || []).filter((item) => reviewedIds.has(item.id));
+  const relatedSourceRefs = state.sourceRefs.filter((item) => {
+    const raw = JSON.stringify(item || {});
+    return state.selectedIngestId && raw.includes(state.selectedIngestId);
+  });
   exportConsoleData("memory-review", {
+    handoff_type: "memory_review_queue_evidence",
     selected_ingest_id: state.selectedIngestId || "",
     pending_queue: state.memoryQueue || null,
-    candidates: state.memoryCandidates || [],
+    pending_candidates: pending,
+    reviewed_candidates: reviewedCandidates,
+    all_candidates: state.memoryCandidates || [],
     reviews: state.memoryReviews || [],
+    source_refs: relatedSourceRefs,
     selected_entity: state.selectedEntity?.type === "memory" ? state.selectedEntity : null,
-    note: "Memory candidates are exported for review. This export does not approve, reject, or write long-term memory.",
+    safety_acceptance: {
+      long_term_memory_auto_write: false,
+      batch_approve_available: false,
+      batch_reject_only: true,
+      external_send_performed: false,
+      pending_count: pendingIds.size,
+      reviewed_count: reviewedCandidates.length,
+      customer_public_brand: "bairui",
+    },
+    operator_next_steps: [
+      "Review pending candidates one by one before any long-term memory write.",
+      "Use batch reject only for clearly unwanted pending candidates.",
+      "Export individual candidates when customer support needs item-level source evidence.",
+    ],
+    note: "Memory review queue is exported for trial evidence. This export does not approve, reject, or write long-term memory.",
   });
 }
 
@@ -2805,6 +2832,16 @@ function renderMemoryQueueSummary(queue, pending) {
         <span class="chip">batch reject only</span>
         <span class="chip">source trace visible</span>
       </div>
+    </div>`;
+}
+
+function renderMemoryQueueEvidenceSummary(queue, pending) {
+  const reviewed = queue?.reviewed_count || state.memoryReviews.length || 0;
+  return `
+    <div class="memory-queue-evidence">
+      <div><span>Queue export</span><strong>${escapeHtml(String(pending.length))} pending / ${escapeHtml(String(reviewed))} reviewed</strong><p>Exports pending candidates, review history, selected ingest id, source refs, and no-write safety state.</p></div>
+      <div><span>Bulk boundary</span><strong>batch reject only</strong><p>There is no batch approve path. Owner approval stays item-level so memory writes cannot be hidden.</p></div>
+      <div><span>Trial evidence</span><strong>source trace visible</strong><p>Use Export Memory for queue-level handoff and Export Candidate for item-level support evidence.</p></div>
     </div>`;
 }
 

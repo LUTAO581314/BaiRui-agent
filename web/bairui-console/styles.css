@@ -2189,7 +2189,8 @@ h1 {
 
 .memory-source-strip,
 .memory-safety-grid,
-.memory-command-grid {
+.memory-command-grid,
+.memory-queue-evidence {
   display: grid;
   gap: 8px;
 }
@@ -2198,13 +2199,19 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.memory-queue-evidence {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 10px 0;
+}
+
 .memory-safety-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .memory-source-strip div,
 .memory-safety-grid div,
-.memory-command-grid div {
+.memory-command-grid div,
+.memory-queue-evidence div {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -2214,7 +2221,8 @@ h1 {
 
 .memory-source-strip span,
 .memory-safety-grid span,
-.memory-command-grid span {
+.memory-command-grid span,
+.memory-queue-evidence span {
   display: block;
   color: var(--muted);
   font: 10px/1.2 var(--font-mono);
@@ -2223,7 +2231,8 @@ h1 {
 
 .memory-source-strip strong,
 .memory-safety-grid strong,
-.memory-command-grid strong {
+.memory-command-grid strong,
+.memory-queue-evidence strong {
   display: block;
   margin-top: 5px;
   color: var(--text);
@@ -2232,7 +2241,8 @@ h1 {
 }
 
 .memory-safety-grid p,
-.memory-command-grid p {
+.memory-command-grid p,
+.memory-queue-evidence p {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 12px;
@@ -3194,6 +3204,7 @@ h1 {
   .memory-command-grid,
   .memory-source-strip,
   .memory-safety-grid,
+  .memory-queue-evidence,
   .channels-layout,
   .channel-command-grid,
   .channel-safety-grid,
