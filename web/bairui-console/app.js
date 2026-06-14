@@ -618,7 +618,7 @@ function renderActivation() {
 }
 
 function renderActivationCoreStage(flow, selected) {
-  const steps = flow.length ? flow : [{ id: "loading", title: "Contract", complete_when: "Backend contract is loading." }];
+  const steps = activationCoreSteps(flow);
   const selectedId = selected?.id || steps[0]?.id || "loading";
   const selectedState = selected ? inferStepState(selected) : "partial";
   const camera = activationCoreCameraState(selectedId);
@@ -646,6 +646,11 @@ function renderActivationCoreStage(flow, selected) {
           <span>${escapeHtml(selectedState)}</span>
           <strong>${escapeHtml(selected?.title || "Activation")}</strong>
         </div>
+        <div class="activation-cinema-hint" aria-hidden="true">
+          <span>drag orbit</span>
+          <span>wheel zoom</span>
+          <span>click node</span>
+        </div>
         <div class="activation-core-shell is-${escapeHtml(activationCoreStateClass(selectedState))}" data-core-shell>
           <div class="activation-core-ring ring-outer" aria-hidden="true"></div>
           <div class="activation-core-ring ring-inner" aria-hidden="true"></div>
@@ -670,7 +675,7 @@ function initActivationThreeCore(flow, selected) {
   const canvas = el.body.querySelector("[data-activation-three]");
   if (!canvas) return;
   const viewport = el.body.querySelector("[data-core-viewport]");
-  const steps = flow.length ? flow : [{ id: "loading", title: "Contract" }];
+  const steps = activationCoreSteps(flow);
   const selectedId = selected?.id || steps[0]?.id || "loading";
   const selectedIndex = Math.max(
     0,
@@ -690,9 +695,10 @@ function initActivationThreeCore(flow, selected) {
   renderer.setClearColor(0x02070c, 0.18);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x061018, 0.046);
+  scene.fog = new THREE.FogExp2(0x061018, 0.058);
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 120);
   camera.position.set(0, 1.4, 9.2);
+  camera.lookAt(0, 0, 0);
   scene.add(new THREE.AmbientLight(0x8fd7ff, 0.56));
 
   const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
@@ -709,19 +715,76 @@ function initActivationThreeCore(flow, selected) {
   const root = new THREE.Group();
   scene.add(root);
 
+  const cameraRig = {
+    baseZ: 9.2,
+    baseY: 1.4,
+    focus: new THREE.Vector3(0, 0.08, 0),
+    targetFocus: new THREE.Vector3(0, 0.08, 0),
+  };
+
+  const particleGeometry = new THREE.BufferGeometry();
+  const particleCount = 260;
+  const particlePositions = new Float32Array(particleCount * 3);
+  const particleColors = new Float32Array(particleCount * 3);
+  const particlePalette = [0x35e6c7, 0x67a8ff, 0xf6c85f, 0x5ef0a4];
+  for (let index = 0; index < particleCount; index += 1) {
+    const radius = 4.6 + Math.random() * 3.2;
+    const angle = Math.random() * Math.PI * 2;
+    const height = (Math.random() - 0.5) * 4.2;
+    particlePositions[index * 3] = Math.cos(angle) * radius;
+    particlePositions[index * 3 + 1] = height;
+    particlePositions[index * 3 + 2] = Math.sin(angle) * radius * 0.72;
+    const color = new THREE.Color(particlePalette[index % particlePalette.length]);
+    particleColors[index * 3] = color.r;
+    particleColors[index * 3 + 1] = color.g;
+    particleColors[index * 3 + 2] = color.b;
+  }
+  particleGeometry.setAttribute("position", new THREE.BufferAttribute(particlePositions, 3));
+  particleGeometry.setAttribute("color", new THREE.BufferAttribute(particleColors, 3));
+  const particleField = new THREE.Points(
+    particleGeometry,
+    new THREE.PointsMaterial({
+      size: 0.035,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  root.add(particleField);
+
   const coreMaterial = new THREE.MeshStandardMaterial({
-    color: 0x101923,
+    color: 0x0b1820,
     emissive: 0x0c4b52,
-    emissiveIntensity: 0.82,
-    metalness: 0.9,
-    roughness: 0.18,
+    emissiveIntensity: 1.08,
+    metalness: 0.72,
+    roughness: 0.12,
     transparent: true,
-    opacity: 0.96,
+    opacity: 0.84,
   });
   const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.02, 5), coreMaterial);
   core.castShadow = true;
   core.receiveShadow = true;
   root.add(core);
+
+  const glassShell = new THREE.Mesh(
+    new THREE.SphereGeometry(1.32, 72, 36),
+    new THREE.MeshPhysicalMaterial({
+      color: 0xa8fff0,
+      emissive: 0x0b6c68,
+      emissiveIntensity: 0.24,
+      metalness: 0.05,
+      roughness: 0.04,
+      clearcoat: 1,
+      clearcoatRoughness: 0.08,
+      transparent: true,
+      opacity: 0.18,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  root.add(glassShell);
 
   const coreWire = new THREE.LineSegments(
     new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.08, 3)),
@@ -729,11 +792,47 @@ function initActivationThreeCore(flow, selected) {
   );
   root.add(coreWire);
 
+  const coreAura = createActivationGlowSprite(0x35e6c7, 0.24, 4.2);
+  coreAura.position.set(0, 0.04, -0.18);
+  root.add(coreAura);
+
+  const lensAura = createActivationGlowSprite(0x67a8ff, 0.13, 7.6);
+  lensAura.position.set(-0.42, 0.18, -0.8);
+  root.add(lensAura);
+
   const innerGlow = new THREE.Mesh(
     new THREE.SphereGeometry(0.68, 48, 24),
     new THREE.MeshBasicMaterial({ color: 0x35e6c7, transparent: true, opacity: 0.14 }),
   );
   root.add(innerGlow);
+
+  const verticalBeam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.34, 1.08, 5.8, 64, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0x35e6c7,
+      transparent: true,
+      opacity: 0.07,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  verticalBeam.position.y = 0.18;
+  root.add(verticalBeam);
+
+  const scanPlane = new THREE.Mesh(
+    new THREE.RingGeometry(1.42, 4.62, 160),
+    new THREE.MeshBasicMaterial({
+      color: 0x67a8ff,
+      transparent: true,
+      opacity: 0.12,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  scanPlane.rotation.x = Math.PI / 2;
+  root.add(scanPlane);
 
   const floor = new THREE.GridHelper(9.4, 28, 0x35e6c7, 0x16384a);
   floor.position.y = -1.9;
@@ -745,15 +844,15 @@ function initActivationThreeCore(flow, selected) {
   const orbitGroup = new THREE.Group();
   root.add(orbitGroup);
   const ringSpecs = [
-    [2.4, 0x35e6c7, Math.PI / 2.5, 0.28],
-    [3.08, 0x67a8ff, Math.PI / 2.04, -0.54],
-    [3.78, 0xf6c85f, Math.PI / 2.18, 0.95],
-    [4.32, 0xff5c7a, Math.PI / 2.8, -1.2],
+    [2.4, 0x35e6c7, Math.PI / 2.5, 0.28, 0.24],
+    [3.08, 0x67a8ff, Math.PI / 2.04, -0.54, 0.2],
+    [3.78, 0xf6c85f, Math.PI / 2.18, 0.95, 0.12],
+    [4.32, 0xff5c7a, Math.PI / 2.8, -1.2, 0.1],
   ];
-  const rings = ringSpecs.map(([radius, color, x, z]) => {
+  const rings = ringSpecs.map(([radius, color, x, z, opacity]) => {
     const ring = new THREE.Mesh(
       new THREE.TorusGeometry(radius, 0.014, 10, 180),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4 }),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity }),
     );
     ring.rotation.x = x;
     ring.rotation.z = z;
@@ -762,6 +861,7 @@ function initActivationThreeCore(flow, selected) {
   });
 
   const pickables = [];
+  const activeEnergyPaths = [];
   const nodes = steps.map((step, index) => {
     const status = step?.id === "loading" ? "partial" : inferStepState(step);
     const statusColor = activationThreeColor(status);
@@ -778,32 +878,30 @@ function initActivationThreeCore(flow, selected) {
       metalness: 0.34,
       roughness: 0.22,
     });
-    const node = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, isActive ? 0.62 : 0.42, 6), material);
-    node.rotation.x = Math.PI / 2;
+    const node = new THREE.Mesh(new THREE.SphereGeometry(isActive ? 0.24 : 0.17, 36, 18), material);
     node.userData = { id: step.id, angle, radius, y, active: isActive, baseScale: isActive ? 1.26 : 1 };
     node.castShadow = true;
     group.add(node);
 
-    const cap = new THREE.Mesh(
-      new THREE.SphereGeometry(isActive ? 0.2 : 0.14, 32, 16),
-      new THREE.MeshStandardMaterial({
-        color: 0xeaf2f8,
-        emissive: statusColor,
-        emissiveIntensity: isActive ? 1.8 : 0.78,
-        metalness: 0.5,
-        roughness: 0.2,
-      }),
-    );
-    cap.position.z = isActive ? 0.42 : 0.3;
+    const cap = createActivationGlowSprite(statusColor, isActive ? 0.36 : 0.22, isActive ? 1.34 : 0.86);
+    cap.position.z = 0.04;
     cap.userData = { id: step.id, active: isActive };
     group.add(cap);
 
     const halo = new THREE.Mesh(
-      new THREE.TorusGeometry(isActive ? 0.42 : 0.32, 0.009, 8, 72),
+      new THREE.TorusGeometry(isActive ? 0.48 : 0.34, 0.008, 8, 96),
       new THREE.MeshBasicMaterial({ color: statusColor, transparent: true, opacity: isActive ? 0.46 : 0.2 }),
     );
     halo.userData = { id: step.id, active: isActive };
     group.add(halo);
+
+    if (isActive) {
+      const profile = activationCoreRuntimeProfile(step.id || "");
+      const label = createActivationThreeLabel(profile?.display_name || step.title || step.id || "Activation", status, statusColor);
+      label.position.set(0, 0.72, 0.1);
+      label.userData = { id: step.id, active: true };
+      group.add(label);
+    }
 
     group.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius * 0.68);
     group.lookAt(0, y * 0.25, 0);
@@ -815,6 +913,29 @@ function initActivationThreeCore(flow, selected) {
       new THREE.LineBasicMaterial({ color: statusColor, transparent: true, opacity: isActive ? 0.42 : 0.16 }),
     );
     orbitGroup.add(line);
+
+    if (isActive) {
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(group.position.x * 0.36, 0.78, group.position.z * 0.36),
+        new THREE.Vector3(group.position.x * 0.72, -0.24, group.position.z * 0.72),
+        group.position.clone(),
+      ]);
+      const energyPath = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, 80, 0.018, 8, false),
+        new THREE.MeshBasicMaterial({
+          color: statusColor,
+          transparent: true,
+          opacity: 0.5,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      energyPath.userData = { activeStepId: step.id };
+      orbitGroup.add(energyPath);
+      activeEnergyPaths.push(energyPath);
+    }
+
     pickables.push(node, cap, halo);
     return { group, node, cap, halo, line, status, id: step.id, angle };
   });
@@ -826,6 +947,14 @@ function initActivationThreeCore(flow, selected) {
   const mouse = new THREE.Vector2();
   const selectedAngle = nodes[selectedIndex]?.angle ?? -Math.PI / 2;
   const baseRotationY = Math.PI / 2 - selectedAngle;
+  const selectedNode = nodes[selectedIndex];
+  if (selectedNode) {
+    cameraRig.targetFocus.set(
+      Math.cos(selectedNode.angle) * 0.62,
+      0.12,
+      Math.sin(selectedNode.angle) * 0.32,
+    );
+  }
   let frame = 0;
   let width = 0;
   let height = 0;
@@ -836,8 +965,10 @@ function initActivationThreeCore(flow, selected) {
     height = Math.max(1, Math.floor(rect.height));
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
-    camera.position.z = width < 440 ? 10.6 : 9.2;
-    camera.position.y = width < 440 ? 1.2 : 1.4;
+    cameraRig.baseZ = width < 440 ? 10.8 : 9.4;
+    cameraRig.baseY = width < 440 ? 1.24 : 1.46;
+    camera.position.z = cameraRig.baseZ;
+    camera.position.y = cameraRig.baseY;
     camera.updateProjectionMatrix();
     renderer.render(scene, camera);
   }
@@ -901,7 +1032,7 @@ function initActivationThreeCore(flow, selected) {
     raycaster.setFromCamera(mouse, camera);
     const hit = raycaster.intersectObjects(pickables, false)[0];
     const stepId = hit?.object?.userData?.id;
-    if (!stepId || stepId === "loading") return;
+    if (!stepId || stepId.startsWith("loading")) return;
     state.selectedStep = stepId;
     persistUiState();
     renderActivation();
@@ -922,16 +1053,35 @@ function initActivationThreeCore(flow, selected) {
     pointer.x += (target.x - pointer.x) * 0.08;
     pointer.y += (target.y - pointer.y) * 0.08;
     pointer.zoom += (target.zoom - pointer.zoom) * 0.1;
+    cameraRig.focus.lerp(cameraRig.targetFocus, 0.035);
     root.rotation.y = baseRotationY + pointer.x + time * 0.00008;
     root.rotation.x = -0.22 + pointer.y;
-    camera.position.z = (width < 440 ? 10.6 : 9.2) + pointer.zoom;
+    camera.position.x = Math.sin(time * 0.00028) * 0.18 + pointer.x * 0.26;
+    camera.position.y = cameraRig.baseY + Math.sin(time * 0.00021) * 0.08 - pointer.y * 0.24;
+    camera.position.z = cameraRig.baseZ + pointer.zoom + Math.cos(time * 0.00024) * 0.16;
+    camera.lookAt(cameraRig.focus);
     core.rotation.y += 0.0052;
     core.rotation.x += 0.002;
+    glassShell.rotation.y -= 0.0018;
+    glassShell.rotation.x += 0.0009;
     coreWire.rotation.copy(core.rotation);
     innerGlow.scale.setScalar(1 + Math.sin(time * 0.002) * 0.055);
+    verticalBeam.rotation.y += 0.003;
+    verticalBeam.material.opacity = 0.055 + Math.sin(time * 0.0021) * 0.018;
+    scanPlane.position.y = -0.9 + (Math.sin(time * 0.0014) + 1) * 0.78;
+    scanPlane.rotation.z += 0.004;
+    scanPlane.material.opacity = 0.07 + Math.sin(time * 0.0022) * 0.035;
+    coreAura.material.opacity = 0.2 + Math.sin(time * 0.0018) * 0.055;
+    lensAura.material.opacity = 0.1 + Math.sin(time * 0.0012) * 0.035;
+    particleField.rotation.y += 0.0007;
+    particleField.rotation.x = Math.sin(time * 0.00045) * 0.045;
     floor.rotation.z += 0.00018;
     rings.forEach((ring, index) => {
       ring.rotation.z += index % 2 ? -0.0024 : 0.0028;
+    });
+    activeEnergyPaths.forEach((path, index) => {
+      path.material.opacity = 0.38 + Math.sin(time * 0.004 + index) * 0.14;
+      path.scale.setScalar(1 + Math.sin(time * 0.0025 + index) * 0.02);
     });
     nodes.forEach(({ group, node, cap, halo, line }, index) => {
       const pulse = 1 + Math.sin(time * 0.003 + index) * (node.userData.active ? 0.16 : 0.07);
@@ -939,6 +1089,7 @@ function initActivationThreeCore(flow, selected) {
       cap.scale.setScalar((node.userData.active ? 1.12 : 1) * pulse);
       halo.rotation.z += node.userData.active ? 0.018 : 0.008;
       halo.scale.setScalar(1 + Math.sin(time * 0.0025 + index) * 0.13);
+      cap.material.opacity = (node.userData.active ? 0.32 : 0.18) + Math.sin(time * 0.002 + index) * 0.05;
       group.position.y += Math.sin(time * 0.0016 + index) * 0.0009;
       line.material.opacity = node.userData.active ? 0.42 + Math.sin(time * 0.003) * 0.08 : 0.16;
     });
@@ -967,12 +1118,110 @@ function initActivationThreeCore(flow, selected) {
         if (object.geometry) object.geometry.dispose();
         if (object.material) {
           const materials = Array.isArray(object.material) ? object.material : [object.material];
-          materials.forEach((material) => material.dispose());
+          materials.forEach((material) => {
+            if (material.map) material.map.dispose();
+            material.dispose();
+          });
         }
       });
       renderer.dispose();
     },
   };
+}
+
+function activationCoreSteps(flow) {
+  if (flow.length) return flow;
+  return [
+    { id: "loading_contract", title: "Contract", status: "checking", complete_when: "Backend contract is loading." },
+    { id: "loading_health", title: "Health", status: "checking", complete_when: "Health probe is waiting for contract data." },
+    { id: "loading_config", title: "Config", status: "partial", complete_when: "Configuration state will appear after contract load." },
+    { id: "loading_runtime", title: "Runtime", status: "checking", complete_when: "Runtime readiness is loading." },
+    { id: "loading_review", title: "Review", status: "partial", complete_when: "Owner review gates remain closed until loaded." },
+  ];
+}
+
+function createActivationGlowSprite(color, opacity, scale) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const context = canvas.getContext("2d");
+  const accent = new THREE.Color(color);
+  const gradient = context.createRadialGradient(128, 128, 0, 128, 128, 128);
+  const rgb = `${Math.round(accent.r * 255)}, ${Math.round(accent.g * 255)}, ${Math.round(accent.b * 255)}`;
+  gradient.addColorStop(0, `rgba(255, 255, 255, ${Math.min(0.92, opacity + 0.42)})`);
+  gradient.addColorStop(0.18, `rgba(${rgb}, ${opacity})`);
+  gradient.addColorStop(0.52, `rgba(${rgb}, ${opacity * 0.28})`);
+  gradient.addColorStop(1, `rgba(${rgb}, 0)`);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  sprite.scale.set(scale, scale, 1);
+  return sprite;
+}
+
+function createActivationThreeLabel(text, status, color) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 448;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  const accent = new THREE.Color(color);
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "rgba(7, 10, 15, 0.68)";
+  roundRect(context, 18, 22, canvas.width - 36, 84, 42);
+  context.fill();
+  context.strokeStyle = `rgba(${Math.round(accent.r * 255)}, ${Math.round(accent.g * 255)}, ${Math.round(accent.b * 255)}, 0.72)`;
+  context.lineWidth = 3;
+  roundRect(context, 18, 22, canvas.width - 36, 84, 42);
+  context.stroke();
+  context.fillStyle = "rgba(234, 242, 248, 0.92)";
+  context.font = "600 28px Inter, Arial, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(clampActivationLabel(text), canvas.width / 2, 54);
+  context.fillStyle = `rgba(${Math.round(accent.r * 255)}, ${Math.round(accent.g * 255)}, ${Math.round(accent.b * 255)}, 0.88)`;
+  context.font = "500 16px ui-monospace, SFMono-Regular, Consolas, monospace";
+  context.fillText(String(status || "pending").toUpperCase(), canvas.width / 2, 84);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false,
+      depthTest: false,
+    }),
+  );
+  sprite.scale.set(1.32, 0.38, 1);
+  return sprite;
+}
+
+function clampActivationLabel(text) {
+  const value = String(text || "Activation").trim();
+  return value.length > 18 ? `${value.slice(0, 17)}...` : value;
+}
+
+function roundRect(context, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.arcTo(x + width, y, x + width, y + height, r);
+  context.arcTo(x + width, y + height, x, y + height, r);
+  context.arcTo(x, y + height, x, y, r);
+  context.arcTo(x, y, x + width, y, r);
+  context.closePath();
 }
 
 function disposeActivationThreeCore() {

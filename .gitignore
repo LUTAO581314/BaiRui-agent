@@ -12,5 +12,6 @@ obsidian-vault/
 backups/
 graphify-out/
 tmp/
+output/
 *.log
 .remote-*/
