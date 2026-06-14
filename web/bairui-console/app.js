@@ -768,6 +768,13 @@ function initActivationThreeCore(flow, selected) {
   core.receiveShadow = true;
   root.add(core);
 
+  const fresnelCore = new THREE.Mesh(
+    new THREE.SphereGeometry(1.18, 96, 48),
+    createActivationFresnelMaterial(0x35e6c7, 0x67a8ff),
+  );
+  fresnelCore.renderOrder = 2;
+  root.add(fresnelCore);
+
   const glassShell = new THREE.Mesh(
     new THREE.SphereGeometry(1.32, 72, 36),
     new THREE.MeshPhysicalMaterial({
@@ -799,6 +806,26 @@ function initActivationThreeCore(flow, selected) {
   const lensAura = createActivationGlowSprite(0x67a8ff, 0.13, 7.6);
   lensAura.position.set(-0.42, 0.18, -0.8);
   root.add(lensAura);
+
+  const apertureGroup = new THREE.Group();
+  root.add(apertureGroup);
+  const apertureBlades = Array.from({ length: 9 }, (_, index) => {
+    const blade = new THREE.Mesh(
+      new THREE.BoxGeometry(0.035, 0.9, 0.012),
+      new THREE.MeshBasicMaterial({
+        color: index % 3 === 0 ? 0x67a8ff : 0x35e6c7,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    const angle = (Math.PI * 2 * index) / 9;
+    blade.position.set(Math.cos(angle) * 1.74, Math.sin(angle) * 1.74, -0.08);
+    blade.rotation.z = angle;
+    apertureGroup.add(blade);
+    return blade;
+  });
 
   const innerGlow = new THREE.Mesh(
     new THREE.SphereGeometry(0.68, 48, 24),
@@ -841,6 +868,30 @@ function initActivationThreeCore(flow, selected) {
   floor.rotation.x = 0.02;
   scene.add(floor);
 
+  const starGate = new THREE.Group();
+  starGate.position.z = -1.8;
+  root.add(starGate);
+  const starGateRings = [5.4, 6.2, 7.1].map((radius, index) => {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(radius, 0.01, 8, 220),
+      new THREE.MeshBasicMaterial({
+        color: index === 1 ? 0x67a8ff : 0x35e6c7,
+        transparent: true,
+        opacity: index === 0 ? 0.1 : 0.07,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    ring.rotation.x = Math.PI / 2.18;
+    ring.rotation.z = index * 0.42;
+    starGate.add(ring);
+    return ring;
+  });
+
+  const bokehField = createActivationBokehField();
+  bokehField.position.z = -2.8;
+  root.add(bokehField);
+
   const orbitGroup = new THREE.Group();
   root.add(orbitGroup);
   const ringSpecs = [
@@ -882,6 +933,13 @@ function initActivationThreeCore(flow, selected) {
     node.userData = { id: step.id, angle, radius, y, active: isActive, baseScale: isActive ? 1.26 : 1 };
     node.castShadow = true;
     group.add(node);
+
+    const nodeFresnel = new THREE.Mesh(
+      new THREE.SphereGeometry(isActive ? 0.32 : 0.22, 36, 18),
+      createActivationFresnelMaterial(statusColor, 0xffffff, isActive ? 0.42 : 0.22),
+    );
+    nodeFresnel.userData = { id: step.id, active: isActive };
+    group.add(nodeFresnel);
 
     const cap = createActivationGlowSprite(statusColor, isActive ? 0.36 : 0.22, isActive ? 1.34 : 0.86);
     cap.position.z = 0.04;
@@ -937,7 +995,7 @@ function initActivationThreeCore(flow, selected) {
     }
 
     pickables.push(node, cap, halo);
-    return { group, node, cap, halo, line, status, id: step.id, angle };
+    return { group, node, nodeFresnel, cap, halo, line, status, id: step.id, angle };
   });
 
   const pointer = { x: 0, y: 0, zoom: 0 };
@@ -1062,8 +1120,21 @@ function initActivationThreeCore(flow, selected) {
     camera.lookAt(cameraRig.focus);
     core.rotation.y += 0.0052;
     core.rotation.x += 0.002;
+    fresnelCore.rotation.y -= 0.0022;
+    fresnelCore.rotation.x += 0.0011;
+    fresnelCore.material.uniforms.uTime.value = time * 0.001;
     glassShell.rotation.y -= 0.0018;
     glassShell.rotation.x += 0.0009;
+    apertureGroup.rotation.z -= 0.0016;
+    apertureBlades.forEach((blade, index) => {
+      blade.material.opacity = 0.12 + Math.sin(time * 0.0018 + index) * 0.06;
+    });
+    starGate.rotation.z += 0.00055;
+    starGateRings.forEach((ring, index) => {
+      ring.rotation.z += index % 2 ? -0.0012 : 0.0016;
+      ring.material.opacity = 0.055 + Math.sin(time * 0.0013 + index) * 0.024;
+    });
+    bokehField.rotation.y -= 0.00032;
     coreWire.rotation.copy(core.rotation);
     innerGlow.scale.setScalar(1 + Math.sin(time * 0.002) * 0.055);
     verticalBeam.rotation.y += 0.003;
@@ -1083,9 +1154,11 @@ function initActivationThreeCore(flow, selected) {
       path.material.opacity = 0.38 + Math.sin(time * 0.004 + index) * 0.14;
       path.scale.setScalar(1 + Math.sin(time * 0.0025 + index) * 0.02);
     });
-    nodes.forEach(({ group, node, cap, halo, line }, index) => {
+    nodes.forEach(({ group, node, nodeFresnel, cap, halo, line }, index) => {
       const pulse = 1 + Math.sin(time * 0.003 + index) * (node.userData.active ? 0.16 : 0.07);
       node.scale.setScalar(node.userData.baseScale * pulse);
+      nodeFresnel.scale.setScalar((node.userData.active ? 1.18 : 1) * (1 + Math.sin(time * 0.0022 + index) * 0.08));
+      nodeFresnel.material.uniforms.uTime.value = time * 0.001 + index;
       cap.scale.setScalar((node.userData.active ? 1.12 : 1) * pulse);
       halo.rotation.z += node.userData.active ? 0.018 : 0.008;
       halo.scale.setScalar(1 + Math.sin(time * 0.0025 + index) * 0.13);
@@ -1168,6 +1241,82 @@ function createActivationGlowSprite(color, opacity, scale) {
   );
   sprite.scale.set(scale, scale, 1);
   return sprite;
+}
+
+function createActivationFresnelMaterial(edgeColor, fillColor, opacity = 0.34) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uEdgeColor: { value: new THREE.Color(edgeColor) },
+      uFillColor: { value: new THREE.Color(fillColor) },
+      uOpacity: { value: opacity },
+      uTime: { value: 0 },
+    },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      void main() {
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vNormal = normalize(normalMatrix * normal);
+        vViewPosition = -mvPosition.xyz;
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uEdgeColor;
+      uniform vec3 uFillColor;
+      uniform float uOpacity;
+      uniform float uTime;
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      void main() {
+        vec3 viewDir = normalize(vViewPosition);
+        float rim = 1.0 - max(dot(viewDir, normalize(vNormal)), 0.0);
+        float pulse = 0.74 + sin(uTime * 1.8) * 0.12;
+        float fresnel = pow(rim, 2.35) * pulse;
+        float scan = smoothstep(0.48, 0.52, fract((vNormal.y + uTime * 0.18) * 7.0)) * 0.12;
+        vec3 color = mix(uFillColor, uEdgeColor, fresnel + scan);
+        float alpha = clamp((fresnel * 0.88 + scan + 0.04) * uOpacity * 2.4, 0.0, 0.92);
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+  });
+}
+
+function createActivationBokehField() {
+  const geometry = new THREE.BufferGeometry();
+  const count = 110;
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+  for (let index = 0; index < count; index += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 3.8 + Math.random() * 5.8;
+    positions[index * 3] = Math.cos(angle) * radius;
+    positions[index * 3 + 1] = (Math.random() - 0.5) * 5.6;
+    positions[index * 3 + 2] = Math.sin(angle) * radius * 0.6;
+    const color = new THREE.Color(index % 5 === 0 ? 0xf6c85f : index % 3 === 0 ? 0x67a8ff : 0x35e6c7);
+    colors[index * 3] = color.r;
+    colors[index * 3 + 1] = color.g;
+    colors[index * 3 + 2] = color.b;
+    sizes[index] = 0.04 + Math.random() * 0.12;
+  }
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+  return new THREE.Points(
+    geometry,
+    new THREE.PointsMaterial({
+      size: 0.09,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.34,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
 }
 
 function createActivationThreeLabel(text, status, color) {
