@@ -11,6 +11,7 @@ $required = @(
     "scripts/verify-server-deployment.ps1",
     "scripts/verify-postgres-production.ps1",
     "scripts/commercial-go-no-go.ps1",
+    "scripts/export-commercial-handoff-bundle.ps1",
     "docker-compose.production.yml",
     ".env.example"
 )

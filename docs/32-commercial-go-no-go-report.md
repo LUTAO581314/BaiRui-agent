@@ -18,6 +18,15 @@ For a real customer handoff, require target-server evidence:
 
 The report writes `artifacts/commercial-go-no-go.json`.
 
+After the report exists, export the operator-safe evidence bundle:
+
+```powershell
+.\scripts\export-commercial-handoff-bundle.ps1 -IncludeDocs
+```
+
+The bundle writes `artifacts/commercial-handoff-bundle/manifest.json` and
+regenerates local product acceptance and Go/No-Go evidence by default.
+
 ## 2. Go Criteria
 
 Go only when:
@@ -51,6 +60,7 @@ If the report status is `go`, attach:
 - `artifacts/server-deployment-verification.json`
 - `artifacts/postgres-production-verification.json`
 - `artifacts/product-acceptance.json`
+- `artifacts/commercial-handoff-bundle/manifest.json`
 
 If any target-server or PostgreSQL artifact is missing, the decision is still
 blocked even if local demo checks pass.

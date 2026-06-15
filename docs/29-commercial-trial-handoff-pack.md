@@ -56,6 +56,7 @@ Run:
 .\scripts\verify-server-deployment.ps1 -BaseUrl http://127.0.0.1:8787 -RequireReady
 .\scripts\verify-postgres-production.ps1
 .\scripts\commercial-go-no-go.ps1
+.\scripts\export-commercial-handoff-bundle.ps1
 .\scripts\config-doctor.ps1
 .\scripts\check-public-brand.ps1
 ```
@@ -68,6 +69,7 @@ Windows handoff evidence:
 - server-deployment-verification output;
 - postgres-production-verification output;
 - commercial-go-no-go output;
+- commercial-handoff-bundle manifest;
 - Settings security boundary checklist screenshot;
 - Events diagnostics export;
 - Events handoff pack export.
@@ -121,6 +123,12 @@ Finally run Go/No-Go with required server evidence:
 .\scripts\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence
 ```
 
+Export the operator handoff bundle:
+
+```powershell
+.\scripts\export-commercial-handoff-bundle.ps1 -IncludeDocs
+```
+
 Verify:
 
 - `GET /health`
@@ -135,6 +143,7 @@ Verify:
 - `artifacts/server-deployment-verification.json`
 - `artifacts/postgres-production-verification.json`
 - `artifacts/commercial-go-no-go.json`
+- `artifacts/commercial-handoff-bundle/manifest.json`
 
 Do not mark server deployment ready until `/console`, owner-token protected
 actions, Settings config apply, PostgreSQL readiness, and Events diagnostics
@@ -185,6 +194,7 @@ Go only when every item is true:
 - Server prerequisite report is saved for the operator.
 - Server deployment verification report is saved for the operator.
 - Commercial Go/No-Go report is `go`.
+- Commercial handoff bundle manifest is saved for the operator.
 - Documents -> Memory Review -> Reports -> Channels -> Events demo evidence is
   available.
 - Events handoff pack export is saved for the operator.
@@ -207,3 +217,15 @@ Use these console exports for trial handoff:
 Exports are customer-safe JSON. They must not include model API keys, owner
 tokens, PostgreSQL URLs, passwords, authorization headers, or local file
 contents.
+
+Use the CLI handoff bundle after the reports exist:
+
+```powershell
+.\scripts\export-commercial-handoff-bundle.ps1 -IncludeDocs
+```
+
+The bundle writes `artifacts/commercial-handoff-bundle/manifest.json`. By
+default it regenerates local product acceptance and Go/No-Go reports, then
+copies selected report JSON and optional documentation snapshots. It must not
+contain `.env`, secrets, customer files, raw logs, QR state, generated media, or
+runtime dumps.

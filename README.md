@@ -210,6 +210,12 @@ acceptance, frontend commercial closure hooks, and handoff docs. Add
 `-RequireServerEvidence -RequirePostgresEvidence` when target-server and
 database evidence are present. It writes `artifacts\commercial-go-no-go.json`.
 
+Use `scripts/export-commercial-handoff-bundle.ps1` after collecting server and
+PostgreSQL evidence. It regenerates local product acceptance and Go/No-Go
+reports by default, copies only operator-safe JSON reports, writes
+`artifacts\commercial-handoff-bundle\manifest.json`, and marks missing server
+or PostgreSQL evidence as blocked instead of pretending the trial is ready.
+
 To seed only static walkthrough records before opening the console:
 
 ```bash

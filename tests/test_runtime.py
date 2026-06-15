@@ -3604,6 +3604,35 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("No-Go Criteria", report)
         self.assertIn("-RequireServerEvidence -RequirePostgresEvidence", report)
 
+    def test_commercial_handoff_bundle_exports_safe_operator_evidence(self):
+        script = Path("scripts/export-commercial-handoff-bundle.ps1").read_text(encoding="utf-8")
+        readme = Path("README.md").read_text(encoding="utf-8")
+        handoff = Path("docs/29-commercial-trial-handoff-pack.md").read_text(encoding="utf-8")
+        report = Path("docs/32-commercial-go-no-go-report.md").read_text(encoding="utf-8")
+        assets = Path("scripts/check-deploy-assets.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("artifacts/commercial-handoff-bundle", script)
+        self.assertIn("manifest.json", script)
+        self.assertIn("product-acceptance.json", script)
+        self.assertIn("server-deployment-verification.json", script)
+        self.assertIn("postgres-production-verification.json", script)
+        self.assertIn("commercial-go-no-go.json", script)
+        self.assertIn("commercial_handoff_bundle", script)
+        self.assertIn("SkipLocalEvidenceGeneration", script)
+        self.assertIn("Test-SafeEvidencePath", script)
+        self.assertIn("unsafe evidence path rejected", script)
+        self.assertIn("product-acceptance.ps1 -OutputPath", script)
+        self.assertIn("commercial-go-no-go.ps1 -OutputPath", script)
+        self.assertIn("missing", script)
+        self.assertIn('"blocked", "failed", "no_go", "rejected"', script)
+        self.assertIn("secrets, customer data, raw logs, or runtime dumps", script)
+        self.assertIn("scripts/export-commercial-handoff-bundle.ps1", assets)
+
+        for doc in (readme, handoff, report):
+            self.assertIn("export-commercial-handoff-bundle.ps1", doc)
+            self.assertIn("commercial-handoff-bundle", doc)
+            self.assertIn("manifest.json", doc)
+
     def test_repo_hygiene_allows_env_placeholder_passwords(self):
         hygiene_script = Path("scripts/check-repo-hygiene.ps1").read_text(encoding="utf-8")
         sonic_config = Path("infra/sonic/config.cfg").read_text(encoding="utf-8")
