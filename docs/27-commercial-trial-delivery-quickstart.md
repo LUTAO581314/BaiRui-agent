@@ -41,7 +41,112 @@ diagnostics. Demo data is local evidence only:
 - no automatic long-term memory write
 - owner approval remains required for sends and memory promotion
 
-## 2. Windows Verification
+## 2. First Activation Guide
+
+Use this when the recipient only has the package and a fresh machine.
+
+1. Open `/console`.
+2. Choose an activation mode:
+   - Local trial.
+   - Local production.
+   - Server production.
+3. Open Settings and fill the required fields for that mode.
+4. Save configuration.
+5. Refresh checks and confirm `/config/status`, `/ready`, and
+   `/runtime/readiness`.
+6. Open Activation and verify each step shows ready, partial, or blocked with
+   a visible repair action.
+7. Open Events and export diagnostics after the demo flow.
+
+If the machine is on Windows, keep the path inputs inside the allowed bairui
+workspace, data, log, vault, or `~/bairui` / `~/.bairui` roots.
+
+## 3. Windows Local Deployment Guide
+
+Use this for laptop demos and internal rehearsals.
+
+```powershell
+python -m pip install -r requirements.txt
+.\scripts\deploy-usable.ps1 -Mode local
+python -m src.hermes demo flow
+```
+
+Open:
+
+```text
+http://127.0.0.1:8787/console
+```
+
+Then run:
+
+```powershell
+.\scripts\smoke-test.ps1
+.\scripts\product-acceptance.ps1
+.\scripts\check-server-prereqs.ps1 -Mode local
+.\scripts\verify-server-deployment.ps1 -BaseUrl http://127.0.0.1:8787 -RequireReady
+.\scripts\verify-postgres-production.ps1
+.\scripts\commercial-go-no-go.ps1
+```
+
+## 4. Server / Domain Deployment Guide
+
+Use this when the package is installed on a real server or domain host.
+
+1. Copy `infra/hermes/env.example` to a protected server path.
+2. Set the model gateway, owner token, PostgreSQL URL, and data roots.
+3. Run:
+
+```powershell
+.\scripts\check-server-prereqs.ps1 -Mode domain -Domain bairui.example.com -RequireDocker -RequireEnv
+.\scripts\deploy-usable.ps1 -Mode domain -Domain bairui.example.com
+.\scripts\verify-server-deployment.ps1 -BaseUrl https://bairui.example.com -RequireReady -RequirePostgreSQL
+.\scripts\verify-postgres-production.ps1 -RequireDatabase -RunMigration
+.\scripts\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence
+```
+
+4. Export the operator handoff bundle:
+
+```powershell
+.\scripts\export-commercial-handoff-bundle.ps1 -IncludeDocs
+```
+
+## 5. Common Error Handling
+
+`owner_token_required`
+
+- Fix: save the owner token locally or set the server token.
+
+`confirmation_required`
+
+- Fix: type `APPLY BAIRUI CONFIG` before risky config saves.
+
+`missing_config`
+
+- Fix: open Settings, fill the missing field, then refresh checks.
+
+`outside the allowed bairui path scope`
+
+- Fix: move the path under the allowed workspace or `~/bairui` / `~/.bairui`.
+
+`PostgreSQL unavailable`
+
+- Fix: verify the target server, credentials, driver, and migration state.
+
+## 6. Commercial Trial Checklist
+
+Go only when all items are true:
+
+- `/console` opens.
+- Activation mode is selected.
+- Settings can save and verify configuration.
+- Owner-token gating is visible.
+- PostgreSQL migration and backup plan are visible.
+- Documents -> Memory Review -> Reports -> Channels -> Events can be shown in order.
+- Events can export diagnostics and the handoff pack.
+- Customer UI shows only `bairui`.
+- GitHub CI is green.
+
+## 7. Verification Commands
 
 Run these before a customer trial handoff:
 
@@ -58,7 +163,7 @@ checks the product closure flow and expands into five acceptance scenarios:
 research task, document knowledge base, customer communication draft, code
 understanding, and runtime diagnostics.
 
-## 3. First Activation Steps
+## 8. Console Activation Details
 
 The activation page is not a public website. It is the first-use product setup
 surface for a customer/operator.
@@ -85,7 +190,7 @@ APPLY BAIRUI CONFIG
 Owner-token protection blocks write APIs when `BAIRUI_OWNER_TOKEN` is set and a
 matching token is not provided. Denied write attempts are audited.
 
-## 4. Server Deployment Paths
+## 9. Deployment Script Details
 
 For local usable deployment:
 
@@ -113,7 +218,7 @@ Both usable deployment scripts poll `/health`, `/ready`,
 `/runtime/readiness`, `/frontend/contract`, and `/demo/flow`, then write local
 readiness evidence to `data/readiness.json`.
 
-## 5. Observability And Support Commands
+## 10. Observability And Support Commands
 
 HTTP endpoints:
 
@@ -151,7 +256,7 @@ Diagnostics are redacted before export. They summarize counts, readiness,
 configuration status, metrics, recent errors, and audit events without echoing
 owner tokens or secret values.
 
-## 6. Common Errors
+## 11. Common Errors Reference
 
 `owner_token_required`
 
@@ -199,7 +304,7 @@ Document parser missing
 - Fix: configure the parser runtime and re-run readiness before promising file
   ingestion to a trial customer.
 
-## 7. PostgreSQL And Backup Note
+## 12. PostgreSQL And Backup Note
 
 The source tree includes PostgreSQL schema, migration, and guarded backup
 planning foundations, while local demos can still use JSONL-backed storage.
@@ -217,7 +322,7 @@ the confirmation phrase `RESTORE BAIRUI POSTGRES`.
 
 Do not treat a local JSONL demo as production persistence readiness.
 
-## 8. Third-Party Attribution Boundary
+## 13. Third-Party Attribution Boundary
 
 Third-party source and runtime references are allowed in internal engineering
 documents, license notices, dependency metadata, and vendor runtime folders.
@@ -228,7 +333,7 @@ Before a paid trial, review the third-party attribution inventory in
 `docs/28-third-party-attribution-inventory.md` and confirm every enabled runtime
 license is compatible with the planned customer deployment model.
 
-## 9. Go/No-Go Checklist
+## 14. Detailed Go/No-Go Checklist
 
 Go only when all items are true:
 

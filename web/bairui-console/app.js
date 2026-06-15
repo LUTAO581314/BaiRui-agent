@@ -4878,6 +4878,11 @@ function renderSettings() {
   document.getElementById("settings-save-owner-token-local")?.addEventListener("click", saveOwnerTokenLocal);
   document.getElementById("settings-run-migration")?.addEventListener("click", runSettingsDatabaseMigration);
   document.getElementById("settings-load-backup-plan")?.addEventListener("click", loadSettingsBackupPlan);
+  document.getElementById("settings-delivery-open-events")?.addEventListener("click", async () => {
+    state.screen = "events";
+    persistUiState();
+    await refreshScreenData();
+  });
   document.getElementById("settings-open-activation")?.addEventListener("click", async () => {
     state.screen = "activation";
     persistUiState();
@@ -5333,9 +5338,14 @@ function renderSettingsDeliveryCheckEntry() {
       <div class="conversation-head">
         <div>
           <h3 class="panel-title">Delivery check entry</h3>
-          <p class="muted compact-copy">Run this sequence when a customer receives the trial package. The console explains the order; the terminal scripts create the evidence files.</p>
+          <p class="muted compact-copy">Run this sequence when a customer receives the trial package. Open the handoff guide first, then use these evidence commands as the delivery checklist.</p>
         </div>
         ${pill(localReady ? "partial" : "blocked", localReady ? "local ready" : "configure first")}
+      </div>
+      <div class="action-row">
+        <a class="ghost-btn" href="/docs/29-commercial-trial-handoff-pack.md" target="_blank" rel="noreferrer">Open Handoff Guide</a>
+        <a class="ghost-btn" href="/docs/27-commercial-trial-delivery-quickstart.md" target="_blank" rel="noreferrer">Open Quickstart</a>
+        <button class="ghost-btn" type="button" id="settings-delivery-open-events">Open Events</button>
       </div>
       <div class="settings-delivery-grid">
         ${items

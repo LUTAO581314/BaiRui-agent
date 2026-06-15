@@ -30,6 +30,11 @@ Required safety evidence:
 - memory candidates require explicit approval;
 - public product copy shows only `bairui`.
 
+In the console, open Settings -> Delivery check entry to see the same ordered
+handoff commands, evidence paths, and links to this handoff pack and the
+quickstart guide. Use Events from the same entry to export diagnostics after the
+trial flow.
+
 ## 2. Windows Local Deployment Guide
 
 Use Windows local deployment for laptop demos and internal trial rehearsals.
