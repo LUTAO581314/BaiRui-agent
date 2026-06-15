@@ -2046,11 +2046,22 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("RequireEnv", prereq)
         self.assertIn("/admin/session", verifier)
         self.assertIn("/config/status", verifier)
+        self.assertIn("model_configuration", verifier)
+        self.assertIn("path_visibility", verifier)
+        self.assertIn("path_scope_policy", verifier)
         self.assertIn("POSTGRES_DB=bairui", env_example)
         self.assertIn("POSTGRES_USER=bairui", env_example)
         self.assertIn("container_name: bairui-postgres", compose)
         self.assertIn("container_name: bairui-runtime", compose)
         self.assertIn("postgresql://bairui:", server_env)
+
+    def test_server_deployment_verifier_reports_model_and_path_visibility(self):
+        script = Path("scripts/verify-server-deployment.ps1").read_text(encoding="utf-8")
+        self.assertIn("Model gateway configuration visibility", script)
+        self.assertIn("Filesystem path visibility", script)
+        self.assertIn("Filesystem path scope policy", script)
+        self.assertIn("base_url=$gatewayBase", script)
+        self.assertIn("path scope policy", script)
 
     def test_product_acceptance_script_documents_demo_scenarios_and_safety_gates(self):
         readme = Path("README.md").read_text(encoding="utf-8")

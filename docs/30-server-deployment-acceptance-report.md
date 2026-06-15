@@ -137,6 +137,8 @@ Attach:
 - Demo Flow evidence with `no_auto_memory_write=true`
 - owner-token gate evidence
 - Settings secret policy evidence
+- model gateway configuration visibility evidence
+- filesystem path visibility and path-scope policy evidence
 - PostgreSQL visibility evidence when required
 
 ## 5. PostgreSQL Production Verification

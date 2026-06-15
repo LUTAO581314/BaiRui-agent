@@ -150,6 +150,7 @@ else {
 $configStatus = Invoke-JsonEndpoint -Path "/config/status"
 $endpointResults["config_status"] = $configStatus
 if ($configStatus.ok) {
+    $configItems = @($configStatus.body.config_status.items)
     $status = $configStatus.body.config_status.status
     $secretPolicy = $configStatus.body.config_status.secret_policy
     if ($secretPolicy -match "never returned") {
@@ -158,9 +159,50 @@ if ($configStatus.ok) {
     else {
         $checks += New-Check "config_status" "Settings configuration diagnostics" "failed" "secret policy missing" "Fix config diagnostics before exposing Settings to a customer."
     }
+
+    $modelGateway = $configItems | Where-Object { $_.id -eq "model_gateway" } | Select-Object -First 1
+    if ($modelGateway) {
+        $gatewayBase = $modelGateway.fields.base_url
+        $gatewayModel = $modelGateway.fields.model
+        $gatewayKey = $modelGateway.fields.api_key
+        if ($gatewayBase -and $gatewayModel -and $gatewayBase -ne "missing_config" -and $gatewayModel -ne "missing_config" -and $gatewayKey -eq "configured") {
+            $checks += New-Check "model_configuration" "Model gateway configuration visibility" "passed" "base_url=$gatewayBase; model=$gatewayModel; api_key=configured" "Keep the model gateway visible in Settings and do not echo secret values."
+        }
+        else {
+            $checks += New-Check "model_configuration" "Model gateway configuration visibility" "blocked" "model gateway is visible but not fully configured" "Fill model base URL, model name, and API key in Settings before customer handoff."
+        }
+    }
+    else {
+        $checks += New-Check "model_configuration" "Model gateway configuration visibility" "failed" "model_gateway item missing from config/status" "Restore config/status model gateway diagnostics."
+    }
+
+    $pathItems = @($configItems | Where-Object { $_.id -in @("data_dir", "document_output_dir", "memory_vault", "codegraph_root") })
+    if ($pathItems.Count -eq 4) {
+        $pathsReady = @($pathItems | Where-Object { $_.status -in @("ready", "configured") })
+        if ($pathsReady.Count -eq 4) {
+            $checks += New-Check "path_visibility" "Filesystem path visibility" "passed" "data, documents, memory vault, and CodeGraph paths are visible in config/status" "Keep all writable paths inside the allowed bairui scope."
+        }
+        else {
+            $checks += New-Check "path_visibility" "Filesystem path visibility" "blocked" "one or more required paths are missing or blocked" "Fix writable path roots before customer handoff."
+        }
+    }
+    else {
+        $checks += New-Check "path_visibility" "Filesystem path visibility" "failed" "missing one or more required path items" "Restore config/status path diagnostics."
+    }
+
+    $checklistText = $configStatus.body.config_status.checklist.markdown
+    if ($checklistText -match "allowed bairui path scope|bairui scope") {
+        $checks += New-Check "path_scope_policy" "Filesystem path scope policy" "passed" "config/status checklist includes path scope policy" "Keep server paths inside the documented bairui path scope."
+    }
+    else {
+        $checks += New-Check "path_scope_policy" "Filesystem path scope policy" "failed" "path scope policy missing from config/status checklist" "Restore Settings path scope guidance before deployment."
+    }
 }
 else {
     $checks += New-Check "config_status" "Settings configuration diagnostics" "failed" $configStatus.error "Check /config/status route and server logs."
+    $checks += New-Check "model_configuration" "Model gateway configuration visibility" "failed" "config/status unavailable" "Check /config/status route and server logs."
+    $checks += New-Check "path_visibility" "Filesystem path visibility" "failed" "config/status unavailable" "Check /config/status route and server logs."
+    $checks += New-Check "path_scope_policy" "Filesystem path scope policy" "failed" "config/status unavailable" "Check /config/status route and server logs."
 }
 
 if (Test-Path -LiteralPath $ReadinessFile) {
