@@ -3575,6 +3575,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         handoff = Path("docs/29-commercial-trial-handoff-pack.md").read_text(encoding="utf-8")
         report = Path("docs/32-commercial-go-no-go-report.md").read_text(encoding="utf-8")
         assets = Path("scripts/check-deploy-assets.ps1").read_text(encoding="utf-8")
+        ci = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
 
         self.assertIn("artifacts/commercial-go-no-go.json", script)
         self.assertIn("RequireServerEvidence", script)
@@ -3590,6 +3591,10 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("status = if ($failed.Count)", script)
         self.assertIn("bairui commercial Go/No-Go failed", script)
         self.assertIn("scripts/commercial-go-no-go.ps1", assets)
+        self.assertIn("Run commercial Go/No-Go dry-run", ci)
+        self.assertIn("./scripts/commercial-go-no-go.ps1 -OutputPath artifacts/commercial-go-no-go.json", ci)
+        self.assertIn("Upload commercial Go/No-Go report", ci)
+        self.assertIn("actions/upload-artifact@v4", ci)
 
         for doc in (readme, handoff, report):
             self.assertIn("commercial-go-no-go.ps1", doc)
