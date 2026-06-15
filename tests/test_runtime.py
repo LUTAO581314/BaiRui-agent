@@ -3546,6 +3546,32 @@ class RuntimeFoundationTests(unittest.TestCase):
             self.assertIn("verify-server-deployment.ps1", doc)
             self.assertIn("server-deployment-verification.json", doc)
 
+    def test_server_trial_acceptance_runner_chains_target_server_evidence(self):
+        script = Path("scripts/run-server-trial-acceptance.ps1").read_text(encoding="utf-8")
+        readme = Path("README.md").read_text(encoding="utf-8")
+        handoff = Path("docs/29-commercial-trial-handoff-pack.md").read_text(encoding="utf-8")
+        report = Path("docs/30-server-deployment-acceptance-report.md").read_text(encoding="utf-8")
+        assets = Path("scripts/check-deploy-assets.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("artifacts/server-trial-acceptance.json", script)
+        self.assertIn("server_trial_acceptance", script)
+        self.assertIn("check-server-prereqs.ps1", script)
+        self.assertIn("deploy-usable.ps1", script)
+        self.assertIn("verify-server-deployment.ps1", script)
+        self.assertIn("verify-postgres-production.ps1", script)
+        self.assertIn("commercial-go-no-go.ps1", script)
+        self.assertIn("export-commercial-handoff-bundle.ps1", script)
+        self.assertIn("SkipDeploy", script)
+        self.assertIn("SkipServerVerification", script)
+        self.assertIn("SkipPostgres", script)
+        self.assertIn("RequirePostgres", script)
+        self.assertIn("bairui server trial acceptance failed", script)
+        self.assertIn("scripts/run-server-trial-acceptance.ps1", assets)
+
+        for doc in (readme, handoff, report):
+            self.assertIn("run-server-trial-acceptance.ps1", doc)
+            self.assertIn("server-trial-acceptance.json", doc)
+
     def test_postgres_production_verifier_covers_migration_backup_restore_and_secret_safety(self):
         script = Path("scripts/verify-postgres-production.ps1").read_text(encoding="utf-8")
         readme = Path("README.md").read_text(encoding="utf-8")

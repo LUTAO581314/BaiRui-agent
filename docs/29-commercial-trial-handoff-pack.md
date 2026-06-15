@@ -111,6 +111,12 @@ After the service is reachable, capture target-server evidence:
 .\scripts\verify-server-deployment.ps1 -BaseUrl https://bairui.example.com -RequireReady -RequirePostgreSQL
 ```
 
+Or run the full server trial acceptance chain:
+
+```powershell
+.\scripts\run-server-trial-acceptance.ps1 -Mode domain -Domain bairui.example.com -BaseUrl https://bairui.example.com -RequireDocker -RequireEnv -RequirePostgres -IncludeDocs
+```
+
 Then validate the production database:
 
 ```powershell
@@ -139,6 +145,7 @@ Verify:
 - `GET /errors`
 - `GET /diagnostics/bundle`
 - `artifacts/server-prereq-check.json`
+- `artifacts/server-trial-acceptance.json`
 - `data/readiness.json`
 - `artifacts/server-deployment-verification.json`
 - `artifacts/postgres-production-verification.json`
@@ -192,6 +199,8 @@ Go only when every item is true:
 - PostgreSQL production verification report is saved.
 - Events can load metrics, errors, and diagnostics.
 - Server prerequisite report is saved for the operator.
+- Server trial acceptance report is saved for the operator when the runner is
+  used.
 - Server deployment verification report is saved for the operator.
 - Commercial Go/No-Go report is `go`.
 - Commercial handoff bundle manifest is saved for the operator.

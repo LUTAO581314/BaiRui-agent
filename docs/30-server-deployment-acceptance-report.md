@@ -13,6 +13,32 @@ screen check.
 - Date:
 - Server notes:
 
+## 1.1 One-Command Acceptance Runner
+
+Use the runner when the target server is prepared and the operator wants one
+evidence chain:
+
+```powershell
+.\scripts\run-server-trial-acceptance.ps1 -Mode local -BaseUrl http://127.0.0.1:8787 -RequireDocker -RequireEnv
+```
+
+For domain production with PostgreSQL evidence:
+
+```powershell
+.\scripts\run-server-trial-acceptance.ps1 -Mode domain -Domain bairui.example.com -BaseUrl https://bairui.example.com -RequireDocker -RequireEnv -RequirePostgres -IncludeDocs
+```
+
+For a rehearsal where deployment or database proof is intentionally skipped:
+
+```powershell
+.\scripts\run-server-trial-acceptance.ps1 -SkipDeploy -SkipServerVerification -SkipPostgres
+```
+
+The runner writes `artifacts/server-trial-acceptance.json`, then calls the
+preflight, deployment, server verifier, PostgreSQL verifier, commercial
+Go/No-Go, and handoff bundle scripts. Skipped or missing target-server evidence
+keeps the decision `blocked`; failed checks make the runner fail.
+
 ## 2. Preflight
 
 Run before deployment:
@@ -30,6 +56,7 @@ For domain production:
 Attach:
 
 - `artifacts/server-prereq-check.json`
+- `artifacts/server-trial-acceptance.json` when the one-command runner is used
 - Docker / Compose version evidence
 - Python version evidence
 - Git commit evidence
@@ -141,6 +168,8 @@ Common failure classes:
 
 Go only when:
 
+- `artifacts/server-trial-acceptance.json` is `passed` when the one-command
+  runner is used;
 - preflight has no `failed` checks;
 - deployment command finishes;
 - `data/readiness.json` exists;

@@ -197,6 +197,12 @@ verifies the target `/health`, `/ready`, `/runtime/readiness`,
 `/config/status`, and optional PostgreSQL readiness evidence, then writes
 `artifacts\server-deployment-verification.json`.
 
+Use `scripts/run-server-trial-acceptance.ps1` on a prepared target server when
+you want the full Step 2 evidence chain in one command. It runs preflight,
+usable deployment unless skipped, post-deployment verification, PostgreSQL
+proof when required, commercial Go/No-Go, and the handoff bundle export, then
+writes `artifacts\server-trial-acceptance.json`.
+
 Use `scripts/verify-postgres-production.ps1` before and during production
 database validation. Dry-run mode checks migration schema coverage, backup and
 restore guardrails, Settings visibility, and secret redaction. On a target
