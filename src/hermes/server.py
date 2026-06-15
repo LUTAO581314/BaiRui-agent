@@ -133,6 +133,13 @@ from .storage import (
 
 
 PUBLIC_SERVICE = "bairui"
+DELIVERY_DOCS = {
+    "27-commercial-trial-delivery-quickstart.md",
+    "29-commercial-trial-handoff-pack.md",
+    "30-server-deployment-acceptance-report.md",
+    "31-postgresql-production-verification.md",
+    "32-commercial-go-no-go-report.md",
+}
 
 
 def _json_bytes(payload: dict[str, Any]) -> bytes:
@@ -184,6 +191,9 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/console/"):
             self._send_console_asset(self.path.removeprefix("/console/"))
+            return
+        if self.path.startswith("/docs/"):
+            self._send_delivery_doc(self.path.removeprefix("/docs/"))
             return
         if self.path == "/capabilities":
             self._send({"service": PUBLIC_SERVICE, "capabilities": collect_capabilities(settings)})
@@ -1051,6 +1061,22 @@ class HermesHandler(BaseHTTPRequestHandler):
             content_type = f"{content_type}; charset=utf-8"
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_delivery_doc(self, doc_ref: str) -> None:
+        name = Path(unquote(doc_ref)).name
+        if name not in DELIVERY_DOCS or "/" in doc_ref or "\\" in doc_ref:
+            self._send({"error": "forbidden", "path": doc_ref}, status=403)
+            return
+        path = Path(__file__).resolve().parents[2] / "docs" / name
+        if not path.exists() or not path.is_file():
+            self._send({"error": "not_found", "path": doc_ref}, status=404)
+            return
+        body = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/markdown; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

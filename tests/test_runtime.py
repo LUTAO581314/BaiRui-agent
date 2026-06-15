@@ -721,6 +721,38 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(escape_status, 403)
         self.assertIn(b"forbidden", escape_body)
 
+    def test_delivery_docs_are_served_by_backend_allowlist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    quick_status, quick_headers, quick_body = _http_get(server.server_port, "/docs/27-commercial-trial-delivery-quickstart.md")
+                    handoff_status, handoff_headers, handoff_body = _http_get(server.server_port, "/docs/29-commercial-trial-handoff-pack.md")
+                    forbidden_status, _, forbidden_body = _http_get(server.server_port, "/docs/../README.md")
+                    private_status, _, private_body = _http_get(server.server_port, "/docs/00-product-blueprint.md")
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        self.assertEqual(quick_status, 200)
+        self.assertIn("text/markdown", quick_headers["content-type"])
+        self.assertIn(b"First Activation Guide", quick_body)
+        self.assertEqual(handoff_status, 200)
+        self.assertIn("text/markdown", handoff_headers["content-type"])
+        self.assertIn(b"Commercial Trial Handoff Pack", handoff_body)
+        self.assertEqual(forbidden_status, 403)
+        self.assertIn(b"forbidden", forbidden_body)
+        self.assertEqual(private_status, 403)
+        self.assertIn(b"forbidden", private_body)
+
     def test_console_product_errors_explain_next_steps_and_safety(self):
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
         styles = Path("web/bairui-console/styles.css").read_text(encoding="utf-8")
@@ -738,6 +770,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("Channel actions only create approval records; will_send remains false.", app_js)
         self.assertIn("Configure BAIRUI_CHANNEL_TARGETS_JSON only for owner-reviewed targets", app_js)
         self.assertIn("Document parsing may create candidates, but memory still requires owner review.", app_js)
+        self.assertIn("/docs/29-commercial-trial-handoff-pack.md", app_js)
+        self.assertIn("/docs/27-commercial-trial-delivery-quickstart.md", app_js)
+        self.assertIn("Delivery check entry", app_js)
         self.assertIn("python -m src.hermes document parse status", app_js)
         self.assertIn('renderProductError("demo-flow")', app_js)
         self.assertIn('renderProductError("channel")', app_js)
