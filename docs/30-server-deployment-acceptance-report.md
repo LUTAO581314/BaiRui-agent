@@ -150,6 +150,8 @@ Run after `HERMES_DATABASE_URL` is configured on the target server:
 Attach:
 
 - `artifacts/postgres-production-verification.json`
+- `artifacts/postgres-production-failure-summary.md` when any database check is
+  failed or blocked
 - migration evidence;
 - backup status evidence;
 - secret-safe backup plan evidence;
@@ -169,6 +171,11 @@ Record every failure and the fix:
 Start from `artifacts/server-trial-failure-summary.md` when the one-command
 runner is used. It lists each failed, blocked, or skipped step with the evidence
 path and next repair action.
+
+For database-specific failures, also start from
+`artifacts/postgres-production-failure-summary.md`. It lists each failed or
+blocked PostgreSQL migration, backup, restore, Settings, and secret-safety check
+with evidence and a repair action.
 
 Common failure classes:
 

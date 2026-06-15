@@ -3599,6 +3599,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         postgres_report = Path("docs/31-postgresql-production-verification.md").read_text(encoding="utf-8")
 
         self.assertIn("artifacts/postgres-production-verification.json", script)
+        self.assertIn("postgres-production-failure-summary.md", script)
+        self.assertIn("Write-FailureSummary", script)
+        self.assertIn("PostgreSQL Production Failure Summary", script)
         self.assertIn("schema_core_tables", script)
         self.assertIn("PostgreSQL migration command", script)
         self.assertIn("Secret-safe backup plan", script)
@@ -3616,6 +3619,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         for doc in (readme, deploy_doc, handoff, server_report, postgres_report):
             self.assertIn("verify-postgres-production.ps1", doc)
             self.assertIn("postgres-production-verification.json", doc)
+            self.assertIn("postgres-production-failure-summary.md", doc)
 
         self.assertIn("RESTORE BAIRUI POSTGRES", postgres_report)
         self.assertIn("destructive=true", postgres_report)

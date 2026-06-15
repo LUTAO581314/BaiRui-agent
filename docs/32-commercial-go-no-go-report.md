@@ -59,6 +59,8 @@ If the report status is `go`, attach:
 - `artifacts/commercial-go-no-go.json`
 - `artifacts/server-deployment-verification.json`
 - `artifacts/postgres-production-verification.json`
+- `artifacts/postgres-production-failure-summary.md` when PostgreSQL checks are
+  failed or blocked
 - `artifacts/product-acceptance.json`
 - `artifacts/commercial-handoff-bundle/manifest.json`
 

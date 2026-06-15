@@ -214,7 +214,8 @@ database validation. Dry-run mode checks migration schema coverage, backup and
 restore guardrails, Settings visibility, and secret redaction. On a target
 server, run it with `-RequireDatabase -RunMigration` to prove the configured
 PostgreSQL database is ready. It writes
-`artifacts\postgres-production-verification.json`.
+`artifacts\postgres-production-verification.json` and
+`artifacts\postgres-production-failure-summary.md`.
 
 Use `scripts/commercial-go-no-go.ps1` as the final commercial trial gate. Local
 mode checks repository hygiene, public brand, deployment assets, product

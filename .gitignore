@@ -13,5 +13,6 @@ backups/
 graphify-out/
 tmp/
 output/
+artifacts/
 *.log
 .remote-*/

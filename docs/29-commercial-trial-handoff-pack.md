@@ -156,6 +156,7 @@ Verify:
 - `data/readiness.json`
 - `artifacts/server-deployment-verification.json`
 - `artifacts/postgres-production-verification.json`
+- `artifacts/postgres-production-failure-summary.md`
 - `artifacts/commercial-go-no-go.json`
 - `artifacts/commercial-handoff-bundle/manifest.json`
 

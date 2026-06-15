@@ -1,5 +1,6 @@
 param(
     [string]$OutputPath = "artifacts/postgres-production-verification.json",
+    [string]$FailureSummaryPath = "artifacts/postgres-production-failure-summary.md",
     [string]$SampleBackupPath = "data/backups/postgres/sample-verification.dump",
     [switch]$RunMigration,
     [switch]$RequireDatabase
@@ -112,6 +113,37 @@ function Select-EvidenceSummary {
         }
     }
     return $Payload
+}
+
+function Write-FailureSummary {
+    param(
+        [object]$Report,
+        [string]$Path
+    )
+    $actionable = @($Report.checks | Where-Object { @("failed", "blocked") -contains $_.status })
+    $lines = @()
+    $lines += "# bairui PostgreSQL Production Failure Summary"
+    $lines += ""
+    $lines += "- status: $($Report.status)"
+    $lines += "- require_database: $($Report.require_database)"
+    $lines += "- run_migration: $($Report.run_migration)"
+    $lines += "- generated_at: $($Report.generated_at)"
+    $lines += ""
+    if ($actionable.Count -eq 0) {
+        $lines += "No failed or blocked PostgreSQL checks were recorded."
+    }
+    else {
+        $lines += "| Check | Status | Evidence | Next step |"
+        $lines += "| --- | --- | --- | --- |"
+        foreach ($check in $actionable) {
+            $lines += "| $($check.id) | $($check.status) | $($check.evidence) | $($check.next_step) |"
+        }
+    }
+    $parent = Split-Path -Parent $Path
+    if ($parent) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+    $lines -join "`n" | Set-Content -LiteralPath $Path -Encoding UTF8
 }
 
 $checks = @()
@@ -246,6 +278,7 @@ $report = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString("o")
     require_database = [bool]$RequireDatabase
     run_migration = [bool]$RunMigration
+    failure_summary_path = $FailureSummaryPath
     checks = $checks
     evidence = $evidence
 }
@@ -256,6 +289,7 @@ if ($parent) {
 }
 $json = $report | ConvertTo-Json -Depth 40
 $json | Set-Content -LiteralPath $OutputPath -Encoding UTF8
+Write-FailureSummary -Report $report -Path $FailureSummaryPath
 $json
 
 if ($overall -ne "passed") {

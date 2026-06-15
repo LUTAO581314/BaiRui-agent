@@ -168,6 +168,11 @@ The database verifier writes `artifacts\postgres-production-verification.json`
 with migration, backup plan, restore guardrail, Settings visibility, and secret
 redaction evidence.
 
+If the database verifier reports a failure or blocked check, inspect
+`artifacts\postgres-production-failure-summary.md` first. It lists the missing
+or blocked migration, backup, restore, Settings, and secret-safety evidence so
+the operator can repair the real cause instead of guessing.
+
 `data/readiness.json` must include:
 
 - `status`;

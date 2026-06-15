@@ -26,6 +26,7 @@ Run this before touching a real database:
 Expected output:
 
 - `artifacts/postgres-production-verification.json`
+- `artifacts/postgres-production-failure-summary.md`
 - schema coverage checks;
 - backup status and plan checks;
 - restore-plan blocked and confirmed checks;
@@ -34,6 +35,8 @@ Expected output:
 
 In dry-run mode, migration and database-backed backup checks may be `blocked`.
 That is acceptable for local rehearsal, but not for production proof.
+Use `artifacts/postgres-production-failure-summary.md` to see each failed or
+blocked database check with its evidence and next repair action.
 
 ## 3. Target PostgreSQL Verification
 
@@ -55,6 +58,10 @@ Required evidence:
 - confirmed restore plan is marked `destructive=true`;
 - Settings database visibility check is `passed`;
 - secret redaction check is `passed`.
+
+If any check is failed or blocked, start from
+`artifacts/postgres-production-failure-summary.md` before editing scripts or
+configuration.
 
 ## 4. Manual Backup Command
 
@@ -92,6 +99,8 @@ Go only when:
 
 - `artifacts/postgres-production-verification.json` status is `passed` with
   `-RequireDatabase -RunMigration`;
+- `artifacts/postgres-production-failure-summary.md` contains no failed or
+  blocked database checks;
 - a real backup artifact exists in the protected backup path;
 - restore has been tested on a disposable database;
 - Settings shows database and backup status without secret values;
