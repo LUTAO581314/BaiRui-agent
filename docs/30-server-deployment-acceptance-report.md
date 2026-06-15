@@ -28,10 +28,20 @@ For domain production with PostgreSQL evidence:
 .\scripts\run-server-trial-acceptance.ps1 -Mode domain -Domain bairui.example.com -BaseUrl https://bairui.example.com -RequireDocker -RequireEnv -RequirePostgres -IncludeDocs
 ```
 
+On Linux servers:
+
+```bash
+MODE=domain DOMAIN=bairui.example.com BASE_URL=https://bairui.example.com REQUIRE_POSTGRES=1 INCLUDE_DOCS=1 bash scripts/run-server-trial-acceptance.sh
+```
+
 For a rehearsal where deployment or database proof is intentionally skipped:
 
 ```powershell
 .\scripts\run-server-trial-acceptance.ps1 -SkipDeploy -SkipServerVerification -SkipPostgres
+```
+
+```bash
+SKIP_DEPLOY=1 SKIP_SERVER_VERIFICATION=1 SKIP_POSTGRES=1 bash scripts/run-server-trial-acceptance.sh
 ```
 
 The runner writes `artifacts/server-trial-acceptance.json`, then calls the

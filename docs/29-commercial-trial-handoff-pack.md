@@ -117,6 +117,12 @@ Or run the full server trial acceptance chain:
 .\scripts\run-server-trial-acceptance.ps1 -Mode domain -Domain bairui.example.com -BaseUrl https://bairui.example.com -RequireDocker -RequireEnv -RequirePostgres -IncludeDocs
 ```
 
+Linux server equivalent:
+
+```bash
+MODE=domain DOMAIN=bairui.example.com BASE_URL=https://bairui.example.com REQUIRE_POSTGRES=1 INCLUDE_DOCS=1 bash scripts/run-server-trial-acceptance.sh
+```
+
 Then validate the production database:
 
 ```powershell

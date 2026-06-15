@@ -48,6 +48,11 @@ jobs:
         shell: pwsh
         run: ./scripts/commercial-go-no-go.ps1 -OutputPath artifacts/commercial-go-no-go.json
 
+      - name: Run server trial acceptance rehearsal
+        run: |
+          bash -n scripts/run-server-trial-acceptance.sh
+          SKIP_DEPLOY=1 SKIP_SERVER_VERIFICATION=1 SKIP_POSTGRES=1 bash scripts/run-server-trial-acceptance.sh
+
       - name: Upload commercial Go/No-Go report
         uses: actions/upload-artifact@v4
         if: always()

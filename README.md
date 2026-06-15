@@ -202,6 +202,10 @@ you want the full Step 2 evidence chain in one command. It runs preflight,
 usable deployment unless skipped, post-deployment verification, PostgreSQL
 proof when required, commercial Go/No-Go, and the handoff bundle export, then
 writes `artifacts\server-trial-acceptance.json`.
+On Linux servers, use `scripts/run-server-trial-acceptance.sh` with environment
+variables such as `MODE=domain`, `DOMAIN=bairui.example.com`,
+`BASE_URL=https://bairui.example.com`, `REQUIRE_POSTGRES=1`, and
+`INCLUDE_DOCS=1`.
 
 Use `scripts/verify-postgres-production.ps1` before and during production
 database validation. Dry-run mode checks migration schema coverage, backup and
