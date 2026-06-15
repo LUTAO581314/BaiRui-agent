@@ -55,6 +55,7 @@ Run:
 .\scripts\check-server-prereqs.ps1 -Mode local
 .\scripts\verify-server-deployment.ps1 -BaseUrl http://127.0.0.1:8787 -RequireReady
 .\scripts\verify-postgres-production.ps1
+.\scripts\commercial-go-no-go.ps1
 .\scripts\config-doctor.ps1
 .\scripts\check-public-brand.ps1
 ```
@@ -66,6 +67,7 @@ Windows handoff evidence:
 - server-prereq-check output;
 - server-deployment-verification output;
 - postgres-production-verification output;
+- commercial-go-no-go output;
 - Settings security boundary checklist screenshot;
 - Events diagnostics export;
 - Events handoff pack export.
@@ -113,6 +115,12 @@ Then validate the production database:
 .\scripts\verify-postgres-production.ps1 -RequireDatabase -RunMigration
 ```
 
+Finally run Go/No-Go with required server evidence:
+
+```powershell
+.\scripts\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence
+```
+
 Verify:
 
 - `GET /health`
@@ -126,6 +134,7 @@ Verify:
 - `data/readiness.json`
 - `artifacts/server-deployment-verification.json`
 - `artifacts/postgres-production-verification.json`
+- `artifacts/commercial-go-no-go.json`
 
 Do not mark server deployment ready until `/console`, owner-token protected
 actions, Settings config apply, PostgreSQL readiness, and Events diagnostics
@@ -175,6 +184,7 @@ Go only when every item is true:
 - Events can load metrics, errors, and diagnostics.
 - Server prerequisite report is saved for the operator.
 - Server deployment verification report is saved for the operator.
+- Commercial Go/No-Go report is `go`.
 - Documents -> Memory Review -> Reports -> Channels -> Events demo evidence is
   available.
 - Events handoff pack export is saved for the operator.

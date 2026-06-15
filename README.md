@@ -96,6 +96,7 @@ Internal frontend source reference:
 - [Commercial Trial Handoff Pack](docs/29-commercial-trial-handoff-pack.md)
 - [Server Deployment Acceptance Report](docs/30-server-deployment-acceptance-report.md)
 - [PostgreSQL Production Verification](docs/31-postgresql-production-verification.md)
+- [Commercial Go/No-Go Report](docs/32-commercial-go-no-go-report.md)
 
 ## CLI Entry Point
 
@@ -163,6 +164,7 @@ For Windows PowerShell verification:
 .\scripts\check-server-prereqs.ps1
 .\scripts\verify-server-deployment.ps1
 .\scripts\verify-postgres-production.ps1
+.\scripts\commercial-go-no-go.ps1
 .\scripts\config-doctor.ps1
 .\scripts\check-public-brand.ps1
 ```
@@ -201,6 +203,12 @@ restore guardrails, Settings visibility, and secret redaction. On a target
 server, run it with `-RequireDatabase -RunMigration` to prove the configured
 PostgreSQL database is ready. It writes
 `artifacts\postgres-production-verification.json`.
+
+Use `scripts/commercial-go-no-go.ps1` as the final commercial trial gate. Local
+mode checks repository hygiene, public brand, deployment assets, product
+acceptance, frontend commercial closure hooks, and handoff docs. Add
+`-RequireServerEvidence -RequirePostgresEvidence` when target-server and
+database evidence are present. It writes `artifacts\commercial-go-no-go.json`.
 
 To seed only static walkthrough records before opening the console:
 

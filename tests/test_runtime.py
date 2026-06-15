@@ -3501,6 +3501,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("scripts/check-server-prereqs.ps1", assets)
         self.assertIn("scripts/verify-server-deployment.ps1", assets)
         self.assertIn("scripts/verify-postgres-production.ps1", assets)
+        self.assertIn("scripts/commercial-go-no-go.ps1", assets)
 
         for doc in (readme, deploy_doc, handoff, report):
             self.assertIn("check-server-prereqs.ps1", doc)
@@ -3567,6 +3568,36 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("RESTORE BAIRUI POSTGRES", postgres_report)
         self.assertIn("destructive=true", postgres_report)
         self.assertIn("No-go", postgres_report)
+
+    def test_commercial_go_no_go_collects_final_trial_gates(self):
+        script = Path("scripts/commercial-go-no-go.ps1").read_text(encoding="utf-8")
+        readme = Path("README.md").read_text(encoding="utf-8")
+        handoff = Path("docs/29-commercial-trial-handoff-pack.md").read_text(encoding="utf-8")
+        report = Path("docs/32-commercial-go-no-go-report.md").read_text(encoding="utf-8")
+        assets = Path("scripts/check-deploy-assets.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("artifacts/commercial-go-no-go.json", script)
+        self.assertIn("RequireServerEvidence", script)
+        self.assertIn("RequirePostgresEvidence", script)
+        self.assertIn("check-public-brand.ps1", script)
+        self.assertIn("check-repo-hygiene.ps1", script)
+        self.assertIn("check-deploy-assets.ps1", script)
+        self.assertIn("product-acceptance.ps1", script)
+        self.assertIn("renderCommercialTrialFlow", script)
+        self.assertIn("server-deployment-verification.json", script)
+        self.assertIn("postgres-production-verification.json", script)
+        self.assertIn("commercial_go_no_go", script)
+        self.assertIn("status = if ($failed.Count)", script)
+        self.assertIn("bairui commercial Go/No-Go failed", script)
+        self.assertIn("scripts/commercial-go-no-go.ps1", assets)
+
+        for doc in (readme, handoff, report):
+            self.assertIn("commercial-go-no-go.ps1", doc)
+            self.assertIn("commercial-go-no-go.json", doc)
+
+        self.assertIn("Go Criteria", report)
+        self.assertIn("No-Go Criteria", report)
+        self.assertIn("-RequireServerEvidence -RequirePostgresEvidence", report)
 
     def test_repo_hygiene_allows_env_placeholder_passwords(self):
         hygiene_script = Path("scripts/check-repo-hygiene.ps1").read_text(encoding="utf-8")
