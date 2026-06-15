@@ -158,6 +158,7 @@ For Windows PowerShell verification:
 .\scripts\smoke-test.ps1
 .\scripts\smoke-test.ps1 -FullAcceptance
 .\scripts\product-acceptance.ps1
+.\scripts\verify-server-deployment.ps1
 .\scripts\config-doctor.ps1
 .\scripts\check-public-brand.ps1
 ```
@@ -178,6 +179,12 @@ with `-OutputPath artifacts\product-acceptance.json`.
 
 Use `scripts/config-doctor.ps1` when you need an operator-safe configuration
 diagnostic from the CLI without opening the browser.
+
+Use `scripts/verify-server-deployment.ps1` after a local, LAN, or domain
+deployment is running. It verifies the target `/health`, `/ready`,
+`/runtime/readiness`, `/frontend/contract`, `/console`, `/demo/flow`,
+`/admin/session`, `/config/status`, and optional PostgreSQL readiness evidence,
+then writes `artifacts\server-deployment-verification.json`.
 
 To seed only static walkthrough records before opening the console:
 
@@ -244,6 +251,12 @@ Windows usable deployment:
 
 Both scripts print the `/console` URL and write `data/readiness.json`, including
 health, readiness, runtime readiness, capabilities, and Demo Flow evidence.
+
+After the target server is running, capture a deployment verification report:
+
+```powershell
+.\scripts\verify-server-deployment.ps1 -BaseUrl http://127.0.0.1:8787 -RequireReady
+```
 
 Commercial Linux service assets live under `infra/hermes`:
 

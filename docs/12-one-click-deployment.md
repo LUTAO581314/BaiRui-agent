@@ -126,6 +126,22 @@ data/readiness.json
 The deploy command must fail loudly when Docker, Docker Compose, `.env.example`,
 health checks, readiness polling, or Demo Flow verification are unavailable.
 
+After the service is running, capture a server deployment verification report:
+
+```powershell
+.\scripts\verify-server-deployment.ps1 -BaseUrl http://127.0.0.1:8787 -RequireReady
+```
+
+For a domain production target with PostgreSQL configured:
+
+```powershell
+.\scripts\verify-server-deployment.ps1 -BaseUrl https://bairui.example.com -RequireReady -RequirePostgreSQL
+```
+
+The verifier writes `artifacts\server-deployment-verification.json` with
+endpoint, console, Demo Flow, owner-token gate, Settings diagnostics,
+readiness-file, and PostgreSQL visibility evidence.
+
 `data/readiness.json` must include:
 
 - `status`;

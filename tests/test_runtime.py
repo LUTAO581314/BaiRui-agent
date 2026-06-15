@@ -1961,6 +1961,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         deployment = Path("docs/12-one-click-deployment.md").read_text(encoding="utf-8")
         deploy_ps1 = Path("scripts/deploy-usable.ps1").read_text(encoding="utf-8")
         deploy_sh = Path("scripts/deploy-usable.sh").read_text(encoding="utf-8")
+        verifier = Path("scripts/verify-server-deployment.ps1").read_text(encoding="utf-8")
         env_example = Path(".env.example").read_text(encoding="utf-8")
         compose = Path("docker-compose.production.yml").read_text(encoding="utf-8")
         server_env = Path("infra/hermes/env.example").read_text(encoding="utf-8")
@@ -1977,6 +1978,10 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/demo/flow", deploy_sh)
         self.assertIn("/console", deploy_ps1)
         self.assertIn("/console", deploy_sh)
+        self.assertIn("verify-server-deployment.ps1", combined_docs)
+        self.assertIn("server-deployment-verification.json", combined_docs)
+        self.assertIn("/admin/session", verifier)
+        self.assertIn("/config/status", verifier)
         self.assertIn("POSTGRES_DB=bairui", env_example)
         self.assertIn("POSTGRES_USER=bairui", env_example)
         self.assertIn("container_name: bairui-postgres", compose)
@@ -3451,6 +3456,32 @@ class RuntimeFoundationTests(unittest.TestCase):
             self.assertIn("readiness.json", script)
         self.assertIn("wait_for_endpoint", bash_script)
         self.assertIn("Wait-Endpoint", ps_script)
+
+    def test_server_deployment_verifier_captures_handoff_evidence(self):
+        script = Path("scripts/verify-server-deployment.ps1").read_text(encoding="utf-8")
+        readme = Path("README.md").read_text(encoding="utf-8")
+        deploy_doc = Path("docs/12-one-click-deployment.md").read_text(encoding="utf-8")
+        handoff = Path("docs/29-commercial-trial-handoff-pack.md").read_text(encoding="utf-8")
+
+        self.assertIn("BaseUrl", script)
+        self.assertIn("artifacts/server-deployment-verification.json", script)
+        self.assertIn("/health", script)
+        self.assertIn("/ready", script)
+        self.assertIn("/runtime/readiness", script)
+        self.assertIn("/frontend/contract", script)
+        self.assertIn("/console", script)
+        self.assertIn("/demo/flow", script)
+        self.assertIn("/admin/session", script)
+        self.assertIn("/config/status", script)
+        self.assertIn("Owner-token admin gate", script)
+        self.assertIn("secret policy", script)
+        self.assertIn("PostgreSQL readiness visibility", script)
+        self.assertIn("RequirePostgreSQL", script)
+        self.assertIn("bairui server deployment verification failed", script)
+
+        for doc in (readme, deploy_doc, handoff):
+            self.assertIn("verify-server-deployment.ps1", doc)
+            self.assertIn("server-deployment-verification.json", doc)
 
     def test_repo_hygiene_allows_env_placeholder_passwords(self):
         hygiene_script = Path("scripts/check-repo-hygiene.ps1").read_text(encoding="utf-8")
