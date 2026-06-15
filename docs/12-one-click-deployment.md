@@ -158,6 +158,16 @@ The verifier writes `artifacts\server-deployment-verification.json` with
 endpoint, console, Demo Flow, owner-token gate, Settings diagnostics,
 readiness-file, and PostgreSQL visibility evidence.
 
+After PostgreSQL is configured, capture the database production proof:
+
+```powershell
+.\scripts\verify-postgres-production.ps1 -RequireDatabase -RunMigration
+```
+
+The database verifier writes `artifacts\postgres-production-verification.json`
+with migration, backup plan, restore guardrail, Settings visibility, and secret
+redaction evidence.
+
 `data/readiness.json` must include:
 
 - `status`;

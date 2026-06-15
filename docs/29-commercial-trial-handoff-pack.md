@@ -54,6 +54,7 @@ Run:
 .\scripts\product-acceptance.ps1
 .\scripts\check-server-prereqs.ps1 -Mode local
 .\scripts\verify-server-deployment.ps1 -BaseUrl http://127.0.0.1:8787 -RequireReady
+.\scripts\verify-postgres-production.ps1
 .\scripts\config-doctor.ps1
 .\scripts\check-public-brand.ps1
 ```
@@ -64,6 +65,7 @@ Windows handoff evidence:
 - product-acceptance output;
 - server-prereq-check output;
 - server-deployment-verification output;
+- postgres-production-verification output;
 - Settings security boundary checklist screenshot;
 - Events diagnostics export;
 - Events handoff pack export.
@@ -105,6 +107,12 @@ After the service is reachable, capture target-server evidence:
 .\scripts\verify-server-deployment.ps1 -BaseUrl https://bairui.example.com -RequireReady -RequirePostgreSQL
 ```
 
+Then validate the production database:
+
+```powershell
+.\scripts\verify-postgres-production.ps1 -RequireDatabase -RunMigration
+```
+
 Verify:
 
 - `GET /health`
@@ -117,6 +125,7 @@ Verify:
 - `artifacts/server-prereq-check.json`
 - `data/readiness.json`
 - `artifacts/server-deployment-verification.json`
+- `artifacts/postgres-production-verification.json`
 
 Do not mark server deployment ready until `/console`, owner-token protected
 actions, Settings config apply, PostgreSQL readiness, and Events diagnostics
@@ -162,6 +171,7 @@ Go only when every item is true:
 - Settings config can be saved and automatically verified.
 - Owner-token write gate is visible and tested.
 - PostgreSQL migration and backup plan are visible.
+- PostgreSQL production verification report is saved.
 - Events can load metrics, errors, and diagnostics.
 - Server prerequisite report is saved for the operator.
 - Server deployment verification report is saved for the operator.

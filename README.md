@@ -95,6 +95,7 @@ Internal frontend source reference:
 - [Third-Party Attribution Inventory](docs/28-third-party-attribution-inventory.md)
 - [Commercial Trial Handoff Pack](docs/29-commercial-trial-handoff-pack.md)
 - [Server Deployment Acceptance Report](docs/30-server-deployment-acceptance-report.md)
+- [PostgreSQL Production Verification](docs/31-postgresql-production-verification.md)
 
 ## CLI Entry Point
 
@@ -161,6 +162,7 @@ For Windows PowerShell verification:
 .\scripts\product-acceptance.ps1
 .\scripts\check-server-prereqs.ps1
 .\scripts\verify-server-deployment.ps1
+.\scripts\verify-postgres-production.ps1
 .\scripts\config-doctor.ps1
 .\scripts\check-public-brand.ps1
 ```
@@ -192,6 +194,13 @@ verifies the target `/health`, `/ready`, `/runtime/readiness`,
 `/frontend/contract`, `/console`, `/demo/flow`, `/admin/session`,
 `/config/status`, and optional PostgreSQL readiness evidence, then writes
 `artifacts\server-deployment-verification.json`.
+
+Use `scripts/verify-postgres-production.ps1` before and during production
+database validation. Dry-run mode checks migration schema coverage, backup and
+restore guardrails, Settings visibility, and secret redaction. On a target
+server, run it with `-RequireDatabase -RunMigration` to prove the configured
+PostgreSQL database is ready. It writes
+`artifacts\postgres-production-verification.json`.
 
 To seed only static walkthrough records before opening the console:
 

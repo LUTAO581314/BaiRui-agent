@@ -1983,6 +1983,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("server-prereq-check.json", combined_docs)
         self.assertIn("verify-server-deployment.ps1", combined_docs)
         self.assertIn("server-deployment-verification.json", combined_docs)
+        self.assertIn("verify-postgres-production.ps1", combined_docs)
+        self.assertIn("postgres-production-verification.json", combined_docs)
         self.assertIn("RequireDocker", prereq)
         self.assertIn("RequireEnv", prereq)
         self.assertIn("/admin/session", verifier)
@@ -3484,6 +3486,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("bairui server prerequisite check failed", script)
         self.assertIn("scripts/check-server-prereqs.ps1", assets)
         self.assertIn("scripts/verify-server-deployment.ps1", assets)
+        self.assertIn("scripts/verify-postgres-production.ps1", assets)
 
         for doc in (readme, deploy_doc, handoff, report):
             self.assertIn("check-server-prereqs.ps1", doc)
@@ -3519,6 +3522,37 @@ class RuntimeFoundationTests(unittest.TestCase):
         for doc in (readme, deploy_doc, handoff, report):
             self.assertIn("verify-server-deployment.ps1", doc)
             self.assertIn("server-deployment-verification.json", doc)
+
+    def test_postgres_production_verifier_covers_migration_backup_restore_and_secret_safety(self):
+        script = Path("scripts/verify-postgres-production.ps1").read_text(encoding="utf-8")
+        readme = Path("README.md").read_text(encoding="utf-8")
+        deploy_doc = Path("docs/12-one-click-deployment.md").read_text(encoding="utf-8")
+        handoff = Path("docs/29-commercial-trial-handoff-pack.md").read_text(encoding="utf-8")
+        server_report = Path("docs/30-server-deployment-acceptance-report.md").read_text(encoding="utf-8")
+        postgres_report = Path("docs/31-postgresql-production-verification.md").read_text(encoding="utf-8")
+
+        self.assertIn("artifacts/postgres-production-verification.json", script)
+        self.assertIn("schema_core_tables", script)
+        self.assertIn("PostgreSQL migration command", script)
+        self.assertIn("Secret-safe backup plan", script)
+        self.assertIn("Restore guardrail and confirmation", script)
+        self.assertIn("Settings database visibility", script)
+        self.assertIn("Database secret redaction", script)
+        self.assertIn("RESTORE BAIRUI POSTGRES", script)
+        self.assertIn("pg_dump", script)
+        self.assertIn("pg_restore", script)
+        self.assertIn("$HERMES_DATABASE_URL", script)
+        self.assertIn("RunMigration", script)
+        self.assertIn("RequireDatabase", script)
+        self.assertIn("bairui PostgreSQL production verification failed", script)
+
+        for doc in (readme, deploy_doc, handoff, server_report, postgres_report):
+            self.assertIn("verify-postgres-production.ps1", doc)
+            self.assertIn("postgres-production-verification.json", doc)
+
+        self.assertIn("RESTORE BAIRUI POSTGRES", postgres_report)
+        self.assertIn("destructive=true", postgres_report)
+        self.assertIn("No-go", postgres_report)
 
     def test_repo_hygiene_allows_env_placeholder_passwords(self):
         hygiene_script = Path("scripts/check-repo-hygiene.ps1").read_text(encoding="utf-8")

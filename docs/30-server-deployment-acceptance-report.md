@@ -99,7 +99,26 @@ Attach:
 - Settings secret policy evidence
 - PostgreSQL visibility evidence when required
 
-## 5. Failure Log
+## 5. PostgreSQL Production Verification
+
+Run after `HERMES_DATABASE_URL` is configured on the target server:
+
+```powershell
+.\scripts\verify-postgres-production.ps1 -RequireDatabase -RunMigration
+```
+
+Attach:
+
+- `artifacts/postgres-production-verification.json`
+- migration evidence;
+- backup status evidence;
+- secret-safe backup plan evidence;
+- blocked restore-plan evidence;
+- confirmed restore-plan evidence;
+- Settings database visibility evidence;
+- secret redaction evidence.
+
+## 6. Failure Log
 
 Record every failure and the fix:
 
@@ -118,7 +137,7 @@ Common failure classes:
 - PostgreSQL evidence is missing when production database mode is required.
 - Owner-token gate is not visible or secret policy is unclear.
 
-## 6. Acceptance Decision
+## 7. Acceptance Decision
 
 Go only when:
 
@@ -126,6 +145,8 @@ Go only when:
 - deployment command finishes;
 - `data/readiness.json` exists;
 - server verification status is `passed`;
+- PostgreSQL production verification status is `passed` when database-backed
+  production is required;
 - `/console` opens on the target machine or domain;
 - Settings can show owner-token, secret policy, path scope, and readiness;
 - PostgreSQL evidence is present when production database mode is required;
