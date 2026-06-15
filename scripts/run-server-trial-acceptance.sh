@@ -6,6 +6,7 @@ DOMAIN="${DOMAIN:-}"
 BASE_URL="${BASE_URL:-http://127.0.0.1:8787}"
 OUTPUT_PATH="${OUTPUT_PATH:-artifacts/server-trial-acceptance.json}"
 FAILURE_SUMMARY_PATH="${FAILURE_SUMMARY_PATH:-artifacts/server-trial-failure-summary.md}"
+EXECUTION_PLAN_PATH="${EXECUTION_PLAN_PATH:-artifacts/server-trial-execution-plan.md}"
 READINESS_FILE="${READINESS_FILE:-data/readiness.json}"
 SKIP_DEPLOY="${SKIP_DEPLOY:-0}"
 SKIP_SERVER_VERIFICATION="${SKIP_SERVER_VERIFICATION:-0}"
@@ -202,14 +203,14 @@ if [[ "$INCLUDE_DOCS" == "1" ]]; then
 fi
 run_step "handoff_bundle" "Commercial handoff bundle" "artifacts/commercial-handoff-bundle/manifest.json" "Attach the bundle manifest and selected report JSON to the operator handoff." 0 "${bundle_cmd[@]}"
 
-"$PYTHON_BIN" - "$OUTPUT_PATH" "$FAILURE_SUMMARY_PATH" "$MODE" "$DOMAIN" "$BASE_URL" "$READINESS_FILE" "$REQUIRE_POSTGRES" "$SKIP_DEPLOY" "$SKIP_SERVER_VERIFICATION" "$SKIP_POSTGRES" "${step_json_files[@]}" <<'PY'
+"$PYTHON_BIN" - "$OUTPUT_PATH" "$FAILURE_SUMMARY_PATH" "$EXECUTION_PLAN_PATH" "$MODE" "$DOMAIN" "$BASE_URL" "$READINESS_FILE" "$REQUIRE_POSTGRES" "$SKIP_DEPLOY" "$SKIP_SERVER_VERIFICATION" "$SKIP_POSTGRES" "${step_json_files[@]}" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
 
-output_path, failure_summary_path, mode, domain, base_url, readiness_file = sys.argv[1:7]
-require_postgres, skip_deploy, skip_server_verification, skip_postgres = sys.argv[7:11]
-step_files = sys.argv[11:]
+output_path, failure_summary_path, execution_plan_path, mode, domain, base_url, readiness_file = sys.argv[1:8]
+require_postgres, skip_deploy, skip_server_verification, skip_postgres = sys.argv[8:12]
+step_files = sys.argv[12:]
 steps = []
 for path in step_files:
     with open(path, "r", encoding="utf-8") as handle:
@@ -239,6 +240,7 @@ payload = {
     "skip_server_verification": skip_server_verification == "1",
     "skip_postgres": skip_postgres == "1",
     "failure_summary_path": failure_summary_path,
+    "execution_plan_path": execution_plan_path,
     "steps": steps,
     "evidence_paths": evidence_paths,
     "decision": {
@@ -279,6 +281,72 @@ else:
     lines.append("No failed, blocked, or skipped steps were recorded.")
 with open(failure_summary_path, "w", encoding="utf-8") as handle:
     handle.write("\n".join(lines))
+    handle.write("\n")
+base = base_url.rstrip("/")
+plan = [
+    "# bairui Server Trial Execution Plan",
+    "",
+    f"- deployment_mode: {mode}",
+    f"- domain: {domain}",
+    f"- base_url: {base}",
+    f"- readiness_file: {readiness_file}",
+    f"- require_postgres: {require_postgres == '1'}",
+    "",
+    "## Target Server Commands",
+    "",
+]
+if mode == "domain":
+    plan.extend([
+        "```powershell",
+        f".\\scripts\\check-server-prereqs.ps1 -Mode domain -Domain {domain} -RequireDocker -RequireEnv",
+        f".\\scripts\\deploy-usable.ps1 -Mode domain -Domain {domain}",
+        f".\\scripts\\verify-server-deployment.ps1 -BaseUrl {base} -ReadinessFile {readiness_file} -RequireReady -RequirePostgreSQL",
+        ".\\scripts\\verify-postgres-production.ps1 -RequireDatabase -RunMigration",
+        ".\\scripts\\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence",
+        ".\\scripts\\export-commercial-handoff-bundle.ps1 -IncludeDocs",
+        "```",
+        "",
+        "```bash",
+        f"MODE=domain DOMAIN={domain} BASE_URL={base} REQUIRE_POSTGRES=1 INCLUDE_DOCS=1 bash scripts/run-server-trial-acceptance.sh",
+        "```",
+    ])
+else:
+    plan.extend([
+        "```powershell",
+        ".\\scripts\\check-server-prereqs.ps1 -Mode local -RequireDocker -RequireEnv",
+        ".\\scripts\\deploy-usable.ps1 -Mode local",
+        f".\\scripts\\verify-server-deployment.ps1 -BaseUrl {base} -ReadinessFile {readiness_file} -RequireReady",
+        ".\\scripts\\verify-postgres-production.ps1 -RequireDatabase -RunMigration" if require_postgres == "1" else ".\\scripts\\verify-postgres-production.ps1",
+        ".\\scripts\\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence" if require_postgres == "1" else ".\\scripts\\commercial-go-no-go.ps1 -RequireServerEvidence",
+        ".\\scripts\\export-commercial-handoff-bundle.ps1 -IncludeDocs",
+        "```",
+        "",
+        "```bash",
+        f"MODE=local BASE_URL={base} INCLUDE_DOCS=1 bash scripts/run-server-trial-acceptance.sh",
+        "```",
+    ])
+plan.extend([
+    "",
+    "## Required Evidence",
+    "",
+    "- artifacts/server-prereq-check.json",
+    f"- {readiness_file}",
+    "- artifacts/server-deployment-verification.json",
+    "- artifacts/postgres-production-verification.json",
+    "- artifacts/postgres-production-failure-summary.md when database checks are blocked or failed",
+    "- artifacts/commercial-go-no-go.json",
+    "- artifacts/commercial-handoff-bundle/manifest.json",
+    "",
+    "## Current Runner Skips",
+    "",
+    f"- deploy skipped: {skip_deploy == '1'}",
+    f"- server verification skipped: {skip_server_verification == '1'}",
+    f"- postgres verification skipped: {skip_postgres == '1'}",
+    "",
+    "If any item is skipped, blocked, or failed, do not mark the target server ready.",
+])
+with open(execution_plan_path, "w", encoding="utf-8") as handle:
+    handle.write("\n".join(plan))
     handle.write("\n")
 print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
 PY

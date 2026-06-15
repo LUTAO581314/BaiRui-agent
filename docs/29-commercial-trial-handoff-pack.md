@@ -158,6 +158,7 @@ Verify:
 - `artifacts/server-prereq-check.json`
 - `artifacts/server-trial-acceptance.json`
 - `artifacts/server-trial-failure-summary.md`
+- `artifacts/server-trial-execution-plan.md`
 - `data/readiness.json`
 - `artifacts/server-deployment-verification.json`
 - `artifacts/postgres-production-verification.json`

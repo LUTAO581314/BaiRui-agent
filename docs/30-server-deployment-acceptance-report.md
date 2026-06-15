@@ -45,7 +45,8 @@ SKIP_DEPLOY=1 SKIP_SERVER_VERIFICATION=1 SKIP_POSTGRES=1 bash scripts/run-server
 ```
 
 The runner writes `artifacts/server-trial-acceptance.json` and
-`artifacts/server-trial-failure-summary.md`, then calls the preflight,
+`artifacts/server-trial-failure-summary.md`, and
+`artifacts/server-trial-execution-plan.md`, then calls the preflight,
 deployment, server verifier, PostgreSQL verifier, commercial Go/No-Go, and
 handoff bundle scripts. Skipped or missing target-server evidence keeps the
 decision `blocked`; failed checks make the runner fail.
@@ -70,6 +71,8 @@ Attach:
 - `artifacts/server-trial-acceptance.json` when the one-command runner is used
 - `artifacts/server-trial-failure-summary.md` when any step is failed, blocked,
   or skipped
+- `artifacts/server-trial-execution-plan.md` with the exact target-server
+  commands and required evidence paths
 - Docker / Compose version evidence
 - Python version evidence
 - Git commit evidence
@@ -173,6 +176,11 @@ Record every failure and the fix:
 Start from `artifacts/server-trial-failure-summary.md` when the one-command
 runner is used. It lists each failed, blocked, or skipped step with the evidence
 path and next repair action.
+
+Use `artifacts/server-trial-execution-plan.md` before rerunning on the target
+server. It lists the exact Windows and Linux command sequence, required
+evidence files, and current skip flags so the operator does not accidentally
+mark a rehearsal as a real server pass.
 
 For database-specific failures, also start from
 `artifacts/postgres-production-failure-summary.md`. It lists each failed or

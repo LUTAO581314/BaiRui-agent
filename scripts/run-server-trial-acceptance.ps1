@@ -5,6 +5,7 @@ param(
     [string]$BaseUrl = "http://127.0.0.1:8787",
     [string]$OutputPath = "artifacts/server-trial-acceptance.json",
     [string]$FailureSummaryPath = "artifacts/server-trial-failure-summary.md",
+    [string]$ExecutionPlanPath = "artifacts/server-trial-execution-plan.md",
     [string]$ReadinessFile = "data/readiness.json",
     [switch]$SkipDeploy,
     [switch]$SkipServerVerification,
@@ -117,6 +118,91 @@ function Write-FailureSummary {
     }
     $lines -join "`n" | Set-Content -LiteralPath $Path -Encoding UTF8
 }
+
+function Write-ExecutionPlan {
+    param(
+        [string]$Path,
+        [string]$Mode,
+        [string]$Domain,
+        [string]$BaseUrl,
+        [string]$ReadinessFile,
+        [bool]$RequirePostgres,
+        [bool]$SkipDeploy,
+        [bool]$SkipServerVerification,
+        [bool]$SkipPostgres
+    )
+    $base = $BaseUrl.TrimEnd("/")
+    $lines = @()
+    $lines += "# bairui Server Trial Execution Plan"
+    $lines += ""
+    $lines += "- deployment_mode: $Mode"
+    $lines += "- domain: $Domain"
+    $lines += "- base_url: $base"
+    $lines += "- readiness_file: $ReadinessFile"
+    $lines += "- require_postgres: $RequirePostgres"
+    $lines += ""
+    $lines += "## Target Server Commands"
+    $lines += ""
+    if ($Mode -eq "domain") {
+        $lines += '```powershell'
+        $lines += ".\scripts\check-server-prereqs.ps1 -Mode domain -Domain $Domain -RequireDocker -RequireEnv"
+        $lines += ".\scripts\deploy-usable.ps1 -Mode domain -Domain $Domain"
+        $lines += ".\scripts\verify-server-deployment.ps1 -BaseUrl $base -ReadinessFile $ReadinessFile -RequireReady -RequirePostgreSQL"
+        $lines += ".\scripts\verify-postgres-production.ps1 -RequireDatabase -RunMigration"
+        $lines += ".\scripts\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence"
+        $lines += ".\scripts\export-commercial-handoff-bundle.ps1 -IncludeDocs"
+        $lines += '```'
+        $lines += ""
+        $lines += '```bash'
+        $lines += "MODE=domain DOMAIN=$Domain BASE_URL=$base REQUIRE_POSTGRES=1 INCLUDE_DOCS=1 bash scripts/run-server-trial-acceptance.sh"
+        $lines += '```'
+    }
+    else {
+        $lines += '```powershell'
+        $lines += ".\scripts\check-server-prereqs.ps1 -Mode local -RequireDocker -RequireEnv"
+        $lines += ".\scripts\deploy-usable.ps1 -Mode local"
+        $lines += ".\scripts\verify-server-deployment.ps1 -BaseUrl $base -ReadinessFile $ReadinessFile -RequireReady"
+        if ($RequirePostgres) {
+            $lines += ".\scripts\verify-postgres-production.ps1 -RequireDatabase -RunMigration"
+            $lines += ".\scripts\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence"
+        }
+        else {
+            $lines += ".\scripts\verify-postgres-production.ps1"
+            $lines += ".\scripts\commercial-go-no-go.ps1 -RequireServerEvidence"
+        }
+        $lines += ".\scripts\export-commercial-handoff-bundle.ps1 -IncludeDocs"
+        $lines += '```'
+        $lines += ""
+        $lines += '```bash'
+        $lines += "MODE=local BASE_URL=$base INCLUDE_DOCS=1 bash scripts/run-server-trial-acceptance.sh"
+        $lines += '```'
+    }
+    $lines += ""
+    $lines += "## Required Evidence"
+    $lines += ""
+    $lines += "- artifacts/server-prereq-check.json"
+    $lines += "- $ReadinessFile"
+    $lines += "- artifacts/server-deployment-verification.json"
+    $lines += "- artifacts/postgres-production-verification.json"
+    $lines += "- artifacts/postgres-production-failure-summary.md when database checks are blocked or failed"
+    $lines += "- artifacts/commercial-go-no-go.json"
+    $lines += "- artifacts/commercial-handoff-bundle/manifest.json"
+    $lines += ""
+    $lines += "## Current Runner Skips"
+    $lines += ""
+    $lines += "- deploy skipped: $SkipDeploy"
+    $lines += "- server verification skipped: $SkipServerVerification"
+    $lines += "- postgres verification skipped: $SkipPostgres"
+    $lines += ""
+    $lines += "If any item is skipped, blocked, or failed, do not mark the target server ready."
+    $parent = Split-Path -Parent $Path
+    if ($parent) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+    $lines -join "`n" | Set-Content -LiteralPath $Path -Encoding UTF8
+}
+
+Write-ExecutionPlan -Path $ExecutionPlanPath -Mode $Mode -Domain $Domain -BaseUrl $BaseUrl -ReadinessFile $ReadinessFile -RequirePostgres ([bool]$RequirePostgres) -SkipDeploy ([bool]$SkipDeploy) -SkipServerVerification ([bool]$SkipServerVerification) -SkipPostgres ([bool]$SkipPostgres)
 
 $steps = @()
 $evidence = [ordered]@{}
@@ -252,6 +338,7 @@ $report = [pscustomobject]@{
     skip_server_verification = [bool]$SkipServerVerification
     skip_postgres = [bool]$SkipPostgres
     failure_summary_path = $FailureSummaryPath
+    execution_plan_path = $ExecutionPlanPath
     steps = $steps
     evidence = $evidence
     decision = [pscustomobject]@{

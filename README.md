@@ -204,6 +204,8 @@ proof when required, commercial Go/No-Go, and the handoff bundle export, then
 writes `artifacts\server-trial-acceptance.json`.
 It also writes `artifacts\server-trial-failure-summary.md` so failed, blocked,
 or skipped server steps can be repaired without digging through raw JSON.
+It writes `artifacts\server-trial-execution-plan.md` with the exact target
+server command sequence, required evidence paths, and current skip flags.
 On Linux servers, use `scripts/run-server-trial-acceptance.sh` with environment
 variables such as `MODE=domain`, `DOMAIN=bairui.example.com`,
 `BASE_URL=https://bairui.example.com`, `REQUIRE_POSTGRES=1`, and
