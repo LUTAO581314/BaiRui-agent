@@ -5,6 +5,7 @@ MODE="${MODE:-local}"
 DOMAIN="${DOMAIN:-}"
 BASE_URL="${BASE_URL:-http://127.0.0.1:8787}"
 OUTPUT_PATH="${OUTPUT_PATH:-artifacts/server-trial-acceptance.json}"
+FAILURE_SUMMARY_PATH="${FAILURE_SUMMARY_PATH:-artifacts/server-trial-failure-summary.md}"
 READINESS_FILE="${READINESS_FILE:-data/readiness.json}"
 SKIP_DEPLOY="${SKIP_DEPLOY:-0}"
 SKIP_SERVER_VERIFICATION="${SKIP_SERVER_VERIFICATION:-0}"
@@ -201,14 +202,14 @@ if [[ "$INCLUDE_DOCS" == "1" ]]; then
 fi
 run_step "handoff_bundle" "Commercial handoff bundle" "artifacts/commercial-handoff-bundle/manifest.json" "Attach the bundle manifest and selected report JSON to the operator handoff." 0 "${bundle_cmd[@]}"
 
-"$PYTHON_BIN" - "$OUTPUT_PATH" "$MODE" "$DOMAIN" "$BASE_URL" "$READINESS_FILE" "$REQUIRE_POSTGRES" "$SKIP_DEPLOY" "$SKIP_SERVER_VERIFICATION" "$SKIP_POSTGRES" "${step_json_files[@]}" <<'PY'
+"$PYTHON_BIN" - "$OUTPUT_PATH" "$FAILURE_SUMMARY_PATH" "$MODE" "$DOMAIN" "$BASE_URL" "$READINESS_FILE" "$REQUIRE_POSTGRES" "$SKIP_DEPLOY" "$SKIP_SERVER_VERIFICATION" "$SKIP_POSTGRES" "${step_json_files[@]}" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
 
-output_path, mode, domain, base_url, readiness_file = sys.argv[1:6]
-require_postgres, skip_deploy, skip_server_verification, skip_postgres = sys.argv[6:10]
-step_files = sys.argv[10:]
+output_path, failure_summary_path, mode, domain, base_url, readiness_file = sys.argv[1:7]
+require_postgres, skip_deploy, skip_server_verification, skip_postgres = sys.argv[7:11]
+step_files = sys.argv[11:]
 steps = []
 for path in step_files:
     with open(path, "r", encoding="utf-8") as handle:
@@ -237,6 +238,7 @@ payload = {
     "skip_deploy": skip_deploy == "1",
     "skip_server_verification": skip_server_verification == "1",
     "skip_postgres": skip_postgres == "1",
+    "failure_summary_path": failure_summary_path,
     "steps": steps,
     "evidence_paths": evidence_paths,
     "decision": {
@@ -255,6 +257,28 @@ payload = {
 }
 with open(output_path, "w", encoding="utf-8") as handle:
     json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+    handle.write("\n")
+actionable = [item for item in steps if item["status"] in {"failed", "blocked", "skipped"}]
+lines = [
+    "# bairui Server Trial Failure Summary",
+    "",
+    f"- status: {status}",
+    f"- base_url: {base_url.rstrip('/')}",
+    f"- deployment_mode: {mode}",
+    f"- generated_at: {payload['generated_at']}",
+    "",
+]
+if actionable:
+    lines.extend([
+        "| Step | Status | Evidence | Next step |",
+        "| --- | --- | --- | --- |",
+    ])
+    for item in actionable:
+        lines.append(f"| {item['id']} | {item['status']} | {item['evidence']} | {item['next_step']} |")
+else:
+    lines.append("No failed, blocked, or skipped steps were recorded.")
+with open(failure_summary_path, "w", encoding="utf-8") as handle:
+    handle.write("\n".join(lines))
     handle.write("\n")
 print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
 PY

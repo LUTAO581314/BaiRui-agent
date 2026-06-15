@@ -4,6 +4,7 @@ param(
     [string]$Domain = "",
     [string]$BaseUrl = "http://127.0.0.1:8787",
     [string]$OutputPath = "artifacts/server-trial-acceptance.json",
+    [string]$FailureSummaryPath = "artifacts/server-trial-failure-summary.md",
     [string]$ReadinessFile = "data/readiness.json",
     [switch]$SkipDeploy,
     [switch]$SkipServerVerification,
@@ -84,6 +85,37 @@ function Invoke-SkippedStep {
         raw = ""
         payload = $null
     }
+}
+
+function Write-FailureSummary {
+    param(
+        [object]$Report,
+        [string]$Path
+    )
+    $actionable = @($Report.steps | Where-Object { @("failed", "blocked", "skipped") -contains $_.status })
+    $lines = @()
+    $lines += "# bairui Server Trial Failure Summary"
+    $lines += ""
+    $lines += "- status: $($Report.status)"
+    $lines += "- base_url: $($Report.base_url)"
+    $lines += "- deployment_mode: $($Report.deployment_mode)"
+    $lines += "- generated_at: $($Report.generated_at)"
+    $lines += ""
+    if ($actionable.Count -eq 0) {
+        $lines += "No failed, blocked, or skipped steps were recorded."
+    }
+    else {
+        $lines += "| Step | Status | Evidence | Next step |"
+        $lines += "| --- | --- | --- | --- |"
+        foreach ($step in $actionable) {
+            $lines += "| $($step.id) | $($step.status) | $($step.evidence) | $($step.next_step) |"
+        }
+    }
+    $parent = Split-Path -Parent $Path
+    if ($parent) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+    $lines -join "`n" | Set-Content -LiteralPath $Path -Encoding UTF8
 }
 
 $steps = @()
@@ -219,6 +251,7 @@ $report = [pscustomobject]@{
     skip_deploy = [bool]$SkipDeploy
     skip_server_verification = [bool]$SkipServerVerification
     skip_postgres = [bool]$SkipPostgres
+    failure_summary_path = $FailureSummaryPath
     steps = $steps
     evidence = $evidence
     decision = [pscustomobject]@{
@@ -236,6 +269,7 @@ if ($parent) {
 }
 $json = $report | ConvertTo-Json -Depth 60
 $json | Set-Content -LiteralPath $OutputPath -Encoding UTF8
+Write-FailureSummary -Report $report -Path $FailureSummaryPath
 $json
 
 if ($status -eq "failed") {

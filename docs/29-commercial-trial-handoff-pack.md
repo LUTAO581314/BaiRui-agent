@@ -152,6 +152,7 @@ Verify:
 - `GET /diagnostics/bundle`
 - `artifacts/server-prereq-check.json`
 - `artifacts/server-trial-acceptance.json`
+- `artifacts/server-trial-failure-summary.md`
 - `data/readiness.json`
 - `artifacts/server-deployment-verification.json`
 - `artifacts/postgres-production-verification.json`

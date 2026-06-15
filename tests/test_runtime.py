@@ -3555,6 +3555,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         assets = Path("scripts/check-deploy-assets.ps1").read_text(encoding="utf-8")
 
         self.assertIn("artifacts/server-trial-acceptance.json", script)
+        self.assertIn("server-trial-failure-summary.md", script)
+        self.assertIn("Write-FailureSummary", script)
         self.assertIn("server_trial_acceptance", script)
         self.assertIn("check-server-prereqs.ps1", script)
         self.assertIn("deploy-usable.ps1", script)
@@ -3570,6 +3572,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("scripts/run-server-trial-acceptance.ps1", assets)
         self.assertIn("scripts/run-server-trial-acceptance.sh", assets)
         self.assertIn("server_trial_acceptance", bash_script)
+        self.assertIn("FAILURE_SUMMARY_PATH", bash_script)
+        self.assertIn("Server Trial Failure Summary", bash_script)
         self.assertIn("SKIP_DEPLOY", bash_script)
         self.assertIn("SKIP_SERVER_VERIFICATION", bash_script)
         self.assertIn("SKIP_POSTGRES", bash_script)
@@ -3584,6 +3588,7 @@ class RuntimeFoundationTests(unittest.TestCase):
             self.assertIn("run-server-trial-acceptance.ps1", doc)
             self.assertIn("run-server-trial-acceptance.sh", doc)
             self.assertIn("server-trial-acceptance.json", doc)
+            self.assertIn("server-trial-failure-summary.md", doc)
 
     def test_postgres_production_verifier_covers_migration_backup_restore_and_secret_safety(self):
         script = Path("scripts/verify-postgres-production.ps1").read_text(encoding="utf-8")

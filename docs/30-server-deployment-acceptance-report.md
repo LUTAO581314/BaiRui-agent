@@ -44,10 +44,11 @@ For a rehearsal where deployment or database proof is intentionally skipped:
 SKIP_DEPLOY=1 SKIP_SERVER_VERIFICATION=1 SKIP_POSTGRES=1 bash scripts/run-server-trial-acceptance.sh
 ```
 
-The runner writes `artifacts/server-trial-acceptance.json`, then calls the
-preflight, deployment, server verifier, PostgreSQL verifier, commercial
-Go/No-Go, and handoff bundle scripts. Skipped or missing target-server evidence
-keeps the decision `blocked`; failed checks make the runner fail.
+The runner writes `artifacts/server-trial-acceptance.json` and
+`artifacts/server-trial-failure-summary.md`, then calls the preflight,
+deployment, server verifier, PostgreSQL verifier, commercial Go/No-Go, and
+handoff bundle scripts. Skipped or missing target-server evidence keeps the
+decision `blocked`; failed checks make the runner fail.
 
 ## 2. Preflight
 
@@ -67,6 +68,8 @@ Attach:
 
 - `artifacts/server-prereq-check.json`
 - `artifacts/server-trial-acceptance.json` when the one-command runner is used
+- `artifacts/server-trial-failure-summary.md` when any step is failed, blocked,
+  or skipped
 - Docker / Compose version evidence
 - Python version evidence
 - Git commit evidence
@@ -162,6 +165,10 @@ Record every failure and the fix:
 | Time | Check | Status | Evidence | Fix | Retest |
 | --- | --- | --- | --- | --- | --- |
 |  |  |  |  |  |  |
+
+Start from `artifacts/server-trial-failure-summary.md` when the one-command
+runner is used. It lists each failed, blocked, or skipped step with the evidence
+path and next repair action.
 
 Common failure classes:
 
