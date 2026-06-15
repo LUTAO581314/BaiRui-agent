@@ -4820,6 +4820,7 @@ function renderSettings() {
       ${renderProductError("config-apply")}
       ${renderProductError("owner-token-local")}
       ${renderSettingsSelfServiceClosure()}
+      ${renderSettingsDeliveryCheckEntry()}
       ${renderSettingsConfigCenter()}
       ${renderSettingsConfigChecklist()}
       ${renderSettingsConfigActionGuide()}
@@ -5275,6 +5276,82 @@ function settingsSelfServiceNextActions(result = {}, config = {}) {
     { label: "2", title: "Save safely", detail: "Secrets are write-only; configured/missing state is returned instead of the value." },
     { label: "3", title: "Verify status", detail: config.status ? `Current config status is ${config.status}.` : "Refresh Settings to load /config/status before customer trial." },
   ];
+}
+
+function renderSettingsDeliveryCheckEntry() {
+  const config = state.configStatus?.config_status || {};
+  const readiness = state.readiness?.runtime_readiness || {};
+  const backup = state.backupStatus?.backup || {};
+  const ownerConfigured = settingsConfigSecretState("owner_gate", "owner_token") === "configured" || Boolean(getOwnerToken());
+  const localReady = Boolean(config.status && readiness.status && ownerConfigured);
+  const items = [
+    {
+      label: "preflight",
+      status: "operator",
+      command: ".\\scripts\\check-server-prereqs.ps1 -Mode local",
+      evidence: "artifacts/server-prereq-check.json",
+      detail: "Run before deployment to verify assets, runtime tools, writable paths, ports, and domain DNS when used.",
+    },
+    {
+      label: "local acceptance",
+      status: localReady ? "ready" : "partial",
+      command: ".\\scripts\\product-acceptance.ps1 -OutputPath artifacts\\product-acceptance.json",
+      evidence: "artifacts/product-acceptance.json",
+      detail: "Proves Command, Documents, Memory Review, Reports, Channels, CodeGraph, Settings, and owner gate on this machine.",
+    },
+    {
+      label: "server proof",
+      status: "target_server",
+      command: ".\\scripts\\verify-server-deployment.ps1 -BaseUrl https://bairui.example.com -RequireReady -RequirePostgreSQL",
+      evidence: "artifacts/server-deployment-verification.json",
+      detail: "Run after the target server is reachable; it verifies /health, /ready, runtime readiness, console, owner gate, config, and PostgreSQL visibility.",
+    },
+    {
+      label: "database proof",
+      status: backup.status || "target_database",
+      command: ".\\scripts\\verify-postgres-production.ps1 -RequireDatabase -RunMigration",
+      evidence: "artifacts/postgres-production-verification.json",
+      detail: "Proves migration, schema coverage, backup plan, restore guardrail, Settings database visibility, and secret redaction.",
+    },
+    {
+      label: "final gate",
+      status: "blocked_until_evidence",
+      command: ".\\scripts\\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence",
+      evidence: "artifacts/commercial-go-no-go.json",
+      detail: "The final decision stays blocked until real server and PostgreSQL evidence are present and passed.",
+    },
+    {
+      label: "handoff bundle",
+      status: "export",
+      command: ".\\scripts\\export-commercial-handoff-bundle.ps1 -IncludeDocs",
+      evidence: "artifacts/commercial-handoff-bundle/manifest.json",
+      detail: "Exports operator-safe reports and documentation snapshots; secrets, .env, logs, dumps, and customer files are excluded.",
+    },
+  ];
+  return `
+    <section class="settings-delivery-check top-gap">
+      <div class="conversation-head">
+        <div>
+          <h3 class="panel-title">Delivery check entry</h3>
+          <p class="muted compact-copy">Run this sequence when a customer receives the trial package. The console explains the order; the terminal scripts create the evidence files.</p>
+        </div>
+        ${pill(localReady ? "partial" : "blocked", localReady ? "local ready" : "configure first")}
+      </div>
+      <div class="settings-delivery-grid">
+        ${items
+          .map(
+            (item, index) => `
+              <div>
+                <span>${index + 1}. ${escapeHtml(item.label)}</span>
+                <strong>${escapeHtml(item.evidence)}</strong>
+                ${pill(item.status)}
+                <p>${escapeHtml(item.detail)}</p>
+                <code>${escapeHtml(item.command)}</code>
+              </div>`,
+          )
+          .join("")}
+      </div>
+    </section>`;
 }
 
 function renderSettingsConfigActionGuide() {
