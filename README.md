@@ -93,6 +93,7 @@ Internal frontend source reference:
 - [Activation 3D Interaction Prompt](docs/26-bairui-activation-3d-interaction-prompt.md)
 - [Commercial Trial Delivery Quickstart](docs/27-commercial-trial-delivery-quickstart.md)
 - [Third-Party Attribution Inventory](docs/28-third-party-attribution-inventory.md)
+- [Commercial Trial Handoff Pack](docs/29-commercial-trial-handoff-pack.md)
 
 ## CLI Entry Point
 

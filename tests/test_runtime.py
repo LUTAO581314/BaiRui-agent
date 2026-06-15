@@ -1892,6 +1892,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("function exportTrialHandoffPack", app_js)
         self.assertIn("function renderHandoffPackSummary", app_js)
         self.assertIn('exportConsoleData("trial-handoff"', app_js)
+        self.assertIn("Delivery checklist", app_js)
+        self.assertIn("docs/29-commercial-trial-handoff-pack.md", app_js)
         self.assertIn("commercial_trial_evidence", app_js)
         self.assertIn("diagnostic_bundle", app_js)
         self.assertIn("memory_candidates", app_js)
@@ -2035,9 +2037,11 @@ class RuntimeFoundationTests(unittest.TestCase):
     def test_commercial_trial_quickstart_covers_activation_observability_and_brand(self):
         readme = Path("README.md").read_text(encoding="utf-8")
         doc = Path("docs/27-commercial-trial-delivery-quickstart.md").read_text(encoding="utf-8")
+        handoff = Path("docs/29-commercial-trial-handoff-pack.md").read_text(encoding="utf-8")
 
         self.assertIn("docs/27-commercial-trial-delivery-quickstart.md", readme)
         self.assertIn("docs/28-third-party-attribution-inventory.md", readme)
+        self.assertIn("docs/29-commercial-trial-handoff-pack.md", readme)
         self.assertIn("python -m src.hermes diagnostics", readme)
         self.assertIn("python -m src.hermes admin-session", readme)
         self.assertIn("python -m src.hermes metrics", readme)
@@ -2066,6 +2070,16 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("PostgreSQL backup/restore", doc)
         self.assertIn("third-party attribution inventory", doc)
         self.assertIn("docs/28-third-party-attribution-inventory.md", doc)
+        self.assertIn("First Activation Guide", handoff)
+        self.assertIn("Windows Local Deployment Guide", handoff)
+        self.assertIn("Server / Domain Deployment Guide", handoff)
+        self.assertIn("Common Error Handling", handoff)
+        self.assertIn("Commercial Trial Checklist", handoff)
+        self.assertIn("Evidence Exports", handoff)
+        self.assertIn("docs/28-third-party-attribution-inventory.md", handoff)
+        self.assertIn("APPLY BAIRUI CONFIG", handoff)
+        self.assertIn("will_send=false", handoff)
+        self.assertIn("http://127.0.0.1:8787/console", handoff)
 
     def test_third_party_attribution_inventory_covers_trial_license_boundaries(self):
         doc = Path("docs/28-third-party-attribution-inventory.md").read_text(encoding="utf-8")

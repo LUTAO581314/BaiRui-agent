@@ -6078,6 +6078,7 @@ async function exportTrialHandoffPack() {
 function renderHandoffPackSummary() {
   return `
     <div class="handoff-pack-strip">
+      <div><span>Delivery checklist</span><strong>docs/29-commercial-trial-handoff-pack.md</strong><p>Operator index for first activation, Windows deployment, server/domain deployment, common errors, and Go/No-Go.</p></div>
       <div><span>Handoff pack</span><strong>reports + memory + events + diagnostics</strong><p>One redacted JSON bundle for commercial trial acceptance and support escalation.</p></div>
       <div><span>Secret policy</span><strong>secret_echo=false</strong><p>Uses the same customer-safe export sanitizer as reports, memory, channels, and diagnostics.</p></div>
       <div><span>Safety flags</span><strong>no send / no auto memory write</strong><p>Exporting evidence never dispatches channels, writes memory, restores data, or changes runtime state.</p></div>
