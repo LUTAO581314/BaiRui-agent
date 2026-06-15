@@ -94,6 +94,7 @@ Internal frontend source reference:
 - [Commercial Trial Delivery Quickstart](docs/27-commercial-trial-delivery-quickstart.md)
 - [Third-Party Attribution Inventory](docs/28-third-party-attribution-inventory.md)
 - [Commercial Trial Handoff Pack](docs/29-commercial-trial-handoff-pack.md)
+- [Server Deployment Acceptance Report](docs/30-server-deployment-acceptance-report.md)
 
 ## CLI Entry Point
 
@@ -158,6 +159,7 @@ For Windows PowerShell verification:
 .\scripts\smoke-test.ps1
 .\scripts\smoke-test.ps1 -FullAcceptance
 .\scripts\product-acceptance.ps1
+.\scripts\check-server-prereqs.ps1
 .\scripts\verify-server-deployment.ps1
 .\scripts\config-doctor.ps1
 .\scripts\check-public-brand.ps1
@@ -180,11 +182,16 @@ with `-OutputPath artifacts\product-acceptance.json`.
 Use `scripts/config-doctor.ps1` when you need an operator-safe configuration
 diagnostic from the CLI without opening the browser.
 
-Use `scripts/verify-server-deployment.ps1` after a local, LAN, or domain
-deployment is running. It verifies the target `/health`, `/ready`,
-`/runtime/readiness`, `/frontend/contract`, `/console`, `/demo/flow`,
-`/admin/session`, `/config/status`, and optional PostgreSQL readiness evidence,
-then writes `artifacts\server-deployment-verification.json`.
+Use `scripts/check-server-prereqs.ps1` before a local, LAN, or domain
+deployment. It checks deployment assets, Git, Python, Docker / Compose,
+environment file presence, port availability, DNS when needed, disk space, and
+runtime path writability, then writes `artifacts\server-prereq-check.json`.
+
+Use `scripts/verify-server-deployment.ps1` after the deployment is running. It
+verifies the target `/health`, `/ready`, `/runtime/readiness`,
+`/frontend/contract`, `/console`, `/demo/flow`, `/admin/session`,
+`/config/status`, and optional PostgreSQL readiness evidence, then writes
+`artifacts\server-deployment-verification.json`.
 
 To seed only static walkthrough records before opening the console:
 
@@ -251,6 +258,12 @@ Windows usable deployment:
 
 Both scripts print the `/console` URL and write `data/readiness.json`, including
 health, readiness, runtime readiness, capabilities, and Demo Flow evidence.
+
+Before deployment on a target machine, capture a preflight report:
+
+```powershell
+.\scripts\check-server-prereqs.ps1 -Mode local
+```
 
 After the target server is running, capture a deployment verification report:
 

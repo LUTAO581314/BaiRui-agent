@@ -7,6 +7,8 @@ $required = @(
     "infra/sonic/config.cfg",
     "scripts/deploy-usable.ps1",
     "scripts/deploy-usable.sh",
+    "scripts/check-server-prereqs.ps1",
+    "scripts/verify-server-deployment.ps1",
     "docker-compose.production.yml",
     ".env.example"
 )

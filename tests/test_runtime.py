@@ -1961,6 +1961,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         deployment = Path("docs/12-one-click-deployment.md").read_text(encoding="utf-8")
         deploy_ps1 = Path("scripts/deploy-usable.ps1").read_text(encoding="utf-8")
         deploy_sh = Path("scripts/deploy-usable.sh").read_text(encoding="utf-8")
+        prereq = Path("scripts/check-server-prereqs.ps1").read_text(encoding="utf-8")
         verifier = Path("scripts/verify-server-deployment.ps1").read_text(encoding="utf-8")
         env_example = Path(".env.example").read_text(encoding="utf-8")
         compose = Path("docker-compose.production.yml").read_text(encoding="utf-8")
@@ -1978,8 +1979,12 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/demo/flow", deploy_sh)
         self.assertIn("/console", deploy_ps1)
         self.assertIn("/console", deploy_sh)
+        self.assertIn("check-server-prereqs.ps1", combined_docs)
+        self.assertIn("server-prereq-check.json", combined_docs)
         self.assertIn("verify-server-deployment.ps1", combined_docs)
         self.assertIn("server-deployment-verification.json", combined_docs)
+        self.assertIn("RequireDocker", prereq)
+        self.assertIn("RequireEnv", prereq)
         self.assertIn("/admin/session", verifier)
         self.assertIn("/config/status", verifier)
         self.assertIn("POSTGRES_DB=bairui", env_example)
@@ -3457,11 +3462,43 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("wait_for_endpoint", bash_script)
         self.assertIn("Wait-Endpoint", ps_script)
 
+    def test_server_prereq_checker_captures_clean_machine_requirements(self):
+        script = Path("scripts/check-server-prereqs.ps1").read_text(encoding="utf-8")
+        assets = Path("scripts/check-deploy-assets.ps1").read_text(encoding="utf-8")
+        readme = Path("README.md").read_text(encoding="utf-8")
+        deploy_doc = Path("docs/12-one-click-deployment.md").read_text(encoding="utf-8")
+        handoff = Path("docs/29-commercial-trial-handoff-pack.md").read_text(encoding="utf-8")
+        report = Path("docs/30-server-deployment-acceptance-report.md").read_text(encoding="utf-8")
+
+        self.assertIn("artifacts/server-prereq-check.json", script)
+        self.assertIn("deployment assets", script)
+        self.assertIn("Docker CLI", script)
+        self.assertIn("Docker Compose", script)
+        self.assertIn("Python runtime", script)
+        self.assertIn("Git CLI", script)
+        self.assertIn("Runtime .env file", script)
+        self.assertIn("Domain DNS resolution", script)
+        self.assertIn("Port $Port availability", script)
+        self.assertIn("Disk free space", script)
+        self.assertIn("writable path", script)
+        self.assertIn("bairui server prerequisite check failed", script)
+        self.assertIn("scripts/check-server-prereqs.ps1", assets)
+        self.assertIn("scripts/verify-server-deployment.ps1", assets)
+
+        for doc in (readme, deploy_doc, handoff, report):
+            self.assertIn("check-server-prereqs.ps1", doc)
+            self.assertIn("server-prereq-check.json", doc)
+
+        self.assertIn("server-deployment-verification.json", report)
+        self.assertIn("no_external_send=true", report)
+        self.assertIn("no_auto_memory_write=true", report)
+
     def test_server_deployment_verifier_captures_handoff_evidence(self):
         script = Path("scripts/verify-server-deployment.ps1").read_text(encoding="utf-8")
         readme = Path("README.md").read_text(encoding="utf-8")
         deploy_doc = Path("docs/12-one-click-deployment.md").read_text(encoding="utf-8")
         handoff = Path("docs/29-commercial-trial-handoff-pack.md").read_text(encoding="utf-8")
+        report = Path("docs/30-server-deployment-acceptance-report.md").read_text(encoding="utf-8")
 
         self.assertIn("BaseUrl", script)
         self.assertIn("artifacts/server-deployment-verification.json", script)
@@ -3479,7 +3516,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("RequirePostgreSQL", script)
         self.assertIn("bairui server deployment verification failed", script)
 
-        for doc in (readme, deploy_doc, handoff):
+        for doc in (readme, deploy_doc, handoff, report):
             self.assertIn("verify-server-deployment.ps1", doc)
             self.assertIn("server-deployment-verification.json", doc)
 

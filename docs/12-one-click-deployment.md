@@ -38,6 +38,18 @@ require credentials, DNS, or external service configuration.
 
 ## 3. Commands
 
+Preflight on the target machine:
+
+```powershell
+.\scripts\check-server-prereqs.ps1 -Mode local
+```
+
+Domain production preflight:
+
+```powershell
+.\scripts\check-server-prereqs.ps1 -Mode domain -Domain bairui.example.com -RequireDocker -RequireEnv
+```
+
 ### Windows / PowerShell
 
 Local production:
@@ -125,6 +137,10 @@ data/readiness.json
 
 The deploy command must fail loudly when Docker, Docker Compose, `.env.example`,
 health checks, readiness polling, or Demo Flow verification are unavailable.
+
+The preflight command must write `artifacts\server-prereq-check.json` and must
+fail loudly on missing deployment assets, Git, Python, strict Docker / Compose
+requirements, strict `.env` requirements, or domain DNS failures.
 
 After the service is running, capture a server deployment verification report:
 

@@ -52,6 +52,7 @@ Run:
 .\scripts\smoke-test.ps1
 .\scripts\smoke-test.ps1 -FullAcceptance
 .\scripts\product-acceptance.ps1
+.\scripts\check-server-prereqs.ps1 -Mode local
 .\scripts\verify-server-deployment.ps1 -BaseUrl http://127.0.0.1:8787 -RequireReady
 .\scripts\config-doctor.ps1
 .\scripts\check-public-brand.ps1
@@ -61,6 +62,7 @@ Windows handoff evidence:
 
 - smoke-test output;
 - product-acceptance output;
+- server-prereq-check output;
 - server-deployment-verification output;
 - Settings security boundary checklist screenshot;
 - Events diagnostics export;
@@ -79,7 +81,13 @@ Preparation:
    platform identity.
 3. Never commit secrets, customer data, runtime logs, QR state, generated media,
    or diagnostics bundles.
-4. Run the usable deployment script:
+4. Run the preflight check:
+
+```powershell
+.\scripts\check-server-prereqs.ps1 -Mode domain -Domain bairui.example.com -RequireDocker -RequireEnv
+```
+
+5. Run the usable deployment script:
 
 ```bash
 bash scripts/deploy-usable.sh
@@ -106,6 +114,7 @@ Verify:
 - `GET /metrics`
 - `GET /errors`
 - `GET /diagnostics/bundle`
+- `artifacts/server-prereq-check.json`
 - `data/readiness.json`
 - `artifacts/server-deployment-verification.json`
 
@@ -154,6 +163,7 @@ Go only when every item is true:
 - Owner-token write gate is visible and tested.
 - PostgreSQL migration and backup plan are visible.
 - Events can load metrics, errors, and diagnostics.
+- Server prerequisite report is saved for the operator.
 - Server deployment verification report is saved for the operator.
 - Documents -> Memory Review -> Reports -> Channels -> Events demo evidence is
   available.
