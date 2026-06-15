@@ -1694,6 +1694,84 @@ h1 {
   line-height: 1.45;
 }
 
+.trial-flow-panel {
+  margin-bottom: 14px;
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background:
+    linear-gradient(135deg, rgba(53, 230, 199, 0.05), rgba(103, 168, 255, 0.04)),
+    var(--panel);
+}
+
+.trial-flow-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.trial-flow-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.trial-flow-step {
+  min-width: 0;
+  min-height: 150px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.024);
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  text-align: left;
+}
+
+.trial-flow-step:hover,
+.trial-flow-step:focus-visible,
+.trial-flow-step.active {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+  background: rgba(53, 230, 199, 0.045);
+  outline: none;
+}
+
+.trial-flow-index {
+  width: 24px;
+  height: 24px;
+  border: 1px solid color-mix(in srgb, var(--accent-2) 46%, var(--line));
+  border-radius: 999px;
+  color: var(--accent);
+  display: grid;
+  font: 11px/1 var(--font-mono);
+  place-items: center;
+}
+
+.trial-flow-step strong,
+.trial-flow-step em,
+.trial-flow-step p {
+  overflow-wrap: anywhere;
+}
+
+.trial-flow-step strong {
+  font-size: 13px;
+}
+
+.trial-flow-step em {
+  color: var(--muted);
+  font: 11px/1.25 var(--font-mono);
+  font-style: normal;
+}
+
+.trial-flow-step p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
 .document-command-center {
   margin-bottom: 14px;
   border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
@@ -3652,9 +3730,14 @@ h1 {
   .settings-security-grid,
   .settings-next-actions,
   .graph-layout,
+  .trial-flow-head,
   .grid.three,
   .form-grid.two-cols {
     grid-template-columns: 1fr;
+  }
+
+  .trial-flow-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .activation-core-stage {
@@ -3698,6 +3781,14 @@ h1 {
 }
 
 @media (max-width: 640px) {
+  .trial-flow-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .trial-flow-step {
+    min-height: 0;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto minmax(0, 1fr) auto;

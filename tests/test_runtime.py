@@ -1515,6 +1515,17 @@ class RuntimeFoundationTests(unittest.TestCase):
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
         styles = Path("web/bairui-console/styles.css").read_text(encoding="utf-8")
 
+        self.assertIn("function renderCommercialTrialFlow", app_js)
+        self.assertIn("function bindCommercialTrialFlow", app_js)
+        self.assertIn('renderCommercialTrialFlow("documents")', app_js)
+        self.assertIn('renderCommercialTrialFlow("memory")', app_js)
+        self.assertIn('renderCommercialTrialFlow("reports")', app_js)
+        self.assertIn('renderCommercialTrialFlow("channels")', app_js)
+        self.assertIn('renderCommercialTrialFlow("events")', app_js)
+        self.assertIn("Documents -> Memory Review -> Reports -> Channels -> Events", app_js)
+        self.assertIn("A single customer demo path", app_js)
+        self.assertIn("data-trial-flow-open", app_js)
+        self.assertIn("bindCommercialTrialFlow();", app_js)
         self.assertIn("function runDocumentCommand", app_js)
         self.assertIn("function documentCommandPath", app_js)
         self.assertIn("function documentCommandPayload", app_js)
@@ -1549,6 +1560,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn(".document-ingest-pack", styles)
         self.assertIn(".document-command-center", styles)
         self.assertIn(".document-workbench-grid", styles)
+        self.assertIn(".trial-flow-panel", styles)
+        self.assertIn(".trial-flow-steps", styles)
+        self.assertIn(".trial-flow-step", styles)
 
     def test_memory_review_console_keeps_owner_review_and_source_trace_visible(self):
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")

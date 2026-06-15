@@ -2787,6 +2787,7 @@ function renderDocuments() {
     <button class="ghost-btn" id="export-document-ingest-pack" type="button" ${!selected ? "disabled" : ""}>Export Ingest Pack</button>
     <button class="ghost-btn" id="open-document-memory" type="button" ${!selected?.review_queue?.pending_count ? "disabled" : ""}>Review Memory</button>`;
   el.body.innerHTML = `
+    ${renderCommercialTrialFlow("documents")}
     ${renderDocumentWorkbenchCommandCenter(selected)}
     <div class="documents-layout">
       <section class="panel pad">
@@ -2931,6 +2932,92 @@ function renderDocuments() {
       state.screen = "reports";
       persistUiState();
       render();
+    });
+  });
+  bindCommercialTrialFlow();
+}
+
+function renderCommercialTrialFlow(current) {
+  const pendingMemory = (state.memoryQueue?.candidates || []).length;
+  const reviewedMemory = state.memoryReviews.length;
+  const pendingChannels = state.channelApprovals.filter((item) => (item.review_status || "pending_review") === "pending_review").length;
+  const hasDocuments = state.documentSessions.length > 0 || Boolean(state.documentSession);
+  const hasReports = state.reports.length > 0;
+  const hasEvents = state.audit.length > 0 || state.events.length > 0 || Boolean(state.metrics);
+  const steps = [
+    {
+      id: "documents",
+      label: "Documents",
+      status: hasDocuments ? "ready" : "partial",
+      metric: hasDocuments ? `${state.documentSessions.length} sessions` : "create plan",
+      detail: "Parse files and create source-linked ingest evidence.",
+    },
+    {
+      id: "memory",
+      label: "Memory Review",
+      status: pendingMemory ? "needs_review" : reviewedMemory ? "ready" : "partial",
+      metric: pendingMemory ? `${pendingMemory} pending` : reviewedMemory ? `${reviewedMemory} reviewed` : "no candidates",
+      detail: "Approve or reject memory candidates before long-term memory writes.",
+    },
+    {
+      id: "reports",
+      label: "Reports",
+      status: hasReports ? "ready" : "partial",
+      metric: hasReports ? `${state.reports.length} reports` : "generate report",
+      detail: "Review deliverables with source references and export evidence.",
+    },
+    {
+      id: "channels",
+      label: "Channels",
+      status: pendingChannels ? "needs_review" : state.channelApprovals.length ? "ready" : "partial",
+      metric: pendingChannels ? `${pendingChannels} approvals` : state.channelApprovals.length ? `${state.channelApprovals.length} drafts` : "plan draft",
+      detail: "Record owner decisions while keeping will_send=false.",
+    },
+    {
+      id: "events",
+      label: "Events",
+      status: hasEvents ? "ready" : "partial",
+      metric: hasEvents ? "evidence ready" : "export handoff",
+      detail: "Export diagnostics, errors, metrics, and trial handoff evidence.",
+    },
+  ];
+  const currentIndex = Math.max(0, steps.findIndex((step) => step.id === current));
+  const next = steps.slice(currentIndex + 1).find((step) => step.status !== "ready") || steps[currentIndex + 1] || steps[steps.length - 1];
+  return `
+    <section class="panel pad trial-flow-panel" aria-label="Commercial trial flow">
+      <div class="trial-flow-head">
+        <div>
+          <p class="eyebrow">Commercial trial flow</p>
+          <h2 class="panel-title">Documents -> Memory Review -> Reports -> Channels -> Events</h2>
+          <p class="muted compact-copy">A single customer demo path: ingest evidence, review memory, deliver reports, approve outbound drafts, then export audit-safe handoff data.</p>
+        </div>
+        <button class="ghost-btn mini" type="button" data-trial-flow-open="${escapeHtml(next.id)}">Next: ${escapeHtml(next.label)}</button>
+      </div>
+      <div class="trial-flow-steps">
+        ${steps
+          .map(
+            (step, index) => `
+              <button class="trial-flow-step ${step.id === current ? "active" : ""}" type="button" data-trial-flow-open="${escapeHtml(step.id)}">
+                <span class="trial-flow-index">${index + 1}</span>
+                <strong>${escapeHtml(step.label)}</strong>
+                ${pill(step.status)}
+                <em>${escapeHtml(step.metric)}</em>
+                <p>${escapeHtml(step.detail)}</p>
+              </button>`,
+          )
+          .join("")}
+      </div>
+    </section>`;
+}
+
+function bindCommercialTrialFlow() {
+  el.body.querySelectorAll("[data-trial-flow-open]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const target = button.dataset.trialFlowOpen;
+      if (!target) return;
+      state.screen = target;
+      persistUiState();
+      await refreshScreenData();
     });
   });
 }
@@ -3219,6 +3306,7 @@ function renderMemory() {
     <button class="ghost-btn" id="export-memory-candidate" type="button" ${state.selectedEntity?.type !== "memory" ? "disabled" : ""}>Export Candidate</button>
     <button class="ghost-btn" id="batch-reject-memory" type="button" ${!pending.length ? "disabled" : ""}>Reject Pending</button>`;
   el.body.innerHTML = `
+    ${renderCommercialTrialFlow("memory")}
     ${renderMemoryReviewCommandCenter(queue, pending)}
     <div class="grid two">
       <section class="panel pad">
@@ -3306,6 +3394,7 @@ function renderMemory() {
       render();
     });
   });
+  bindCommercialTrialFlow();
 }
 
 function renderMemoryReviewCommandCenter(queue, pending) {
@@ -3980,6 +4069,7 @@ function renderReports() {
   el.actions.innerHTML = `<button class="primary-btn" id="write-report" type="button">Write Manual Report</button><button class="ghost-btn" id="export-reports" type="button">Export Reports</button><button class="ghost-btn" id="refresh-reports" type="button">Refresh</button>`;
   const selectedReport = state.selectedEntity?.type === "report" ? state.selectedEntity.raw || {} : null;
   el.body.innerHTML = `
+    ${renderCommercialTrialFlow("reports")}
     ${renderReportDeliveryOverview()}
     ${renderReportWriteResult()}
     ${renderProductError("write-report")}
@@ -4077,6 +4167,7 @@ function renderReports() {
       exportSelectedReportDelivery(report);
     });
   });
+  bindCommercialTrialFlow();
 }
 
 function exportReportsData() {
@@ -4251,6 +4342,7 @@ function renderChannels() {
   const pendingApprovals = state.channelApprovals.filter((item) => (item.review_status || "pending_review") === "pending_review");
   const reviewedApprovals = state.channelApprovals.length - pendingApprovals.length;
   el.body.innerHTML = `
+    ${renderCommercialTrialFlow("channels")}
     ${renderChannelApprovalCommandCenter(pendingApprovals, reviewedApprovals)}
     <section class="panel pad channel-safety-overview">
       <div class="conversation-head">
@@ -4364,6 +4456,7 @@ function renderChannels() {
       render();
     });
   });
+  bindCommercialTrialFlow();
 }
 
 function renderChannelApprovalCommandCenter(pendingApprovals, reviewedApprovals) {
@@ -5949,6 +6042,7 @@ function renderEvents() {
     <button class="ghost-btn" id="events-open-command" type="button">Open Command</button>`;
   const rows = filteredAuditTimeline();
   el.body.innerHTML = `
+    ${renderCommercialTrialFlow("events")}
     <section class="panel pad event-command-center">
       <div class="conversation-head">
         <div>
@@ -6010,6 +6104,7 @@ function renderEvents() {
       render();
     });
   });
+  bindCommercialTrialFlow();
   bindAuditCards();
 }
 
