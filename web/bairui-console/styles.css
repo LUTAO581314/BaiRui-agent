@@ -2950,6 +2950,65 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.settings-security-acceptance {
+  border-color: color-mix(in srgb, var(--warning) 26%, var(--line));
+  background:
+    radial-gradient(circle at 15% 12%, rgba(246, 200, 95, 0.08), transparent 32%),
+    rgba(255, 255, 255, 0.018);
+}
+
+.settings-security-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.settings-security-grid div {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--warning) 24%, var(--line));
+  border-radius: var(--radius-sm);
+  background: rgba(246, 200, 95, 0.028);
+  padding: 9px;
+}
+
+.settings-security-grid div.ready {
+  border-color: color-mix(in srgb, var(--success) 32%, var(--line));
+  background: rgba(94, 240, 164, 0.03);
+}
+
+.settings-security-grid div.partial {
+  border-color: color-mix(in srgb, var(--warning) 32%, var(--line));
+}
+
+.settings-security-grid span {
+  display: block;
+  color: var(--muted);
+  font: 10px/1.2 var(--font-mono);
+  text-transform: uppercase;
+}
+
+.settings-security-grid strong {
+  display: block;
+  margin-top: 7px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.settings-security-grid .status-pill {
+  margin-top: 8px;
+}
+
+.settings-security-grid p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .settings-backup-plan {
   display: grid;
   gap: 10px;
@@ -3590,6 +3649,7 @@ h1 {
   .settings-action-guide-grid,
   .settings-activation-grid,
   .settings-apply-verification,
+  .settings-security-grid,
   .settings-next-actions,
   .graph-layout,
   .grid.three,

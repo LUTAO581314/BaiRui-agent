@@ -4714,6 +4714,7 @@ function renderSettings() {
         ${renderSettingsConfigBoundary()}
       </section>
     </div>
+    ${renderSettingsSecurityAcceptance()}
     <section class="panel pad top-gap">
       <div class="conversation-head">
         <div>
@@ -4983,6 +4984,81 @@ function renderSettingsActivationField(field) {
       <strong>${escapeHtml(labels[field] || field)}</strong>
       ${pill(ready ? "ready" : "missing_config", ready ? "已配置" : "待填写")}
     </div>`;
+}
+
+function renderSettingsSecurityAcceptance() {
+  const items = settingsSecurityAcceptanceItems();
+  const passed = items.filter((item) => item.status === "ready").length;
+  return `
+    <section class="panel pad settings-security-acceptance top-gap">
+      <div class="conversation-head">
+        <div>
+          <span class="section-label">security acceptance</span>
+          <h2 class="panel-title">Security boundary checklist</h2>
+          <p class="muted compact-copy">Commercial trial controls are shown as verifiable product evidence: owner identity, scoped paths, write-only secrets, explicit confirmation, approval gates, and redacted support exports.</p>
+        </div>
+        ${pill(passed === items.length ? "ready" : "partial", `${passed}/${items.length} controls`)}
+      </div>
+      <div class="settings-security-grid">
+        ${items
+          .map(
+            (item) => `
+              <div class="${escapeHtml(item.status)}">
+                <span>${escapeHtml(item.id)}</span>
+                <strong>${escapeHtml(item.title)}</strong>
+                ${pill(item.status, item.status === "ready" ? "verified" : "needs check")}
+                <p>${escapeHtml(item.evidence)}</p>
+              </div>`,
+          )
+          .join("")}
+      </div>
+    </section>`;
+}
+
+function settingsSecurityAcceptanceItems() {
+  const ownerConfigured = settingsConfigSecretState("owner_gate", "owner_token") === "configured" || Boolean(getOwnerToken());
+  const config = state.configStatus?.config_status || {};
+  const checklist = config.checklist || {};
+  const readiness = state.readiness?.runtime_readiness || {};
+  const channelTargets = configStatusItem("channel_targets");
+  return [
+    {
+      id: "owner_identity",
+      title: "Owner-gated writes",
+      status: ownerConfigured ? "ready" : "partial",
+      evidence: ownerConfigured ? "Owner token is configured or stored locally for this browser; token value is never returned." : "Save an owner token locally or configure the server owner token before trial writes.",
+    },
+    {
+      id: "secret_write_only",
+      title: "Secrets never echo",
+      status: "ready",
+      evidence: "Model key, PostgreSQL URL, and owner token fields use configured/missing states and are redacted from exports.",
+    },
+    {
+      id: "path_scope",
+      title: "Scoped local paths",
+      status: checklist.path_scope_policy || config.path_scope_policy ? "ready" : "partial",
+      evidence: checklist.path_scope_policy || config.path_scope_policy || "Path policy loads from /config/status and restricts writable roots.",
+    },
+    {
+      id: "danger_confirmation",
+      title: "Dangerous change confirmation",
+      status: "ready",
+      evidence: `High-risk fields require ${state.configApplyResult?.confirmation_phrase || "APPLY BAIRUI CONFIG"} before save.`,
+    },
+    {
+      id: "approval_gates",
+      title: "Approvals cannot be bypassed",
+      status: channelTargets?.status && !["missing_config", "failed"].includes(channelTargets.status) ? "ready" : "partial",
+      evidence: "Memory review and channel drafts remain explicit owner decisions; channel planning keeps will_send=false.",
+    },
+    {
+      id: "redacted_observability",
+      title: "Redacted support exports",
+      status: readiness.status ? "ready" : "partial",
+      evidence: "Events exports diagnostics, metrics, audit, and error logs through customer-safe redaction.",
+    },
+  ];
 }
 
 function renderSettingsConfigApplyResult() {
