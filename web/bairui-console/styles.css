@@ -406,6 +406,14 @@ body {
   white-space: nowrap;
 }
 
+.activation-storage-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: rgba(143, 182, 216, 0.42);
+}
+
 .activation-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -454,9 +462,8 @@ body {
 .activation-form-feedback.ok { color: var(--success); }
 .activation-form-feedback.error { color: var(--danger); }
 
-.activation-command-list {
-  display: grid;
-  gap: 8px;
+.activation-open-settings-inline {
+  justify-self: start;
 }
 
 .activation-inline-subsection {
@@ -470,36 +477,6 @@ body {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 12px;
-}
-
-.activation-command-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid rgba(143, 182, 216, 0.14);
-  border-radius: 10px;
-  background: rgba(9, 15, 22, 0.7);
-}
-
-.activation-command-row strong {
-  display: block;
-  color: var(--ink);
-  font-size: 12px;
-  margin-bottom: 2px;
-}
-
-.activation-command-row small {
-  color: var(--ink2);
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.activation-command-row code {
-  color: var(--cool);
-  font: 10px/1.5 "JetBrains Mono", ui-monospace, monospace;
-  white-space: nowrap;
 }
 
 .activation-advanced-status {

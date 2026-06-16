@@ -1213,6 +1213,33 @@ def build_activation_setup_plan(settings: Any) -> dict[str, Any]:
                 "detail": "服务器或公网环境建议开启；写接口会要求 owner token。",
             },
         ),
+        "required_storage": (
+            _activation_storage_item(
+                "data_dir",
+                "数据目录",
+                _activation_item_status(config, "data_dir"),
+                "任务、审计、运行状态和本地产品记录的基础目录。",
+            ),
+            _activation_storage_item(
+                "memory_vault",
+                "长期记忆目录",
+                _activation_item_status(config, "memory_vault"),
+                "主人审核后的长期记忆、报告和双链笔记沉淀在这里。",
+            ),
+            _activation_storage_item(
+                "codegraph_root",
+                "源码图谱目录",
+                _activation_item_status(config, "codegraph_root"),
+                "源码结构索引单独存放，不和长期记忆混在一起。",
+            ),
+            _activation_storage_item(
+                "avatar_assets",
+                "Avatar 资源目录",
+                _activation_item_status(config, "avatar_assets"),
+                "浏览器形象模型和资源的本地目录；缺失不阻塞内核可用。",
+                optional=True,
+            ),
+        ),
         "capability_groups": (
             _activation_capability(
                 "documents",
@@ -1307,6 +1334,16 @@ def _activation_item_status(config: dict[str, Any], item_id: str) -> str:
         if item.get("id") == item_id:
             return str(item.get("status") or "unknown")
     return "unknown"
+
+
+def _activation_storage_item(capability_id: str, label: str, status: str, detail: str, *, optional: bool = False) -> dict[str, Any]:
+    return {
+        "id": capability_id,
+        "label": label,
+        "status": status,
+        "detail": detail,
+        "optional": optional,
+    }
 
 
 def _activation_capability(

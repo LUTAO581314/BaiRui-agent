@@ -382,19 +382,6 @@ function activationConfigField(configStatus, itemId, fieldId) {
   return value && value !== "missing_config" && value !== "configured" ? value : "";
 }
 
-function activationCommandText(command) {
-  if (!command) return "";
-  if (Array.isArray(command)) return command.join(" ");
-  return String(command || "");
-}
-
-function activationPublicInstallLabel(commandPlan = {}) {
-  const status = commandPlan.status || "ready";
-  if (status === "unavailable") return "源码或运行环境未就绪，先在设置页补齐路径和环境。";
-  if (status === "missing_config") return "缺少配置，先在设置页补齐参数。";
-  return "安装/启动步骤已由 bairui 内核生成，完整运维命令在设置页受控查看。";
-}
-
 function renderActivationModeOptions(setupPlan = {}) {
   const modes = Array.isArray(setupPlan.mode_options) ? setupPlan.mode_options : [];
   return modes.map((mode, index) => `
@@ -406,51 +393,26 @@ function renderActivationModeOptions(setupPlan = {}) {
   `).join("");
 }
 
-function renderActivationCapabilityCards(setupPlan = {}) {
-  const capabilities = Array.isArray(setupPlan.capability_groups) ? setupPlan.capability_groups : [];
-  if (!capabilities.length) return `<div class="activation-empty">暂无可安装能力计划，请先检查后端运行状态。</div>`;
-  return capabilities.map((capability) => {
-    const commands = Array.isArray(capability.commands) ? capability.commands.filter((item) => activationCommandText(item.command)) : [];
-    const firstCommand = commands[0];
-    return `
-      <label class="activation-capability-card ${activationStatusClass(capability.status)}">
-        <input type="checkbox" class="activation-capability-toggle" value="${escapeActivationHtml(capability.id)}" ${capability.optional ? "" : "checked"} data-command-ready="${firstCommand ? "1" : "0"}">
-        <span class="activation-capability-main">
-          <strong>${escapeActivationHtml(capability.label)}</strong>
-          <small>${escapeActivationHtml(capability.detail)}</small>
-        </span>
-        <span class="activation-capability-status">${escapeActivationHtml(capability.status || "unknown")}</span>
-      </label>
-    `;
-  }).join("");
-}
-
-function renderActivationCommandPlan(setupPlan = {}) {
-  const capabilities = Array.isArray(setupPlan.capability_groups) ? setupPlan.capability_groups : [];
-  const rows = [];
-  capabilities.forEach((capability) => {
-    (capability.commands || []).forEach((commandPlan) => {
-      const command = activationCommandText(commandPlan.command);
-      if (!command) return;
-      rows.push(`
-        <div class="activation-command-row" data-capability="${escapeActivationHtml(capability.id)}">
-          <div>
-            <strong>${escapeActivationHtml(capability.label)}</strong>
-            <small>${escapeActivationHtml(activationPublicInstallLabel(commandPlan))}</small>
-          </div>
-          <span>${escapeActivationHtml(commandPlan.status || capability.status || "ready")}</span>
-        </div>
-      `);
-    });
-  });
-  return rows.join("") || `<div class="activation-empty">当前没有可展示的安装命令。已集成能力会在状态区显示。</div>`;
+function renderActivationStorageCards(setupPlan = {}) {
+  const items = Array.isArray(setupPlan.required_storage) ? setupPlan.required_storage : [];
+  if (!items.length) return `<div class="activation-empty">暂无核心存储检查项。</div>`;
+  return items.map((item) => `
+    <div class="activation-capability-card ${activationStatusClass(item.status)}">
+      <span class="activation-storage-dot" aria-hidden="true"></span>
+      <span class="activation-capability-main">
+        <strong>${escapeActivationHtml(item.label)}</strong>
+        <small>${escapeActivationHtml(item.detail)}</small>
+      </span>
+      <span class="activation-capability-status">${escapeActivationHtml(item.status || "unknown")}</span>
+    </div>
+  `).join("");
 }
 
 function renderActivationTabs() {
   const tabs = [
     ["mode", "第一步", "部署模式"],
     ["model", "第二步", "模型网关"],
-    ["capabilities", "第三步", "能力配置"],
+    ["storage", "第三步", "核心存储"],
     ["verify", "第四步", "检查进入"],
   ];
   return tabs.map(([id, step, label], index) => `
@@ -459,12 +421,6 @@ function renderActivationTabs() {
       <strong>${label}</strong>
     </button>
   `).join("");
-}
-
-function activationSelectedCapabilities(overlay) {
-  return [...overlay.querySelectorAll(".activation-capability-toggle")]
-    .filter((input) => input.checked)
-    .map((input) => input.value);
 }
 
 async function saveActivationModelConfig(overlay, feedbackEl) {
@@ -548,7 +504,7 @@ function renderActivationOverlay(contract = {}, state = {}) {
         <div>
           <div class="activation-kicker">bairui Activation</div>
           <h1>首次激活</h1>
-          <p>按步骤完成首次可用配置：先选择部署模式，再填写模型网关，最后按需启用情报、搜索、爬虫索引、文档和语音等能力。</p>
+          <p>按步骤完成首次可用配置：先选择部署模式，再填写模型网关，再确认长期记忆、数据目录和源码图谱，最后检查进入控制台。</p>
         </div>
         <div class="activation-status ${activationStatusClass(readyStatus)}">
           <span></span>${readyStatus}
@@ -602,26 +558,24 @@ function renderActivationOverlay(contract = {}, state = {}) {
             </div>
           </div>
 
-          <div class="activation-panel activation-tab-panel" data-activation-panel="capabilities">
+          <div class="activation-panel activation-tab-panel" data-activation-panel="storage">
             <div class="activation-section-head">
               <span>03</span>
               <div>
-                <strong>选择要启用的能力</strong>
-                <small>舆情/情报、联网搜索和本地索引属于同一条情报输入链路，建议一起配置；未启用的能力不会阻塞进入控制台。</small>
+                <strong>确认核心存储</strong>
+                <small>首次激活只确认内核必需目录。情报雷达、联网搜索、爬虫索引、文档解析和语音等能力在设置页继续配置。</small>
               </div>
             </div>
             <div class="activation-capability-grid">
-              ${renderActivationCapabilityCards(setupPlan)}
+              ${renderActivationStorageCards(setupPlan)}
             </div>
 
             <div class="activation-inline-subsection">
               <div>
-                <strong>安装 / 启动计划</strong>
-                <small>这里显示可用状态；完整运维命令进入设置页受控查看。</small>
+                <strong>能力模块不在首次激活里强制配置</strong>
+                <small>能力模块会使用模型网关做分析，但数据源 URL、搜索 Key、爬虫/索引服务地址都应在设置页单独配置。</small>
               </div>
-              <div class="activation-command-list" id="activation-command-list">
-                ${renderActivationCommandPlan(setupPlan)}
-              </div>
+              <button class="activation-secondary activation-open-settings-inline" id="activation-open-capabilities-settings-btn" type="button">打开设置页配置能力</button>
             </div>
           </div>
 
@@ -713,7 +667,7 @@ function renderActivationOverlay(contract = {}, state = {}) {
   `;
 
   document.body.appendChild(overlay);
-  const activationTabOrder = ["mode", "model", "capabilities", "verify"];
+  const activationTabOrder = ["mode", "model", "storage", "verify"];
   let activeActivationTab = "mode";
   const setActivationTab = (tabId) => {
     if (!activationTabOrder.includes(tabId)) return;
@@ -765,18 +719,15 @@ function renderActivationOverlay(contract = {}, state = {}) {
     overlay.remove();
     openSettingsRef?.("system");
   });
+  overlay.querySelector("#activation-open-capabilities-settings-btn")?.addEventListener("click", () => {
+    try { localStorage.setItem(ACTIVATION_DISMISSED_KEY, "1"); } catch {}
+    overlay.remove();
+    openSettingsRef?.("system");
+  });
   overlay.querySelectorAll(".activation-mode-card").forEach((card) => {
     card.addEventListener("click", () => {
       overlay.querySelectorAll(".activation-mode-card").forEach((item) => item.classList.remove("active"));
       card.classList.add("active");
-    });
-  });
-  overlay.querySelectorAll(".activation-capability-toggle").forEach((input) => {
-    input.addEventListener("change", () => {
-      const selected = new Set(activationSelectedCapabilities(overlay));
-      overlay.querySelectorAll(".activation-command-row").forEach((row) => {
-        row.hidden = selected.size > 0 && !selected.has(row.dataset.capability);
-      });
     });
   });
   const detail = overlay.querySelector(".activation-selected-detail");
