@@ -3168,15 +3168,125 @@ function initTTSSettings() {
   if (!settingsBtn || !overlay) return;
 
   let cachedProviders = null;
+  const completeSettingsTabs = [
+    { id: "system", label: "系统总览", existing: true },
+    { id: "llm", label: "模型网关", existing: true },
+    {
+      id: "agents",
+      label: "多智能体",
+      title: "多智能体",
+      detail: "查看 Agent 档案、会话、事件和可提升资源。不同智能体可以绑定不同职责与模型状态；外部动作仍走审批边界。",
+      endpoints: ["/agents", "/agents/sessions", "/agents/events", "/capabilities"],
+      actions: ["创建会话", "追加消息", "运行一轮协作", "提升为任务/报告/记忆审核/渠道草稿"],
+    },
+    {
+      id: "memory",
+      label: "记忆系统",
+      title: "记忆系统",
+      detail: "长期记忆、Obsidian 双链图、记忆候选和人工审核队列集中管理。自动写入长期记忆保持关闭，必须经过主人审核。",
+      endpoints: ["/memory/status", "/obsidian/graph", "/document/memory-candidates", "/document/memory-reviews"],
+      actions: ["查看 Obsidian 双链图", "审核记忆候选", "追踪写入记录"],
+    },
+    {
+      id: "documents",
+      label: "文档摄取",
+      title: "文档摄取",
+      detail: "文档解析、索引、来源引用、记忆候选、摄取报告的流水线工作台。",
+      endpoints: ["/document/parse/status", "/document/parse/session-list", "/document/artifacts", "/document/index-runs"],
+      actions: ["创建摄取计划", "推进下一步", "运行直到阻塞", "生成来源引用和报告"],
+    },
+    {
+      id: "reports",
+      label: "报告与来源",
+      title: "报告与来源",
+      detail: "集中查看交付报告、文档摄取报告、可追踪来源引用以及 Obsidian 报告写入结果。",
+      endpoints: ["/reports", "/document/ingest-reports", "/source-refs", "/obsidian/graph"],
+      actions: ["写入报告", "查看来源链路", "打开 Obsidian 双链关系"],
+    },
+    {
+      id: "intelligence",
+      label: "情报雷达",
+      title: "情报雷达",
+      detail: "趋势热点、舆情输入和情报信号入口。热点按钮和工作台读取同一组情报状态。",
+      endpoints: ["/intel/status", "/hotspots", "/runtime/readiness"],
+      actions: ["刷新热点", "切换情报面板", "检查情报 runtime"],
+    },
+    { id: "web-search", label: "搜索与爬虫", existing: true },
+    {
+      id: "local-index",
+      label: "本地索引",
+      title: "本地索引",
+      detail: "本地内部索引用于搜索日志、笔记、文档标题、任务记录，不替代公网搜索。",
+      endpoints: ["/index/status", "/runtime/readiness", "/capabilities"],
+      actions: ["检查索引 runtime", "补齐连接配置", "查看 readiness 阻塞项"],
+    },
+    {
+      id: "codegraph",
+      label: "源码图谱",
+      title: "源码图谱",
+      detail: "源码结构索引和长期记忆分开存储，让 AI 能看到代码结构但不会把源码图谱混入 Obsidian 记忆。",
+      endpoints: ["/codegraph/status", "/codegraph/repos", "/codegraph/overview"],
+      actions: ["注册源码仓库", "扫描仓库", "查询符号/文件", "分析影响范围"],
+    },
+    {
+      id: "avatar",
+      label: "Avatar",
+      title: "Avatar",
+      detail: "浏览器 Avatar 运行时、模型资源、状态同步和口型/播报边界。",
+      endpoints: ["/avatar/status", "/avatar/manifest", "/persona"],
+      actions: ["验证模型资源", "记录 Avatar 状态", "同步个性头像和显示名"],
+    },
+    { id: "voice", label: "语音能力", existing: true },
+    { id: "social", label: "渠道授权", existing: true },
+    {
+      id: "database-backup",
+      label: "数据库与备份",
+      title: "数据库与备份",
+      detail: "生产数据库状态、JSONL 兜底、备份计划、恢复边界和迁移入口。",
+      endpoints: ["/ready", "/config/status", "/backup/status", "/backup/plan"],
+      actions: ["检查数据库", "生成备份计划", "执行迁移", "验证恢复策略"],
+    },
+    { id: "security", label: "安全与权限", existing: true },
+    {
+      id: "logs-events",
+      label: "日志与事件",
+      title: "日志与事件",
+      detail: "前端事件流、审计事件、错误日志和运行指标，便于排障与交付验收。",
+      endpoints: ["/events", "/audit", "/audit/stats", "/errors", "/metrics"],
+      actions: ["查看审计链", "跟踪事件流", "检查错误日志", "读取指标"],
+    },
+    {
+      id: "diagnostics",
+      label: "诊断与修复",
+      title: "诊断与修复",
+      detail: "一站式诊断包、runtime readiness、配置检查和安全修复建议。",
+      endpoints: ["/diagnostics/bundle", "/runtime/readiness", "/config/status", "/capabilities"],
+      actions: ["生成诊断包", "查看阻塞项", "按 checklist 修复", "重新检查"],
+    },
+    { id: "update", label: "更新", existing: true },
+  ];
 
   function ensureSettingsOverviewTab() {
     const nav = overlay.querySelector(".settings-nav");
     const content = overlay.querySelector(".settings-content");
     if (!nav || !content || nav.querySelector('[data-tab="system"]')) return;
-    nav.insertAdjacentHTML("afterbegin", `
-      <button class="settings-nav-item active" data-tab="system" type="button">系统总览</button>
-    `);
-    nav.querySelector('[data-tab="appearance"]')?.classList.remove("active");
+    const existingLabels = {
+      appearance: "个性配置",
+      llm: "模型网关",
+      media: "媒体能力",
+      social: "渠道授权",
+      voice: "语音能力",
+      "web-search": "搜索与爬虫",
+      security: "安全与权限",
+      update: "更新",
+    };
+    Object.entries(existingLabels).forEach(([id, label]) => {
+      const item = nav.querySelector(`[data-tab="${id}"]`);
+      if (item) item.textContent = label;
+    });
+    nav.innerHTML = completeSettingsTabs.map((tab, index) => `
+      <button class="settings-nav-item ${index === 0 ? "active" : ""}" data-tab="${tab.id}" type="button">${tab.label}</button>
+    `).join("");
     content.insertAdjacentHTML("afterbegin", `
       <div class="settings-tab active" data-tab="system">
         <div class="settings-section">
@@ -3272,7 +3382,43 @@ function initTTSSettings() {
         </div>
       </div>
     `);
+    completeSettingsTabs
+      .filter(tab => !tab.existing)
+      .forEach(tab => content.insertAdjacentHTML("beforeend", renderCompleteSettingsTab(tab)));
     content.querySelector('[data-tab="appearance"]')?.classList.remove("active");
+  }
+
+  function renderCompleteSettingsTab(tab) {
+    const endpointRows = tab.endpoints.map((path, index) => `
+      <div class="settings-overview-item" data-settings-endpoint="${settingsSafeText(path)}" data-status-target="${settingsSafeText(tab.id)}-${index}">
+        <div>
+          <strong>${settingsSafeText(path)}</strong>
+          <small>等待读取后端状态</small>
+        </div>
+        <span>pending</span>
+      </div>
+    `).join("");
+    const actionRows = tab.actions.map(action => `
+      <div class="settings-config-row">
+        <span class="settings-config-type">Action</span>
+        <span class="settings-config-info">${settingsSafeText(action)}</span>
+      </div>
+    `).join("");
+    return `
+      <div class="settings-tab" data-tab="${settingsSafeText(tab.id)}">
+        <div class="settings-section">
+          <div class="settings-section-label">${settingsSafeText(tab.title)}</div>
+          <p class="settings-hint">${settingsSafeText(tab.detail)}</p>
+          <div class="settings-overview-list" id="settings-surface-${settingsSafeText(tab.id)}">
+            ${endpointRows}
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-label">可执行边界</div>
+          ${actionRows}
+        </div>
+      </div>
+    `;
   }
 
   ensureSettingsOverviewTab();
@@ -3289,6 +3435,7 @@ function initTTSSettings() {
       if (tab === "security") loadSecuritySettings();
       if (tab === "web-search") loadWebSearchSettings();
       if (tab === "update") loadUpdateSettings();
+      loadCompleteSettingsSurface(tab);
     });
   });
 
@@ -3359,6 +3506,71 @@ function initTTSSettings() {
 
   function settingsStatusClass(status) {
     return activationStatusClass(status);
+  }
+
+  function settingsStatusFromPayload(payload = {}) {
+    if (!payload || typeof payload !== "object") return "unknown";
+    if (payload.error) return "blocked";
+    const candidates = [
+      payload.status,
+      payload.ready,
+      payload.configured,
+      payload.runtime_readiness?.status,
+      payload.config_status?.status,
+      payload.backup?.status,
+      payload.backup_plan?.status,
+      payload.memory?.status,
+      payload.voice_asr?.status,
+      payload.document_parse?.status,
+      payload.intelligence?.status,
+      payload.search?.status,
+      payload.index?.status,
+      payload.codegraph?.status,
+      payload.avatar?.status,
+      payload.obsidian_graph?.status,
+    ].filter(value => value != null);
+    if (candidates.length) return normalizeActivationStatus(candidates[0]);
+    if (Object.keys(payload).some(key => Array.isArray(payload[key]))) return "ready";
+    return "ready";
+  }
+
+  function settingsPayloadDetail(payload = {}) {
+    if (payload.error || payload.message) return payload.message || payload.error;
+    const graph = payload.obsidian_graph;
+    if (graph) return `${graph.note_count || 0} notes · ${graph.link_count || 0} links`;
+    if (payload.runtime_readiness?.blockers) return `${payload.runtime_readiness.blockers.length} blockers`;
+    if (payload.config_status?.items) return `${payload.config_status.items.length} config items`;
+    const arrayKey = Object.keys(payload).find(key => Array.isArray(payload[key]));
+    if (arrayKey) return `${payload[arrayKey].length} records`;
+    return "接口可访问";
+  }
+
+  async function loadCompleteSettingsSurface(tabId) {
+    const tab = completeSettingsTabs.find(item => item.id === tabId && !item.existing);
+    if (!tab) return;
+    const pane = overlay.querySelector(`.settings-tab[data-tab="${tabId}"]`);
+    if (!pane) return;
+    const rows = pane.querySelectorAll("[data-settings-endpoint]");
+    rows.forEach(row => {
+      row.className = "settings-overview-item";
+      row.querySelector("span").textContent = "loading";
+      row.querySelector("small").textContent = "正在读取…";
+    });
+    await Promise.all(Array.from(rows).map(async (row) => {
+      const path = row.dataset.settingsEndpoint;
+      try {
+        const res = await fetch(`${API}${path}`, { cache: "no-store", headers: ownerAuthHeaders() });
+        const payload = await res.json().catch(() => ({}));
+        const status = res.ok ? settingsStatusFromPayload(payload) : "blocked";
+        row.className = `settings-overview-item ${settingsStatusClass(status)}`;
+        row.querySelector("span").textContent = status;
+        row.querySelector("small").textContent = settingsPayloadDetail(payload);
+      } catch (error) {
+        row.className = "settings-overview-item is-blocked";
+        row.querySelector("span").textContent = "blocked";
+        row.querySelector("small").textContent = error?.message || "读取失败";
+      }
+    }));
   }
 
   function setSettingsInputValue(id, value) {
@@ -4061,6 +4273,7 @@ function initTTSSettings() {
     loadSettings();
     loadRuntimeSettingsOverview();
     loadVoiceSettings();
+    loadCompleteSettingsSurface(overlay.querySelector(".settings-nav-item.active")?.dataset.tab || "system");
     if (tab) {
       overlay.querySelectorAll(".settings-nav-item").forEach(b => {
         b.classList.toggle("active", b.dataset.tab === tab);
@@ -4072,6 +4285,7 @@ function initTTSSettings() {
       if (tab === "web-search") loadWebSearchSettings();
       if (tab === "system") loadRuntimeSettingsOverview();
       if (tab === "update") loadUpdateSettings();
+      loadCompleteSettingsSurface(tab);
     }
   }
 

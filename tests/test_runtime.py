@@ -1663,6 +1663,32 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("OpenAI-compatible", shell_js)
         self.assertIn("settings-overview", app_js)
         self.assertIn("完整配置中心", app_js)
+        for label in (
+            "系统总览",
+            "模型网关",
+            "多智能体",
+            "记忆系统",
+            "文档摄取",
+            "报告与来源",
+            "情报雷达",
+            "搜索与爬虫",
+            "本地索引",
+            "源码图谱",
+            "Avatar",
+            "语音能力",
+            "渠道授权",
+            "数据库与备份",
+            "安全与权限",
+            "日志与事件",
+            "诊断与修复",
+            "更新",
+        ):
+            self.assertIn(label, app_js)
+        self.assertIn("completeSettingsTabs", app_js)
+        self.assertIn("loadCompleteSettingsSurface", app_js)
+        self.assertIn("/diagnostics/bundle", app_js)
+        self.assertIn("/obsidian/graph", app_js)
+        self.assertIn("/codegraph/overview", app_js)
         self.assertIn("首次配置延展", app_js)
         self.assertIn("settings-core-model-baseurl", app_js)
         self.assertIn("settings-core-owner-token", app_js)
