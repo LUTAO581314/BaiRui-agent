@@ -230,35 +230,50 @@ const createSettingsModal = () => `
             </div>
           </div>
           <div class="settings-section">
-            <div class="settings-section-label">切换配置</div>
+            <div class="settings-section-label">完整网关配置</div>
+            <p class="settings-hint">bairui 内核统一使用 OpenAI-compatible 接口。下面的模板只用于快速填入常见地址，最终生效的是 Base URL、模型名称和 API Key。</p>
             <div class="settings-row">
-              <label class="settings-label" for="settings-provider-select">提供商</label>
+              <label class="settings-label" for="settings-provider-select">网关模板</label>
               <select class="settings-select" id="settings-provider-select">
-                <option value="custom">OpenAI-compatible</option>
+                <option value="custom">自定义 OpenAI-compatible</option>
+                <option value="local">本机网关 / 局域网服务</option>
+                <option value="relay">API 中转站 / 统一网关</option>
+                <option value="cloud">云端兼容网关</option>
               </select>
             </div>
-            <div class="settings-row" id="settings-model-row">
-              <label class="settings-label" for="settings-model-select">模型</label>
+            <div class="settings-row" id="settings-model-row" style="display:none;">
+              <label class="settings-label" for="settings-model-select">模板模型</label>
               <select class="settings-select" id="settings-model-select"></select>
             </div>
-            <!-- 自定义端点字段（选择"自定义端点"时显示） -->
-            <div id="settings-custom-llm-section" style="display:none;">
-              <div class="settings-row">
-                <label class="settings-label" for="settings-custom-baseurl">Base URL</label>
-                <input class="settings-input" id="settings-custom-baseurl" type="text" placeholder="如 http://localhost:11434/v1">
-              </div>
-              <div class="settings-row">
-                <label class="settings-label" for="settings-custom-model">模型名称</label>
-                <input class="settings-input" id="settings-custom-model" type="text" placeholder="如 llama3.2, qwen2.5, mistral">
-              </div>
+            <div id="settings-custom-llm-section">
+            <div class="settings-row">
+              <label class="settings-label" for="settings-custom-baseurl">Base URL</label>
+              <input class="settings-input" id="settings-custom-baseurl" type="text" placeholder="https://your-model-gateway.example/v1" autocomplete="off">
+            </div>
+            <div class="settings-row">
+              <label class="settings-label" for="settings-custom-model">模型名称</label>
+              <input class="settings-input" id="settings-custom-model" type="text" placeholder="例如 bairui-main-model / qwen-plus / gpt-4.1-mini" autocomplete="off">
             </div>
             <div class="settings-row">
               <label class="settings-label" for="settings-llm-key">API Key</label>
-              <input class="settings-input" id="settings-llm-key" type="password" placeholder="自定义端点可留空；其他留空则仅切换模型" autocomplete="new-password">
+              <input class="settings-input" id="settings-llm-key" type="password" placeholder="只写入服务器，不回显；已配置时可留空" autocomplete="new-password">
+            </div>
+            <div class="settings-config-row">
+              <span class="settings-config-type">Secret</span>
+              <span class="settings-config-info" id="settings-llm-secret-state">正在读取…</span>
+            </div>
+            <div class="settings-config-row">
+              <span class="settings-config-type">Timeout</span>
+              <span class="settings-config-info" id="settings-llm-timeout-state">正在读取…</span>
+            </div>
+            <div class="settings-config-row">
+              <span class="settings-config-type">Endpoint</span>
+              <span class="settings-config-info" id="settings-llm-endpoint-state">/chat/completions</span>
             </div>
             <div class="settings-row-action">
               <button class="settings-save-btn" id="settings-save-llm" type="button">保存</button>
               <span class="settings-feedback" id="settings-llm-feedback"></span>
+            </div>
             </div>
           </div>
           <div class="settings-section">

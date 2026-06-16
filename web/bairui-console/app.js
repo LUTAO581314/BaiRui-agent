@@ -3170,6 +3170,41 @@ function initTTSSettings() {
   if (!settingsBtn || !overlay) return;
 
   let cachedProviders = null;
+  const MODEL_GATEWAY_TEMPLATES = {
+    custom: {
+      baseURL: "",
+      model: "",
+      hint: "自定义 OpenAI-compatible 网关",
+      models: [],
+    },
+    local: {
+      baseURL: "http://127.0.0.1:11434/v1",
+      model: "local-model",
+      hint: "本机或局域网 OpenAI-compatible 服务",
+      models: [
+        { id: "local-model", label: "local-model" },
+        { id: "qwen2.5", label: "qwen2.5" },
+        { id: "llama3.2", label: "llama3.2" },
+      ],
+    },
+    relay: {
+      baseURL: "https://your-relay.example/v1",
+      model: "bairui-main-model",
+      hint: "统一中转站或企业模型网关",
+      models: [
+        { id: "bairui-main-model", label: "bairui-main-model" },
+        { id: "bairui-fast-model", label: "bairui-fast-model" },
+      ],
+    },
+    cloud: {
+      baseURL: "https://api.example.com/v1",
+      model: "cloud-compatible-model",
+      hint: "云端兼容网关",
+      models: [
+        { id: "cloud-compatible-model", label: "cloud-compatible-model" },
+      ],
+    },
+  };
   const completeSettingsTabs = [
     { id: "system", label: "系统总览", existing: true },
     { id: "llm", label: "模型网关", existing: true },
@@ -3766,7 +3801,7 @@ function initTTSSettings() {
     const cfgLlmDot = document.getElementById("settings-cfg-llm-dot");
     const cfgMedia = document.getElementById("settings-cfg-media");
     const cfgMediaDot = document.getElementById("settings-cfg-media-dot");
-    if (cfgLlm) cfgLlm.textContent = `${llm.provider || "—"} · ${llm.model || "—"}`;
+    if (cfgLlm) cfgLlm.textContent = `${llm.baseURL || llm.provider || "missing_config"} · ${llm.model || "missing_config"}`;
     if (cfgLlmDot) {
       cfgLlmDot.textContent = "●";
       cfgLlmDot.className = `settings-config-dot ${llm.activated ? "active" : "inactive"}`;
@@ -3789,42 +3824,54 @@ function initTTSSettings() {
 
   function populateProviderSelect(providers, current) {
     if (!providerSelect || !providers) return;
-    const selected = current || providerSelect.value || "auto";
-    const options = [`<option value="auto">Auto-detect</option>`]
-      .concat(Object.entries(providers).map(([id, provider]) => {
-        const label = provider.label || id;
-        return `<option value="${id}">${label}</option>`;
-      }));
+    const selected = current || providerSelect.value || "custom";
+    const options = Object.entries(providers).map(([id, provider]) => {
+      const label = provider.label || id;
+      return `<option value="${id}">${label}</option>`;
+    });
     providerSelect.innerHTML = options.join("");
-    providerSelect.value = providers[selected] || selected === "auto" ? selected : "auto";
+    providerSelect.value = providers[selected] ? selected : "custom";
   }
 
   function applyCustomProviderUI(llm) {
     const customSection = document.getElementById("settings-custom-llm-section");
     const modelRow = document.getElementById("settings-model-row");
-    if (llm?.provider === "custom") {
-      if (customSection) customSection.style.display = "";
-      if (modelRow) modelRow.style.display = "none";
-      const baseUrlEl = document.getElementById("settings-custom-baseurl");
-      const modelEl = document.getElementById("settings-custom-model");
-      if (baseUrlEl && llm.baseURL) baseUrlEl.value = llm.baseURL;
-      if (modelEl && llm.model) modelEl.value = llm.model;
-    } else {
-      if (customSection) customSection.style.display = "none";
-      if (modelRow) modelRow.style.display = "";
-    }
+    if (customSection) customSection.style.display = "";
+    if (modelRow) modelRow.style.display = "none";
+    const baseUrlEl = document.getElementById("settings-custom-baseurl");
+    const modelEl = document.getElementById("settings-custom-model");
+    if (baseUrlEl && llm?.baseURL) baseUrlEl.value = llm.baseURL;
+    if (modelEl && llm?.model) modelEl.value = llm.model;
   }
 
   async function loadSettings() {
     try {
-      const data = await fetch(`${API}/settings`).then(r => r.json());
-      const { llm, minimax, providers } = data;
-      if (providers) cachedProviders = providers;
+      const [settingsData, configData] = await Promise.all([
+        fetch(`${API}/settings`).then(r => r.ok ? r.json() : {}),
+        fetch(`${API}/config/status`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+      ]);
+      const configStatus = configData.config_status || {};
+      const modelFields = (configStatus.items || []).find((item) => item.id === "model_gateway")?.fields || {};
+      const llm = {
+        ...(settingsData.llm || {}),
+        provider: "custom",
+        baseURL: modelFields.base_url && modelFields.base_url !== "missing_config" ? modelFields.base_url : settingsData.llm?.baseURL || "",
+        model: modelFields.model && modelFields.model !== "missing_config" ? modelFields.model : settingsData.llm?.model || "",
+        activated: ((configStatus.items || []).find((item) => item.id === "model_gateway")?.status || settingsData.llm?.activated) === "ready",
+      };
+      const minimax = settingsData.minimax || {};
+      const providers = Object.fromEntries(Object.entries(MODEL_GATEWAY_TEMPLATES).map(([id, item]) => [id, { label: item.hint, models: item.models }]));
+      cachedProviders = providers;
       refreshConfigSummary({ llm, minimax });
-      populateProviderSelect(providers, llm.provider || "auto");
-      if (providerSelect && llm.provider) providerSelect.value = llm.provider;
+      populateProviderSelect(providers, "custom");
+      if (providerSelect) providerSelect.value = "custom";
       applyCustomProviderUI(llm);
-      if (llm.provider !== "custom") populateModelSelect(llm.models, llm.model);
+      const secretState = document.getElementById("settings-llm-secret-state");
+      if (secretState) secretState.textContent = modelFields.api_key || "missing_config";
+      const timeoutState = document.getElementById("settings-llm-timeout-state");
+      if (timeoutState) timeoutState.textContent = `${modelFields.timeout_seconds || 60}s`;
+      const endpointState = document.getElementById("settings-llm-endpoint-state");
+      if (endpointState) endpointState.textContent = `${llm.baseURL || "Base URL"}/chat/completions`;
       if (typeof llm.temperature === "number" && tempSlider) {
         tempSlider.value = String(llm.temperature);
         if (tempVal) tempVal.textContent = llm.temperature.toFixed(2);
@@ -4368,13 +4415,15 @@ function initTTSSettings() {
       const provider = providerSelect.value;
       const customSection = document.getElementById("settings-custom-llm-section");
       const modelRow = document.getElementById("settings-model-row");
-      if (provider === "custom") {
-        if (customSection) customSection.style.display = "";
-        if (modelRow) modelRow.style.display = "none";
-      } else {
-        if (customSection) customSection.style.display = "none";
-        if (modelRow) modelRow.style.display = "";
-        if (cachedProviders?.[provider]) populateModelSelect(cachedProviders[provider].models, null);
+      const template = MODEL_GATEWAY_TEMPLATES[provider] || MODEL_GATEWAY_TEMPLATES.custom;
+      if (customSection) customSection.style.display = "";
+      if (modelRow) modelRow.style.display = template.models?.length ? "" : "none";
+      if (template.models?.length) populateModelSelect(template.models, template.model);
+      const baseUrlEl = document.getElementById("settings-custom-baseurl");
+      const modelEl = document.getElementById("settings-custom-model");
+      if (provider !== "custom") {
+        if (baseUrlEl && (!baseUrlEl.value.trim() || baseUrlEl.value.includes("example") || baseUrlEl.value.includes("127.0.0.1"))) baseUrlEl.value = template.baseURL;
+        if (modelEl && (!modelEl.value.trim() || modelEl.value.endsWith("-model") || modelEl.value === "local-model")) modelEl.value = template.model;
       }
     });
   }
@@ -4384,37 +4433,16 @@ function initTTSSettings() {
     const apiKey = llmKeyInput.value.trim();
     saveLlmBtn.disabled = true;
 
-    if (provider === "custom") {
-      const baseURL = document.getElementById("settings-custom-baseurl")?.value?.trim();
-      const model   = document.getElementById("settings-custom-model")?.value?.trim();
-      if (!baseURL || !model) {
-        showFeedback(llmFeedback, "请填入 Base URL 和模型名称", true);
-        saveLlmBtn.disabled = false;
-        return;
-      }
-      try {
-        const res = await fetch(`${API}/config/apply`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
-          body: JSON.stringify({ values: { model_base_url: baseURL, model_name: model, ...(apiKey ? { model_api_key: apiKey } : {}) } }),
-        });
-        const data = await res.json();
-        if (data.ok !== false && !data.error) {
-          showFeedback(llmFeedback, `已保存：${model}`);
-          llmKeyInput.value = "";
-          loadSettings();
-          loadRuntimeSettingsOverview();
-        } else {
-          showFeedback(llmFeedback, data.error || "保存失败", true);
-        }
-      } catch { showFeedback(llmFeedback, "请求失败", true); }
-      finally { saveLlmBtn.disabled = false; }
+    const baseURL = document.getElementById("settings-custom-baseurl")?.value?.trim();
+    const selectedModel = modelSelect?.value?.trim();
+    const model = document.getElementById("settings-custom-model")?.value?.trim() || selectedModel;
+    if (!baseURL || !model) {
+      showFeedback(llmFeedback, "请填入 Base URL 和模型名称", true);
+      saveLlmBtn.disabled = false;
       return;
     }
-
-    const model = modelSelect.value;
     try {
-      const values = { model_name: model };
+      const values = { model_base_url: baseURL, model_name: model };
       if (apiKey) values.model_api_key = apiKey;
       const res = await fetch(`${API}/config/apply`, {
         method: "POST",
@@ -4422,13 +4450,14 @@ function initTTSSettings() {
         body: JSON.stringify({ values }),
       });
       const data = await res.json();
-      if (data.ok !== false && !data.error) {
-        showFeedback(llmFeedback, "已保存");
+      const result = data.config_apply || data;
+      if (res.ok && ["saved", "no_changes"].includes(result.status)) {
+        showFeedback(llmFeedback, `已保存：${model}`);
         llmKeyInput.value = "";
         loadSettings();
         loadRuntimeSettingsOverview();
       } else {
-        showFeedback(llmFeedback, data.error || "保存失败", true);
+        showFeedback(llmFeedback, result.message || data.error || "保存失败", true);
       }
     } catch { showFeedback(llmFeedback, "请求失败", true); }
     finally { saveLlmBtn.disabled = false; }
