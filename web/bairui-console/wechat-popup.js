@@ -20,7 +20,7 @@ function createPopupEl() {
   el.innerHTML = `
     <div class="settings-modal" style="width:340px;height:auto;max-height:calc(100vh - 80px);">
       <div class="settings-header">
-        <span class="settings-title">微信 ClawBot</span>
+        <span class="settings-title">渠道授权</span>
         <button class="settings-close" id="wechat-popup-close" type="button" title="关闭">✕</button>
       </div>
       <div style="padding:18px 20px 20px;display:flex;flex-direction:column;gap:14px;">
@@ -30,8 +30,8 @@ function createPopupEl() {
         </div>
 
         <div id="wechat-popup-qr-wrap" style="display:none;text-align:center;padding:4px 0 2px;">
-          <p style="font-size:11px;color:var(--ink2);margin:0 0 10px;">用微信扫描下方二维码：</p>
-          <img id="wechat-popup-qr-img" src="" alt="微信二维码"
+          <p style="font-size:11px;color:var(--ink2);margin:0 0 10px;">用授权客户端扫描下方二维码：</p>
+          <img id="wechat-popup-qr-img" src="" alt="渠道二维码"
                style="width:200px;height:200px;border:1px solid var(--line-strong);border-radius:6px;display:block;margin:0 auto;">
           <p id="wechat-popup-qr-hint" style="font-size:11px;color:var(--dim);margin:8px 0 0;">等待扫码…</p>
         </div>
@@ -120,7 +120,7 @@ async function pollQR() {
     if (data.status === 'connected') {
       stopPoll();
       setStatus('connected');
-      showFeedback('微信绑定成功！');
+      showFeedback('渠道绑定成功！');
       return false;
     } else if (data.status === 'error') {
       stopPoll();
@@ -161,7 +161,7 @@ async function triggerLogout() {
   try {
     await fetch(`${API}/social/wechat-clawbot/logout`, { method: 'POST' });
     setStatus('idle');
-    showFeedback('已断开微信连接');
+      showFeedback('已断开渠道连接');
   } catch {
     showFeedback('请求失败', true);
   }
@@ -183,7 +183,7 @@ export function initWechatPopup() {
     if (d.status === 'connected') {
       stopPoll();
       setStatus('connected');
-      if (!overlay.hasAttribute('hidden')) showFeedback('微信绑定成功！');
+      if (!overlay.hasAttribute('hidden')) showFeedback('渠道绑定成功！');
     } else if (d.status === 'qr_ready' && d.qr_url) {
       setStatus('qr_ready', { qr_url: d.qr_url });
     } else if (d.status === 'session_expired') {

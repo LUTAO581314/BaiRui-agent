@@ -39,20 +39,29 @@ from .adapters.everos import (
 )
 from .adapters.funasr import (
     as_payload as funasr_payload,
+    build_docker_command as build_funasr_docker_command,
+    build_server_command as build_funasr_server_command,
     build_transcription_payload as build_funasr_transcription_payload,
     status as funasr_status,
     transcribe as funasr_transcribe,
 )
-from .adapters.mineru import as_payload as mineru_payload, build_parse_command as build_mineru_parse_command, status as mineru_status
-from .adapters.mirofish import as_payload as mirofish_payload, status as mirofish_status
+from .adapters.mineru import (
+    as_payload as mineru_payload,
+    build_install_command as build_mineru_install_command,
+    build_parse_command as build_mineru_parse_command,
+    status as mineru_status,
+)
+from .adapters.mirofish import as_payload as mirofish_payload, build_setup_command as build_mirofish_setup_command, status as mirofish_status
 from .adapters.searxng import (
     as_payload as searxng_payload,
+    build_docker_command as build_searxng_docker_command,
     build_search_payload as build_searxng_search_payload,
     search as searxng_search,
     status as searxng_status,
 )
 from .adapters.sonic import (
     as_payload as sonic_payload,
+    build_docker_command as build_sonic_docker_command,
     build_push_payload as build_sonic_push_payload,
     build_query_payload as build_sonic_query_payload,
     ping as sonic_ping,
@@ -60,7 +69,7 @@ from .adapters.sonic import (
     query as sonic_query,
     status as sonic_status,
 )
-from .adapters.trendradar import as_payload as trendradar_payload, status as trendradar_status
+from .adapters.trendradar import as_payload as trendradar_payload, build_mcp_command as build_trendradar_mcp_command, status as trendradar_status
 from .capabilities import collect_capabilities
 from .avatar import as_payload as avatar_payload, avatar_engine_status, build_avatar_manifest, set_avatar_state, validate_avatar_model
 from .channels import (
@@ -201,6 +210,9 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/frontend/contract":
             self._send({"service": "bairui", "frontend_contract": build_frontend_contract(settings, __version__)})
+            return
+        if self.path == "/activation/setup-plan":
+            self._send({"service": PUBLIC_SERVICE, "activation_setup_plan": build_activation_setup_plan(settings)})
             return
         if self.path == "/config/status":
             self._send({"service": PUBLIC_SERVICE, "config_status": build_config_status(settings)})
@@ -1157,6 +1169,172 @@ class HermesHandler(BaseHTTPRequestHandler):
             status=401,
         )
         return False
+
+
+def build_activation_setup_plan(settings: Any) -> dict[str, Any]:
+    """Return a customer-safe first-use setup plan for the console Activation wizard."""
+
+    config = build_config_status(settings)
+    readiness = collect_runtime_readiness(settings)
+    return {
+        "title": "bairui first-use setup",
+        "mode_options": (
+            {"id": "local_trial", "label": "本地试用", "detail": "最快进入控制台，适合单机演示和内测。"},
+            {"id": "local_production", "label": "本地生产", "detail": "配置 owner token、路径和备份后在本地或内网长期运行。"},
+            {"id": "server_domain", "label": "服务器部署", "detail": "面向客户试点，要求反向代理、数据库、备份和访问控制。"},
+        ),
+        "required_config": (
+            {
+                "id": "model_gateway",
+                "label": "模型网关",
+                "fields": ("model_base_url", "model_api_key", "model_name"),
+                "endpoint": "/config/apply",
+                "status": _activation_item_status(config, "model_gateway"),
+                "secret_fields": ("model_api_key",),
+                "detail": "兼容 OpenAI 格式的模型入口；密钥只写入服务器，不回显。",
+            },
+            {
+                "id": "storage_paths",
+                "label": "数据与知识路径",
+                "fields": ("document_output_dir", "memory_vault_dir", "codegraph_root", "avatar_assets_dir"),
+                "endpoint": "/config/apply",
+                "status": "ready" if not config.get("checklist", {}).get("missing_required") else "partial",
+                "confirmation_phrase": "APPLY BAIRUI CONFIG",
+                "detail": "文档、长期记忆、源码索引和 Avatar 资源的本地路径；高风险路径变更需要确认。",
+            },
+            {
+                "id": "owner_gate",
+                "label": "访问保护",
+                "fields": ("owner_token",),
+                "endpoint": "/config/apply",
+                "status": _activation_item_status(config, "owner_gate"),
+                "secret_fields": ("owner_token",),
+                "confirmation_phrase": "APPLY BAIRUI CONFIG",
+                "detail": "服务器或公网环境建议开启；写接口会要求 owner token。",
+            },
+        ),
+        "capability_groups": (
+            _activation_capability(
+                "documents",
+                "文档解析",
+                "/document/parse/status",
+                mineru_payload(mineru_status(settings)),
+                (mineru_payload(build_mineru_install_command(settings)),),
+                "解析 PDF/Office/图片为 Markdown/JSON 后进入知识摄取流程。",
+            ),
+            _activation_capability(
+                "intelligence",
+                "情报雷达",
+                "/intel/status",
+                trendradar_payload(trendradar_status(settings)),
+                (trendradar_payload(build_trendradar_mcp_command(settings)),),
+                "热点、趋势和外部情报输入；作为可选 runtime 接入。",
+            ),
+            _activation_capability(
+                "search",
+                "联网搜索",
+                "/search/status",
+                searxng_payload(searxng_status(settings)),
+                (searxng_payload(build_searxng_docker_command(settings)),),
+                "自托管元搜索入口；正式商用前需完成托管合规检查。",
+            ),
+            _activation_capability(
+                "index",
+                "本地索引",
+                "/index/status",
+                sonic_payload(sonic_status(settings)),
+                (sonic_payload(build_sonic_docker_command(settings)),),
+                "本地日志、笔记和文档标题索引，不替代长期记忆。",
+            ),
+            _activation_capability(
+                "voice_asr",
+                "语音识别",
+                "/voice/asr/status",
+                funasr_payload(funasr_status(settings)),
+                (
+                    funasr_payload(build_funasr_server_command(settings, device="cpu")),
+                    funasr_payload(build_funasr_docker_command(settings)),
+                ),
+                "会议转写、语音指令和通话分析；可先不启用。",
+            ),
+            _activation_capability(
+                "simulation",
+                "推演模拟",
+                "/simulation/status",
+                mirofish_payload(mirofish_status(settings)),
+                (mirofish_payload(build_mirofish_setup_command(settings)),),
+                "舆情推演和社会传播模拟；作为高级能力安装。",
+            ),
+            _activation_capability(
+                "avatar",
+                "Avatar",
+                "/avatar/status",
+                avatar_payload(avatar_engine_status(settings)),
+                ({"status": "ready", "command": ("npm", "install", settings.avatar_engine_package + "@" + settings.avatar_engine_version), "detail": "Install the browser avatar renderer package if rebuilding the frontend bundle."},),
+                "浏览器形象层，可后续接 Live2D 模型资源。",
+            ),
+            _activation_capability(
+                "codegraph",
+                "源码图谱",
+                "/codegraph/status",
+                codegraph_payload(codegraph_status(settings)),
+                (),
+                "让 Agent 看源码结构；与长期记忆分开存储。",
+            ),
+        ),
+        "verification": (
+            {"label": "健康检查", "method": "GET", "path": "/health"},
+            {"label": "可用性检查", "method": "GET", "path": "/ready"},
+            {"label": "运行阻塞项", "method": "GET", "path": "/runtime/readiness"},
+            {"label": "配置诊断", "method": "GET", "path": "/config/status"},
+        ),
+        "safety": {
+            "secret_echo": False,
+            "external_send_auto": False,
+            "long_term_memory_auto_write": False,
+            "dangerous_confirmation": "APPLY BAIRUI CONFIG",
+        },
+        "current": {
+            "config_status": config.get("status", "unknown"),
+            "runtime_status": readiness.get("status", "unknown"),
+            "blockers": tuple(readiness.get("blockers", ())),
+        },
+    }
+
+
+def _activation_item_status(config: dict[str, Any], item_id: str) -> str:
+    for item in config.get("items", ()):
+        if item.get("id") == item_id:
+            return str(item.get("status") or "unknown")
+    return "unknown"
+
+
+def _activation_capability(
+    capability_id: str,
+    label: str,
+    status_path: str,
+    status_payload: dict[str, Any],
+    commands: tuple[dict[str, Any], ...],
+    detail: str,
+) -> dict[str, Any]:
+    status = _payload_status(status_payload)
+    return {
+        "id": capability_id,
+        "label": label,
+        "status": status,
+        "status_path": status_path,
+        "detail": detail,
+        "status_payload": status_payload,
+        "commands": commands,
+        "optional": capability_id not in {"documents", "codegraph"},
+    }
+
+
+def _payload_status(payload: dict[str, Any]) -> str:
+    for value in payload.values():
+        if isinstance(value, dict) and value.get("status"):
+            return str(value.get("status"))
+    return str(payload.get("status") or "unknown")
 
 
 def serve(settings: Any | None = None) -> None:

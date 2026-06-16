@@ -4,12 +4,16 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $targets = @(
     "web/bairui-console/index.html",
     "web/bairui-console/app.js",
+    "web/bairui-console/app-shell.js",
+    "web/bairui-console/wechat-popup.js",
     "web/bairui-console/styles.css",
     "src/hermes/frontend_contract.py"
 )
 
 $baiLongMaCn = [string]([char]0x767D) + [string]([char]0x9F99) + [string]([char]0x9A6C)
 $xiaoBaiLongCn = [string]([char]0x5C0F) + [string]([char]0x767D) + [string]([char]0x9F99)
+$wechatCn = [string]([char]0x5FAE) + [string]([char]0x4FE1)
+$wechatQrCn = $wechatCn + [string]([char]0x4E8C) + [string]([char]0x7EF4) + [string]([char]0x7801)
 
 $forbiddenPublicBrands = @(
     "Hermes",
@@ -17,8 +21,12 @@ $forbiddenPublicBrands = @(
     "Moxi",
     "moxi",
     "BaiLongma",
+    "ClawBot",
+    $wechatCn,
+    $wechatQrCn,
     $baiLongMaCn,
     $xiaoBaiLongCn,
+    "SearXNG",
     "xiaoyuanda666-ship-it"
 )
 

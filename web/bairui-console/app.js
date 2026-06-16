@@ -1,5 +1,5 @@
 ﻿import { renderBrainUiApp } from "./app-shell.js";
-import { API, ownerAuthHeaders } from "./api-client.js";
+import { API, ownerAuthHeaders, saveOwnerAuthToken } from "./api-client.js";
 import { bootstrapACUI } from "./acui/bootstrap.js";
 import { initChat, friendlyChannelLabel } from "./chat.js";
 import { initPanelCollapse } from "./panel-collapse.js";
@@ -72,10 +72,10 @@ function sanitizePublicBrandText(root = document.body) {
     [/\u5c0f\u767d\u9f99/g, "bairui"],
     [/\u767d\u9f99\u9a6c/g, "bairui"],
     [/bairui/gi, "bairui"],
-    [/微信 ClawBot（个人微信）/g, "渠道授权（实验）"],
-    [/连接微信/g, "连接渠道"],
-    [/微信二维码/g, "渠道二维码"],
-    [/用微信扫描/g, "用授权客户端扫描"],
+    [/\u5fae\u4fe1 \u0043lawBot\uff08\u4e2a\u4eba\u5fae\u4fe1\uff09/g, "渠道授权（实验）"],
+    [/\u8fde\u63a5\u5fae\u4fe1/g, "连接渠道"],
+    [/\u5fae\u4fe1\u4e8c\u7ef4\u7801/g, "渠道二维码"],
+    [/\u7528\u5fae\u4fe1\u626b\u63cf/g, "用授权客户端扫描"],
   ];
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = [];
@@ -376,9 +376,139 @@ function renderActivationStepDetail(step, state = {}) {
   `;
 }
 
+function activationConfigField(configStatus, itemId, fieldId) {
+  const item = (configStatus?.config_status?.items || []).find((entry) => entry.id === itemId) || {};
+  const value = item.fields?.[fieldId];
+  return value && value !== "missing_config" && value !== "configured" ? value : "";
+}
+
+function activationCommandText(command) {
+  if (!command) return "";
+  if (Array.isArray(command)) return command.join(" ");
+  return String(command || "");
+}
+
+function activationPublicInstallLabel(commandPlan = {}) {
+  const status = commandPlan.status || "ready";
+  if (status === "unavailable") return "源码或运行环境未就绪，先在设置页补齐路径和环境。";
+  if (status === "missing_config") return "缺少配置，先在设置页补齐参数。";
+  return "安装/启动步骤已由 bairui 内核生成，完整运维命令在设置页受控查看。";
+}
+
+function renderActivationModeOptions(setupPlan = {}) {
+  const modes = Array.isArray(setupPlan.mode_options) ? setupPlan.mode_options : [];
+  return modes.map((mode, index) => `
+    <label class="activation-mode-card ${index === 0 ? "active" : ""}">
+      <input type="radio" name="activation-mode" value="${escapeActivationHtml(mode.id)}" ${index === 0 ? "checked" : ""}>
+      <span>${escapeActivationHtml(mode.label)}</span>
+      <small>${escapeActivationHtml(mode.detail)}</small>
+    </label>
+  `).join("");
+}
+
+function renderActivationCapabilityCards(setupPlan = {}) {
+  const capabilities = Array.isArray(setupPlan.capability_groups) ? setupPlan.capability_groups : [];
+  if (!capabilities.length) return `<div class="activation-empty">暂无可安装能力计划，请先检查后端运行状态。</div>`;
+  return capabilities.map((capability) => {
+    const commands = Array.isArray(capability.commands) ? capability.commands.filter((item) => activationCommandText(item.command)) : [];
+    const firstCommand = commands[0];
+    return `
+      <label class="activation-capability-card ${activationStatusClass(capability.status)}">
+        <input type="checkbox" class="activation-capability-toggle" value="${escapeActivationHtml(capability.id)}" ${capability.optional ? "" : "checked"} data-command-ready="${firstCommand ? "1" : "0"}">
+        <span class="activation-capability-main">
+          <strong>${escapeActivationHtml(capability.label)}</strong>
+          <small>${escapeActivationHtml(capability.detail)}</small>
+        </span>
+        <span class="activation-capability-status">${escapeActivationHtml(capability.status || "unknown")}</span>
+      </label>
+    `;
+  }).join("");
+}
+
+function renderActivationCommandPlan(setupPlan = {}) {
+  const capabilities = Array.isArray(setupPlan.capability_groups) ? setupPlan.capability_groups : [];
+  const rows = [];
+  capabilities.forEach((capability) => {
+    (capability.commands || []).forEach((commandPlan) => {
+      const command = activationCommandText(commandPlan.command);
+      if (!command) return;
+      rows.push(`
+        <div class="activation-command-row" data-capability="${escapeActivationHtml(capability.id)}">
+          <div>
+            <strong>${escapeActivationHtml(capability.label)}</strong>
+            <small>${escapeActivationHtml(activationPublicInstallLabel(commandPlan))}</small>
+          </div>
+          <span>${escapeActivationHtml(commandPlan.status || capability.status || "ready")}</span>
+        </div>
+      `);
+    });
+  });
+  return rows.join("") || `<div class="activation-empty">当前没有可展示的安装命令。已集成能力会在状态区显示。</div>`;
+}
+
+function activationSelectedCapabilities(overlay) {
+  return [...overlay.querySelectorAll(".activation-capability-toggle")]
+    .filter((input) => input.checked)
+    .map((input) => input.value);
+}
+
+async function saveActivationModelConfig(overlay, feedbackEl) {
+  const baseURL = overlay.querySelector("#activation-model-baseurl")?.value?.trim();
+  const model = overlay.querySelector("#activation-model-name")?.value?.trim();
+  const apiKey = overlay.querySelector("#activation-model-key")?.value?.trim();
+  const saveBtn = overlay.querySelector("#activation-save-model-btn");
+  if (!baseURL || !model) {
+    if (feedbackEl) {
+      feedbackEl.textContent = "请先填写 Base URL 和模型名称。";
+      feedbackEl.className = "activation-form-feedback error";
+    }
+    return false;
+  }
+  if (saveBtn) saveBtn.disabled = true;
+  try {
+    const values = { model_base_url: baseURL, model_name: model };
+    if (apiKey) values.model_api_key = apiKey;
+    const res = await fetch(`${API}/config/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+      body: JSON.stringify({ values }),
+    });
+    const data = await res.json().catch(() => ({}));
+    const result = data.config_apply || data;
+    if (!res.ok || result.error || result.status === "invalid_request") {
+      throw new Error(result.message || result.error || "保存失败");
+    }
+    if (feedbackEl) {
+      feedbackEl.textContent = result.status === "no_changes" ? "配置未变化，已继续复检。" : "模型配置已保存，密钥不会回显。";
+      feedbackEl.className = "activation-form-feedback ok";
+    }
+    const keyInput = overlay.querySelector("#activation-model-key");
+    if (keyInput) keyInput.value = "";
+    return true;
+  } catch (error) {
+    if (feedbackEl) {
+      feedbackEl.textContent = error?.message || "保存失败";
+      feedbackEl.className = "activation-form-feedback error";
+    }
+    return false;
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+function configStatusItem(configStatus, itemId) {
+  return (configStatus?.config_status?.items || configStatus?.items || []).find((entry) => entry.id === itemId) || {};
+}
+
+function configStatusField(configStatus, itemId, fieldId) {
+  const value = configStatusItem(configStatus, itemId).fields?.[fieldId];
+  return value && value !== "missing_config" && value !== "configured" ? value : "";
+}
+
 function renderActivationOverlay(contract = {}, state = {}) {
   const flow = Array.isArray(contract.activation_flow) ? contract.activation_flow : [];
   state.contract = contract;
+  const setupPlan = state.setup_plan?.activation_setup_plan || state.setup_plan || {};
   const overlay = document.createElement("section");
   overlay.className = "bairui-activation-overlay";
   overlay.setAttribute("role", "dialog");
@@ -389,6 +519,8 @@ function renderActivationOverlay(contract = {}, state = {}) {
   const blockerCount = Array.isArray(state.runtime_readiness?.blockers) ? state.runtime_readiness.blockers.length : 0;
   const databaseStatus = state.ready?.database?.status || "unknown";
   const platformStatus = state.ready?.platform || "missing_config";
+  const modelBaseUrl = activationConfigField(state.config_status, "model_gateway", "base_url");
+  const modelName = activationConfigField(state.config_status, "model_gateway", "model");
 
   overlay.innerHTML = `
     <div class="activation-core-bg" aria-hidden="true">
@@ -400,29 +532,84 @@ function renderActivationOverlay(contract = {}, state = {}) {
       <header class="activation-header">
         <div>
           <div class="activation-kicker">bairui Activation</div>
-          <h1>系统激活</h1>
-          <p>首次进入先完成运行状态、模型、文档、记忆、渠道、Avatar 与 CodeGraph 的检查。</p>
+          <h1>首次配置</h1>
+          <p>先填模型网关，再选择要启用的能力。更多路径、数据库、访问保护和高级插件配置在设置页继续完善。</p>
         </div>
         <div class="activation-status ${activationStatusClass(readyStatus)}">
           <span></span>${readyStatus}
         </div>
       </header>
-      <div class="activation-grid">
-        <div class="activation-stepper">
-          ${flow.map((step, index) => {
-            const status = activationStepStatus(step, state);
-            return `
-              <button class="activation-step ${activationStatusClass(status)}" type="button" data-step-id="${step.id || ""}">
-                <span class="activation-step-index">${String(index + 1).padStart(2, "0")}</span>
-                <span class="activation-step-copy">
-                  <strong>${step.title || step.id || "Activation Step"}</strong>
-                  <small>${step.complete_when || "等待后端状态"}</small>
-                </span>
-                <span class="activation-step-state">${status}</span>
-              </button>
-            `;
-          }).join("")}
-        </div>
+
+      <div class="activation-wizard">
+        <section class="activation-setup-main">
+          <div class="activation-panel">
+            <div class="activation-section-head">
+              <span>01</span>
+              <div>
+                <strong>选择部署模式</strong>
+                <small>模式只影响向导提示，不会自动改服务器配置。</small>
+              </div>
+            </div>
+            <div class="activation-mode-grid">
+              ${renderActivationModeOptions(setupPlan)}
+            </div>
+          </div>
+
+          <div class="activation-panel activation-model-form" id="activation-model-form">
+            <div class="activation-section-head">
+              <span>02</span>
+              <div>
+                <strong>配置模型网关</strong>
+                <small>兼容 OpenAI 格式；API Key 只写入服务器，本页面不会回显。</small>
+              </div>
+            </div>
+            <div class="activation-form-grid">
+              <label>
+                <span>Base URL</span>
+                <input id="activation-model-baseurl" type="text" autocomplete="off" placeholder="https://your-model-gateway.example/v1" value="${escapeActivationHtml(modelBaseUrl)}">
+              </label>
+              <label>
+                <span>Model</span>
+                <input id="activation-model-name" type="text" autocomplete="off" placeholder="model-name" value="${escapeActivationHtml(modelName)}">
+              </label>
+              <label class="activation-form-wide">
+                <span>API Key</span>
+                <input id="activation-model-key" type="password" autocomplete="new-password" placeholder="只写入，不回显；已配置时可留空">
+              </label>
+            </div>
+            <div class="activation-form-actions">
+              <button class="activation-primary" id="activation-save-model-btn" type="button">保存并复检</button>
+              <span class="activation-form-feedback" id="activation-model-feedback"></span>
+            </div>
+          </div>
+
+          <div class="activation-panel">
+            <div class="activation-section-head">
+              <span>03</span>
+              <div>
+                <strong>选择要启用的能力</strong>
+                <small>未启用的能力不会阻塞进入控制台，可以在设置页继续安装。</small>
+              </div>
+            </div>
+            <div class="activation-capability-grid">
+              ${renderActivationCapabilityCards(setupPlan)}
+            </div>
+          </div>
+
+          <div class="activation-panel">
+            <div class="activation-section-head">
+              <span>04</span>
+              <div>
+                <strong>安装 / 启动计划</strong>
+                <small>命令来自后端内核的真实适配器；危险操作仍需要主人确认后手动执行。</small>
+              </div>
+            </div>
+            <div class="activation-command-list" id="activation-command-list">
+              ${renderActivationCommandPlan(setupPlan)}
+            </div>
+          </div>
+        </section>
+
         <aside class="activation-evidence">
           <div class="activation-evidence-card">
             <span>Readiness</span>
@@ -444,10 +631,31 @@ function renderActivationOverlay(contract = {}, state = {}) {
             <p>不会自动外发消息，不会自动写入长期记忆；渠道发送和记忆入库都需要主人审核。</p>
           </div>
           <div class="activation-selected-detail">
-            ${renderActivationStepDetail(flow[0], state)}
+            ${renderActivationStepDetail(flow.find((step) => step.id === "model_gateway") || flow[0], state)}
           </div>
+          <button class="activation-secondary activation-open-settings" id="activation-open-settings-btn" type="button">打开完整设置</button>
         </aside>
       </div>
+
+      <details class="activation-advanced-status">
+        <summary>查看完整激活检查</summary>
+        <div class="activation-stepper">
+          ${flow.map((step, index) => {
+            const status = activationStepStatus(step, state);
+            return `
+              <button class="activation-step ${activationStatusClass(status)}" type="button" data-step-id="${step.id || ""}">
+                <span class="activation-step-index">${String(index + 1).padStart(2, "0")}</span>
+                <span class="activation-step-copy">
+                  <strong>${step.title || step.id || "Activation Step"}</strong>
+                  <small>${step.complete_when || "等待后端状态"}</small>
+                </span>
+                <span class="activation-step-state">${status}</span>
+              </button>
+            `;
+          }).join("")}
+        </div>
+      </details>
+
       <footer class="activation-actions">
         <button class="activation-secondary" id="activation-recheck-btn" type="button">重新检查</button>
         <button class="activation-primary" id="activation-enter-btn" type="button">进入控制台</button>
@@ -464,6 +672,34 @@ function renderActivationOverlay(contract = {}, state = {}) {
   overlay.querySelector("#activation-recheck-btn")?.addEventListener("click", () => {
     overlay.remove();
     showActivationOverlay({ force: true });
+  });
+  overlay.querySelector("#activation-save-model-btn")?.addEventListener("click", async () => {
+    const saved = await saveActivationModelConfig(overlay, overlay.querySelector("#activation-model-feedback"));
+    if (saved) {
+      setTimeout(() => {
+        overlay.remove();
+        showActivationOverlay({ force: true });
+      }, 520);
+    }
+  });
+  overlay.querySelector("#activation-open-settings-btn")?.addEventListener("click", () => {
+    try { localStorage.setItem(ACTIVATION_DISMISSED_KEY, "1"); } catch {}
+    overlay.remove();
+    openSettingsRef?.("system");
+  });
+  overlay.querySelectorAll(".activation-mode-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      overlay.querySelectorAll(".activation-mode-card").forEach((item) => item.classList.remove("active"));
+      card.classList.add("active");
+    });
+  });
+  overlay.querySelectorAll(".activation-capability-toggle").forEach((input) => {
+    input.addEventListener("change", () => {
+      const selected = new Set(activationSelectedCapabilities(overlay));
+      overlay.querySelectorAll(".activation-command-row").forEach((row) => {
+        row.hidden = selected.size > 0 && !selected.has(row.dataset.capability);
+      });
+    });
   });
   const detail = overlay.querySelector(".activation-selected-detail");
   overlay.querySelectorAll(".activation-step").forEach((btn) => {
@@ -493,11 +729,12 @@ async function showActivationOverlay({ force = false } = {}) {
       body: JSON.stringify(body),
     }).then(r => r.ok ? r.json() : {});
     const [
-      contract, health, ready, runtime, capabilities, configStatus, license, platformHeartbeat,
+      contract, setupPlan, health, ready, runtime, capabilities, configStatus, license, platformHeartbeat,
       documentParse, memoryPending, reports, ingestReports, sourceRefs, channelsStatus,
       channelsTargets, channelsApprovals, avatarStatus, avatarManifest, codegraphStatus,
     ] = await Promise.all([
       readJson("/frontend/contract"),
+      readJson("/activation/setup-plan"),
       readJson("/health"),
       readJson("/ready"),
       readJson("/runtime/readiness"),
@@ -519,6 +756,7 @@ async function showActivationOverlay({ force = false } = {}) {
     ]);
     renderActivationOverlay(contract.frontend_contract || contract, {
       health,
+      setup_plan: setupPlan,
       ready,
       runtime_readiness: runtime.runtime_readiness || runtime,
       capabilities: capabilities.capabilities || [],
@@ -2816,8 +3054,8 @@ function initTTSSettings() {
     content.insertAdjacentHTML("afterbegin", `
       <div class="settings-tab active" data-tab="system">
         <div class="settings-section">
-          <div class="settings-section-label">系统总览</div>
-          <p class="settings-hint">这里读取真实后端状态，只显示是否已配置和修复方向，不回显任何密钥。</p>
+          <div class="settings-section-label">完整配置中心</div>
+          <p class="settings-hint">激活页只处理首次必需配置；这里继续完善模型、路径、数据库、访问保护、语音、文档、情报、Avatar 和 CodeGraph。所有密钥只显示 configured / missing_config，不回显明文。</p>
           <div class="settings-overview-hero">
             <div>
               <span>Readiness</span>
@@ -2825,6 +3063,58 @@ function initTTSSettings() {
               <small id="settings-overview-blockers">等待后端状态</small>
             </div>
             <button class="settings-save-btn" id="settings-overview-refresh" type="button">重新检查</button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-label">首次配置延展</div>
+          <p class="settings-hint">这里是激活页的完整版本：可补齐模型网关、访问保护、本地路径和源码图谱路径。高风险项需要输入确认短语。</p>
+          <div class="settings-core-form">
+            <label>
+              <span>模型 Base URL</span>
+              <input class="settings-input" id="settings-core-model-baseurl" type="text" placeholder="https://your-model-gateway.example/v1" autocomplete="off">
+            </label>
+            <label>
+              <span>模型名称</span>
+              <input class="settings-input" id="settings-core-model-name" type="text" placeholder="model-name" autocomplete="off">
+            </label>
+            <label>
+              <span>模型 API Key</span>
+              <input class="settings-input" id="settings-core-model-key" type="password" placeholder="留空保持原值" autocomplete="new-password">
+            </label>
+            <label>
+              <span>Owner Token</span>
+              <input class="settings-input" id="settings-core-owner-token" type="password" placeholder="服务器/公网建议设置，留空保持原值" autocomplete="new-password">
+            </label>
+            <label>
+              <span>文档输出目录</span>
+              <input class="settings-input" id="settings-core-document-output" type="text" placeholder="./data/mineru-output" autocomplete="off">
+            </label>
+            <label>
+              <span>长期记忆目录</span>
+              <input class="settings-input" id="settings-core-memory-vault" type="text" placeholder="./obsidian-vault" autocomplete="off">
+            </label>
+            <label>
+              <span>源码图谱根目录</span>
+              <input class="settings-input" id="settings-core-codegraph-root" type="text" placeholder="./data/codegraph" autocomplete="off">
+            </label>
+            <label>
+              <span>Avatar 资源目录</span>
+              <input class="settings-input" id="settings-core-avatar-assets" type="text" placeholder="./data/avatars" autocomplete="off">
+            </label>
+            <label class="settings-core-form-wide">
+              <span>高风险确认短语</span>
+              <input class="settings-input" id="settings-core-confirmation" type="text" placeholder="APPLY BAIRUI CONFIG" autocomplete="off">
+            </label>
+          </div>
+          <div class="settings-row-action">
+            <button class="settings-save-btn" id="settings-save-core-config" type="button">保存完整配置</button>
+            <span class="settings-feedback" id="settings-core-config-feedback"></span>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-label">部署模式与能力计划</div>
+          <div class="settings-plan-grid" id="settings-activation-plan-grid">
+            <div class="settings-overview-empty">正在读取激活计划…</div>
           </div>
         </div>
         <div class="settings-section">
@@ -2899,6 +3189,51 @@ function initTTSSettings() {
     return activationStatusClass(status);
   }
 
+  function setSettingsInputValue(id, value) {
+    const el = document.getElementById(id);
+    if (!el || el.value) return;
+    el.value = value || "";
+  }
+
+  function populateCoreConfigForm(configStatus = {}) {
+    setSettingsInputValue("settings-core-model-baseurl", configStatusField(configStatus, "model_gateway", "base_url"));
+    setSettingsInputValue("settings-core-model-name", configStatusField(configStatus, "model_gateway", "model"));
+    setSettingsInputValue("settings-core-document-output", configStatusField(configStatus, "document_output_dir", "path"));
+    setSettingsInputValue("settings-core-memory-vault", configStatusField(configStatus, "memory_vault", "path"));
+    setSettingsInputValue("settings-core-codegraph-root", configStatusField(configStatus, "codegraph_root", "path"));
+    setSettingsInputValue("settings-core-avatar-assets", configStatusField(configStatus, "avatar_assets", "path"));
+  }
+
+  function renderSettingsActivationPlan(setupPlan = {}) {
+    const modes = Array.isArray(setupPlan.mode_options) ? setupPlan.mode_options : [];
+    const required = Array.isArray(setupPlan.required_config) ? setupPlan.required_config : [];
+    const capabilities = Array.isArray(setupPlan.capability_groups) ? setupPlan.capability_groups : [];
+    const modeCards = modes.map((mode) => `
+      <div class="settings-plan-card">
+        <span>部署模式</span>
+        <strong>${settingsSafeText(mode.label)}</strong>
+        <small>${settingsSafeText(mode.detail)}</small>
+      </div>
+    `).join("");
+    const requiredCards = required.map((item) => `
+      <div class="settings-plan-card ${settingsStatusClass(item.status)}">
+        <span>必需配置</span>
+        <strong>${settingsSafeText(item.label)}</strong>
+        <small>${settingsSafeText(item.detail)}</small>
+        <b>${settingsSafeText(item.status || "unknown")}</b>
+      </div>
+    `).join("");
+    const capabilityCards = capabilities.map((item) => `
+      <div class="settings-plan-card ${settingsStatusClass(item.status)}">
+        <span>可选能力</span>
+        <strong>${settingsSafeText(item.label)}</strong>
+        <small>${settingsSafeText(item.detail)}</small>
+        <b>${settingsSafeText(item.status || "unknown")}</b>
+      </div>
+    `).join("");
+    return modeCards + requiredCards + capabilityCards || `<div class="settings-overview-empty">暂无激活计划。</div>`;
+  }
+
   function renderSettingsConfigItems(items = []) {
     if (!items.length) return `<div class="settings-overview-empty">暂无配置诊断。</div>`;
     return items.map((item) => `
@@ -2929,11 +3264,12 @@ function initTTSSettings() {
     };
     const configList = document.getElementById("settings-config-status-list");
     const runtimeGrid = document.getElementById("settings-runtime-status-grid");
+    const planGrid = document.getElementById("settings-activation-plan-grid");
     const readJson = (path) => fetch(`${API}${path}`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {});
     try {
       const [
         readiness, configStatus, backupStatus, backupPlan, memory, voiceAsr,
-        documentParse, intel, simulation, search, index, avatar, codegraph,
+        documentParse, intel, simulation, search, index, avatar, codegraph, setupPlan,
       ] = await Promise.all([
         readJson("/runtime/readiness"),
         readJson("/config/status"),
@@ -2948,6 +3284,7 @@ function initTTSSettings() {
         readJson("/index/status"),
         readJson("/avatar/status"),
         readJson("/codegraph/status"),
+        readJson("/activation/setup-plan"),
       ]);
       const runtime = readiness.runtime_readiness || readiness;
       const config = configStatus.config_status || {};
@@ -2958,16 +3295,18 @@ function initTTSSettings() {
       setText("settings-config-next-step", config.next_step || "无下一步");
       setText("settings-backup-plan", backupPlan.backup_plan?.status || backupStatus.backup?.status || "unknown");
       if (configList) configList.innerHTML = renderSettingsConfigItems(config.items || []);
+      populateCoreConfigForm(configStatus);
+      if (planGrid) planGrid.innerHTML = renderSettingsActivationPlan(setupPlan.activation_setup_plan || setupPlan);
       const tiles = [
-        { label: "Memory", status: settingsRuntimeStatus(memory, "memory"), path: "/memory/status" },
-        { label: "Voice ASR", status: settingsRuntimeStatus(voiceAsr, "voice_asr"), path: "/voice/asr/status" },
-        { label: "Documents", status: settingsRuntimeStatus(documentParse, "document_parse"), path: "/document/parse/status" },
-        { label: "Intelligence", status: settingsRuntimeStatus(intel, "intelligence"), path: "/intel/status" },
-        { label: "Simulation", status: settingsRuntimeStatus(simulation, "simulation"), path: "/simulation/status" },
-        { label: "Search", status: settingsRuntimeStatus(search, "search"), path: "/search/status" },
-        { label: "Index", status: settingsRuntimeStatus(index, "index"), path: "/index/status" },
+        { label: "长期记忆", status: settingsRuntimeStatus(memory, "memory"), path: "/memory/status" },
+        { label: "语音识别", status: settingsRuntimeStatus(voiceAsr, "voice_asr"), path: "/voice/asr/status" },
+        { label: "文档解析", status: settingsRuntimeStatus(documentParse, "document_parse"), path: "/document/parse/status" },
+        { label: "情报雷达", status: settingsRuntimeStatus(intel, "intelligence"), path: "/intel/status" },
+        { label: "推演模拟", status: settingsRuntimeStatus(simulation, "simulation"), path: "/simulation/status" },
+        { label: "联网搜索", status: settingsRuntimeStatus(search, "search"), path: "/search/status" },
+        { label: "本地索引", status: settingsRuntimeStatus(index, "index"), path: "/index/status" },
         { label: "Avatar", status: settingsRuntimeStatus(avatar, "avatar"), path: "/avatar/status" },
-        { label: "CodeGraph", status: settingsRuntimeStatus(codegraph, "codegraph"), path: "/codegraph/status" },
+        { label: "源码图谱", status: settingsRuntimeStatus(codegraph, "codegraph"), path: "/codegraph/status" },
       ];
       if (runtimeGrid) runtimeGrid.innerHTML = renderRuntimeTiles(tiles);
     } catch (error) {
@@ -2975,10 +3314,66 @@ function initTTSSettings() {
       setText("settings-overview-blockers", error?.message || "状态读取失败");
       if (configList) configList.innerHTML = `<div class="settings-overview-empty">配置诊断读取失败。</div>`;
       if (runtimeGrid) runtimeGrid.innerHTML = `<div class="settings-overview-empty">runtime 状态读取失败。</div>`;
+      if (planGrid) planGrid.innerHTML = `<div class="settings-overview-empty">激活计划读取失败。</div>`;
     }
   }
 
   document.getElementById("settings-overview-refresh")?.addEventListener("click", loadRuntimeSettingsOverview);
+  document.getElementById("settings-save-core-config")?.addEventListener("click", async () => {
+    const feedback = document.getElementById("settings-core-config-feedback");
+    const saveBtn = document.getElementById("settings-save-core-config");
+    const valueOf = (id) => document.getElementById(id)?.value?.trim() || "";
+    const values = {
+      model_base_url: valueOf("settings-core-model-baseurl"),
+      model_name: valueOf("settings-core-model-name"),
+      model_api_key: valueOf("settings-core-model-key"),
+      owner_token: valueOf("settings-core-owner-token"),
+      document_output_dir: valueOf("settings-core-document-output"),
+      memory_vault_dir: valueOf("settings-core-memory-vault"),
+      codegraph_root: valueOf("settings-core-codegraph-root"),
+      avatar_assets_dir: valueOf("settings-core-avatar-assets"),
+    };
+    Object.keys(values).forEach((key) => {
+      if (!values[key]) delete values[key];
+    });
+    if (!Object.keys(values).length) {
+      showFeedback(feedback, "没有可保存的配置", true);
+      return;
+    }
+    saveBtn.disabled = true;
+    try {
+      const ownerToken = values.owner_token || "";
+      const res = await fetch(`${API}/config/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+        body: JSON.stringify({
+          values,
+          danger_confirmation: valueOf("settings-core-confirmation"),
+          create_dirs: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const result = data.config_apply || data;
+      if (!res.ok || result.status === "invalid_request" || result.error) {
+        throw new Error(result.message || result.error || "保存失败");
+      }
+      if (result.status === "confirmation_required") {
+        showFeedback(feedback, `需要输入确认短语：${result.confirmation_phrase}`, true);
+        return;
+      }
+      saveOwnerAuthToken(ownerToken);
+      ["settings-core-model-key", "settings-core-owner-token"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+      });
+      showFeedback(feedback, result.restart_required ? "已保存，高风险项重启后完全生效" : "已保存并复检");
+      loadRuntimeSettingsOverview();
+    } catch (error) {
+      showFeedback(feedback, error?.message || "保存失败", true);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
 
   function refreshConfigSummary({ llm, minimax }) {
     const cfgLlm = document.getElementById("settings-cfg-llm");
@@ -3141,7 +3536,7 @@ function initTTSSettings() {
       if (braveVal)   updates.braveKey   = braveVal;
       if (tavilyVal)  updates.tavilyKey  = tavilyVal;
       if (jinaVal)    updates.jinaKey    = jinaVal;
-      // SearXNG URL：空字符串也要传，让用户能清掉
+      // 自托管搜索 URL：空字符串也要传，让用户能清掉。
       if (searxngEl)  updates.searxngUrl = searxngVal || "";
       saveWebSearchBtn.disabled = true;
       try {
@@ -3608,7 +4003,7 @@ function initTTSSettings() {
         stopClawbotPoll();
         if (clawbotQrArea) clawbotQrArea.style.display = "none";
         setClawbotStatus("已连接", true);
-        if (clawbotFeedback) showFeedback(clawbotFeedback, "微信绑定成功！");
+        if (clawbotFeedback) showFeedback(clawbotFeedback, "渠道绑定成功！");
         loadSocialSettings();
       } else if (data.status === "qr_ready" && data.qr_url) {
         if (clawbotQrImg) clawbotQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data.qr_url)}`;
@@ -3651,7 +4046,7 @@ function initTTSSettings() {
     try {
       await fetch(`${API}/social/wechat-clawbot/logout`, { method: "POST" });
       setClawbotStatus("已断开", false);
-      showFeedback(clawbotFeedback, "微信已断开");
+      showFeedback(clawbotFeedback, "渠道已断开");
     } catch {
       showFeedback(clawbotFeedback, "请求失败", true);
     }

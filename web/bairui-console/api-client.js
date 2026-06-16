@@ -14,3 +14,10 @@ export function ownerAuthHeaders() {
   return token ? { "X-Bairui-Owner-Token": token } : {};
 }
 
+export function saveOwnerAuthToken(token) {
+  try {
+    const value = String(token || "").trim();
+    if (value) localStorage.setItem("bairui.console.ownerToken.v1", value);
+  } catch {}
+}
+

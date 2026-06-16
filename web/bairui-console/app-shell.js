@@ -173,7 +173,7 @@ const createSettingsModal = () => `
         <button class="settings-nav-item active" data-tab="appearance" type="button">外观</button>
         <button class="settings-nav-item" data-tab="llm" type="button">模型网关</button>
         <button class="settings-nav-item" data-tab="media" type="button">媒体能力</button>
-        <button class="settings-nav-item" data-tab="social" type="button">渠道审批</button>
+        <button class="settings-nav-item" data-tab="social" type="button">渠道授权</button>
         <button class="settings-nav-item" data-tab="voice" type="button">语音识别</button>
         <button class="settings-nav-item" data-tab="web-search" type="button">上网搜索</button>
         <button class="settings-nav-item" data-tab="security" type="button">安全沙箱</button>
@@ -307,7 +307,7 @@ const createSettingsModal = () => `
             </div>
           </div>
           <div class="settings-section">
-            <div class="settings-section-label">微信公众号</div>
+            <div class="settings-section-label">渠道授权</div>
             <div class="settings-platform-status" id="social-status-wechat"></div>
             <div class="settings-row">
               <label class="settings-label" for="social-wechat-appid">App ID</label>
@@ -323,7 +323,7 @@ const createSettingsModal = () => `
             </div>
           </div>
           <div class="settings-section">
-            <div class="settings-section-label">企业微信</div>
+            <div class="settings-section-label">企业协作渠道</div>
             <div class="settings-platform-status" id="social-status-wecom"></div>
             <div class="settings-row">
               <label class="settings-label" for="social-wecom-botkey">Bot Key</label>
@@ -335,16 +335,16 @@ const createSettingsModal = () => `
             </div>
           </div>
           <div class="settings-section">
-            <div class="settings-section-label">微信 ClawBot（个人微信）</div>
+            <div class="settings-section-label">个人渠道授权</div>
             <div class="settings-platform-status" id="social-status-clawbot">○ 未连接</div>
-            <p class="settings-hint">点击「连接微信」后会生成二维码，用微信扫码即可绑定个人账号。凭证保存在本地，重启后无需重新扫码。</p>
+            <p class="settings-hint">点击「连接渠道」后会生成二维码，用授权客户端扫码即可绑定个人账号。凭证保存在本地，重启后无需重新扫码。</p>
             <div class="settings-row" style="gap:8px;flex-wrap:wrap;">
-              <button class="settings-save-btn" id="clawbot-connect-btn" type="button" style="width:auto;padding:0 16px;">连接微信</button>
+              <button class="settings-save-btn" id="clawbot-connect-btn" type="button" style="width:auto;padding:0 16px;">连接渠道</button>
               <button class="settings-save-btn" id="clawbot-logout-btn" type="button" style="width:auto;padding:0 16px;background:var(--danger,#c0392b);">断开</button>
             </div>
             <div id="clawbot-qr-area" style="display:none;margin-top:12px;text-align:center;">
-              <p class="settings-hint" style="margin-bottom:8px;">用微信扫描下方二维码：</p>
-              <img id="clawbot-qr-img" src="" alt="微信二维码" style="width:200px;height:200px;border:1px solid var(--border);border-radius:4px;">
+              <p class="settings-hint" style="margin-bottom:8px;">用授权客户端扫描下方二维码：</p>
+              <img id="clawbot-qr-img" src="" alt="渠道二维码" style="width:200px;height:200px;border:1px solid var(--border);border-radius:4px;">
               <p class="settings-hint" style="margin-top:6px;font-size:11px;" id="clawbot-qr-hint">等待扫码…</p>
             </div>
             <span class="settings-feedback" id="clawbot-feedback"></span>
@@ -592,7 +592,7 @@ const createSettingsModal = () => `
         <div class="settings-tab" data-tab="web-search">
           <div class="settings-section">
             <div class="settings-section-label">搜索引擎</div>
-            <p class="settings-hint">Agent 调用 web_search 时分两梯队：第一梯队（带 key 的 API：Serper → Brave → Tavily → SearXNG）按优先级尝试；都没结果时，第二梯队（Bing / Jina / DuckDuckGo，无需配置）并行兜底。配任意一个 key 都能显著提升质量和稳定性，多配几个可避免单一额度用尽时搜索失败。</p>
+            <p class="settings-hint">Agent 调用联网搜索时分两梯队：第一梯队使用带 key 的搜索 API 和自托管搜索网关按优先级尝试；都没结果时，第二梯队使用无需配置的公开兜底源。配任意一个 key 都能显著提升质量和稳定性，多配几个可避免单一额度用尽时搜索失败。</p>
 
             <div class="settings-row">
               <label class="settings-label" for="websearch-serper-key">Serper API Key</label>
@@ -619,10 +619,10 @@ const createSettingsModal = () => `
             <p class="settings-hint">在 <a href="https://jina.ai" target="_blank" style="color:var(--cool)">jina.ai</a> 获取（有免费额度）。s.jina.ai 搜索接口，第二梯队兜底之一。</p>
 
             <div class="settings-row">
-              <label class="settings-label" for="websearch-searxng-url">SearXNG URL</label>
-              <input class="settings-input" type="text" id="websearch-searxng-url" placeholder="https://your-searxng-instance.com">
+              <label class="settings-label" for="websearch-searxng-url">自托管搜索 URL</label>
+              <input class="settings-input" type="text" id="websearch-searxng-url" placeholder="https://your-search-gateway.example">
             </div>
-            <p class="settings-hint">选填。自托管 SearXNG 实例地址（去隐私的元搜索引擎）。要带 http:// 或 https://。</p>
+            <p class="settings-hint">选填。自托管搜索网关地址，用于隐私优先的联网搜索。要带 http:// 或 https://。</p>
           </div>
 
           <div class="settings-section">
@@ -644,7 +644,7 @@ const createSettingsModal = () => `
               <span class="settings-config-info" id="websearch-status-jina">—</span>
             </div>
             <div class="settings-config-row">
-              <span class="settings-config-type">SearXNG</span>
+              <span class="settings-config-type">Self-host</span>
               <span class="settings-config-info" id="websearch-status-searxng">—</span>
             </div>
           </div>
