@@ -138,24 +138,37 @@ else {
 
 $frontendFiles = @(
     "web/bairui-console/app.js",
+    "web/bairui-console/app-shell.js",
+    "web/bairui-console/chat.js",
+    "web/bairui-console/api-client.js",
+    "web/bairui-console/person-card.js",
+    "web/bairui-console/wechat-popup.js",
+    "web/bairui-console/acui/bootstrap.js",
     "web/bairui-console/styles.css"
 )
 $frontendText = ($frontendFiles | ForEach-Object { Get-Content -LiteralPath $_ -Raw }) -join "`n"
 $requiredFrontend = @(
-    "renderCommercialTrialFlow",
-    "Documents -> Memory Review -> Reports -> Channels -> Events",
-    "renderActivationModeSelector",
-    "renderSettingsSecurityAcceptance",
-    "renderHandoffPackSummary",
-    "will_send=false",
-    "long_term_memory_auto_write: false"
+    "renderBrainUiApp",
+    "initChat",
+    "ownerAuthHeaders",
+    "X-Bairui-Owner-Token",
+    "buildBairuiGraphRows",
+    "/document/memory-candidates",
+    "/reports",
+    "/source-refs",
+    "/audit",
+    "long_term_memory_auto_write: false",
+    "external_send_performed: false",
+    "ENTITY_CARD_KIND",
+    "bairui Agent",
+    "BAIRUI_ENABLE_ACUI_WS"
 )
 $missingFrontend = @($requiredFrontend | Where-Object { $frontendText -notmatch [regex]::Escape($_) })
 if ($missingFrontend.Count -eq 0) {
-    $checks += New-Check "frontend_closure" "Frontend commercial closure" "passed" "activation mode, security acceptance, trial flow, no-send, memory review, and handoff UI hooks are present" "Do visual QA on the target browser before customer use."
+    $checks += New-Check "frontend_closure" "Frontend commercial closure" "passed" "BaiLongma brain-ui shell, chat bridge, memory graph, entity card, channel approval boundary, owner token, and ACUI safety gate are present" "Do visual QA on the target browser before customer use."
 }
 else {
-    $checks += New-Check "frontend_closure" "Frontend commercial closure" "failed" "missing UI hooks: $($missingFrontend -join ', ')" "Restore required frontend commercial closure hooks."
+    $checks += New-Check "frontend_closure" "Frontend commercial closure" "failed" "missing UI hooks: $($missingFrontend -join ', ')" "Restore required BaiLongma-based bairui frontend closure hooks."
 }
 
 $serverEvidence = Read-OptionalJson $ServerVerificationPath
