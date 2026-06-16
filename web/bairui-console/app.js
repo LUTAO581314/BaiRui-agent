@@ -221,6 +221,38 @@ function activationStatusClass(status) {
   return "is-unknown";
 }
 
+function escapeActivationHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function activationEndpointLabel(path) {
+  return `<code>${escapeActivationHtml(path)}</code>`;
+}
+
+function payloadStatus(payload, keys = []) {
+  let cursor = payload;
+  for (const key of keys) cursor = cursor?.[key];
+  return cursor?.status || cursor?.state || cursor?.ready || cursor?.configured || "unknown";
+}
+
+function countPayloadItems(payload, keys = []) {
+  let cursor = payload;
+  for (const key of keys) cursor = cursor?.[key];
+  return Array.isArray(cursor) ? cursor.length : 0;
+}
+
+function normalizeActivationStatus(value) {
+  const status = String(value || "unknown").toLowerCase();
+  if (["ready", "ok", "passed", "configured", "active", "enabled", "true"].includes(status)) return "ready";
+  if (["blocked", "failed", "error", "unhealthy", "false"].includes(status)) return "blocked";
+  if (["missing_config", "partial", "needs_review", "disabled", "optional", "unknown"].includes(status)) return status === "unknown" ? "partial" : status;
+  return "partial";
+}
+
 function activationStepStatus(step, state = {}) {
   const id = step?.id || "";
   const ready = state.ready || {};
@@ -228,16 +260,125 @@ function activationStepStatus(step, state = {}) {
   const blockers = Array.isArray(runtime.blockers) ? runtime.blockers : [];
   if (id === "brand_lock") return "ready";
   if (id === "runtime_health") return ready.status === "ready" || blockers.length === 0 ? "ready" : "blocked";
+  if (id === "license_and_platform") {
+    const heartbeat = state.platform_heartbeat?.heartbeat || state.platform_heartbeat || {};
+    const license = state.license?.license || state.license || {};
+    if (heartbeat.status === "ready" || heartbeat.server_id || license.status === "active") return "ready";
+    return "partial";
+  }
   if (id === "model_gateway") {
     const capabilities = state.capabilities || [];
     const model = capabilities.find((item) => item.name === "model_gateway" || item.id === "model_gateway");
-    return model?.status || "partial";
+    const configModel = (state.config_status?.config_status?.items || []).find((item) => item.id === "model_gateway");
+    return normalizeActivationStatus(model?.status || configModel?.status || "partial");
   }
+  if (id === "document_runtime") return normalizeActivationStatus(payloadStatus(state.document_parse, ["document_parse"]));
+  if (id === "memory_review") {
+    const pending = countPayloadItems(state.memory_pending, ["pending"]) || countPayloadItems(state.memory_pending, ["document_memory_candidates"]);
+    return pending > 0 ? "needs_review" : "ready";
+  }
+  if (id === "reports_and_sources") {
+    const total = countPayloadItems(state.reports, ["reports"])
+      + countPayloadItems(state.ingest_reports, ["document_ingest_reports"])
+      + countPayloadItems(state.source_refs, ["source_refs"]);
+    return total > 0 ? "ready" : "partial";
+  }
+  if (id === "channels") return normalizeActivationStatus(payloadStatus(state.channels_status, ["channels"]));
+  if (id === "avatar") return normalizeActivationStatus(payloadStatus(state.avatar_status, ["avatar"]));
+  if (id === "codegraph") return normalizeActivationStatus(payloadStatus(state.codegraph_status, ["codegraph"]));
   return "partial";
+}
+
+function activationStepMeta(step, state = {}) {
+  const id = step?.id || "";
+  const configItems = state.config_status?.config_status?.items || [];
+  const configItem = (itemId) => configItems.find((item) => item.id === itemId);
+  const rows = [];
+  const repair = [];
+  const evidence = (label, value) => rows.push({ label, value: value == null || value === "" ? "unknown" : value });
+
+  if (id === "brand_lock") {
+    evidence("Public brand", state.contract?.brand?.name || "bairui");
+    evidence("Contract", state.contract?.contract_version || "loaded");
+    repair.push("如页面出现旧品牌文案，先运行公开品牌扫描，再清理前端硬编码。");
+  } else if (id === "runtime_health") {
+    const blockers = state.runtime_readiness?.blockers || [];
+    evidence("Ready", state.ready?.status || "unknown");
+    evidence("Blockers", blockers.length);
+    evidence("Health", state.health?.status || state.health?.service || "reachable");
+    repair.push(blockers.length ? "按 runtime blockers 逐项修复后重新检查。" : "运行状态已可见，继续检查模型和核心 runtime。");
+  } else if (id === "license_and_platform") {
+    evidence("License", state.license?.license?.status || state.license?.status || "optional");
+    evidence("Platform", state.platform_heartbeat?.heartbeat?.status || state.platform_heartbeat?.status || "visible");
+    evidence("Database", state.ready?.database?.status || configItem("database")?.status || "missing_config");
+    repair.push("生产试点前建议配置服务器标识、owner token、数据库和 license secret。");
+  } else if (id === "model_gateway") {
+    const model = (state.capabilities || []).find((item) => item.name === "model_gateway" || item.id === "model_gateway") || {};
+    const cfg = configItem("model_gateway") || {};
+    evidence("Gateway", model.status || cfg.status || "missing_config");
+    evidence("Model", cfg.fields?.model || "missing_config");
+    evidence("Base URL", cfg.fields?.base_url || "missing_config");
+    repair.push("在设置页填写模型 Base URL、模型名和 API Key，然后重新检查。");
+  } else if (id === "document_runtime") {
+    evidence("Parser", payloadStatus(state.document_parse, ["document_parse"]));
+    evidence("Output", configItem("document_output_dir")?.status || "missing_config");
+    repair.push("文档解析可先显示缺配置，不阻塞进入控制台；正式演示前配置解析输出目录和解析 runtime。");
+  } else if (id === "memory_review") {
+    evidence("Pending", countPayloadItems(state.memory_pending, ["pending"]) || countPayloadItems(state.memory_pending, ["document_memory_candidates"]));
+    evidence("Vault", configItem("memory_vault")?.status || "missing_config");
+    repair.push("长期记忆必须经过主人审核，候选为空时也属于安全可用状态。");
+  } else if (id === "reports_and_sources") {
+    evidence("Reports", countPayloadItems(state.reports, ["reports"]));
+    evidence("Ingest reports", countPayloadItems(state.ingest_reports, ["document_ingest_reports"]));
+    evidence("Source refs", countPayloadItems(state.source_refs, ["source_refs"]));
+    repair.push("没有报告时先在文档工作台跑一次摄取流程，来源引用会同步显示。");
+  } else if (id === "channels") {
+    evidence("Channels", payloadStatus(state.channels_status, ["channels"]));
+    evidence("Targets", countPayloadItems(state.channels_targets, ["channel_targets"]));
+    evidence("Approvals", countPayloadItems(state.channels_approvals, ["channel_approvals"]));
+    repair.push("渠道只生成审批记录，不会自动外发；配置目标后仍需主人确认。");
+  } else if (id === "avatar") {
+    evidence("Avatar", payloadStatus(state.avatar_status, ["avatar"]));
+    evidence("Manifest", state.avatar_manifest?.avatar_manifest?.models?.length || 0);
+    repair.push("浏览器 Avatar 先使用本地模型清单；缺资源时只影响形象层，不阻塞 Agent 内核。");
+  } else if (id === "codegraph") {
+    evidence("CodeGraph", payloadStatus(state.codegraph_status, ["codegraph"]));
+    evidence("Root", configItem("codegraph_root")?.fields?.path || "missing_config");
+    repair.push("CodeGraph 只索引源码结构，和长期记忆分开；配置源码根目录后再扫描。");
+  }
+
+  return { rows, repair };
+}
+
+function renderActivationStepDetail(step, state = {}) {
+  const status = activationStepStatus(step, state);
+  const meta = activationStepMeta(step, state);
+  const reads = Array.isArray(step?.read) ? step.read : [];
+  return `
+    <div class="activation-detail-card ${activationStatusClass(status)}">
+      <div class="activation-detail-head">
+        <span>${escapeActivationHtml(step?.title || step?.id || "Activation Step")}</span>
+        <b>${escapeActivationHtml(status)}</b>
+      </div>
+      <p>${escapeActivationHtml(step?.complete_when || "等待后端状态")}</p>
+      <div class="activation-endpoints">
+        ${reads.map(activationEndpointLabel).join("") || "<code>/frontend/contract</code>"}
+      </div>
+      <div class="activation-detail-rows">
+        ${meta.rows.map((row) => `
+          <div><span>${escapeActivationHtml(row.label)}</span><strong>${escapeActivationHtml(row.value)}</strong></div>
+        `).join("")}
+      </div>
+      <div class="activation-repair">
+        ${meta.repair.map((item) => `<small>${escapeActivationHtml(item)}</small>`).join("")}
+      </div>
+    </div>
+  `;
 }
 
 function renderActivationOverlay(contract = {}, state = {}) {
   const flow = Array.isArray(contract.activation_flow) ? contract.activation_flow : [];
+  state.contract = contract;
   const overlay = document.createElement("section");
   overlay.className = "bairui-activation-overlay";
   overlay.setAttribute("role", "dialog");
@@ -302,6 +443,9 @@ function renderActivationOverlay(contract = {}, state = {}) {
             <b>安全边界</b>
             <p>不会自动外发消息，不会自动写入长期记忆；渠道发送和记忆入库都需要主人审核。</p>
           </div>
+          <div class="activation-selected-detail">
+            ${renderActivationStepDetail(flow[0], state)}
+          </div>
         </aside>
       </div>
       <footer class="activation-actions">
@@ -321,6 +465,15 @@ function renderActivationOverlay(contract = {}, state = {}) {
     overlay.remove();
     showActivationOverlay({ force: true });
   });
+  const detail = overlay.querySelector(".activation-selected-detail");
+  overlay.querySelectorAll(".activation-step").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const selected = flow.find((step) => step.id === btn.dataset.stepId) || flow[0];
+      overlay.querySelectorAll(".activation-step").forEach((item) => item.classList.toggle("active", item === btn));
+      if (detail) detail.innerHTML = renderActivationStepDetail(selected, state);
+    });
+  });
+  overlay.querySelector(".activation-step")?.classList.add("active");
   sanitizePublicBrandText(overlay);
 }
 
@@ -332,16 +485,57 @@ async function showActivationOverlay({ force = false } = {}) {
   }
   if (document.querySelector(".bairui-activation-overlay")) return;
   try {
-    const [contract, ready, runtime, capabilities] = await Promise.all([
-      fetch(`${API}/frontend/contract`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
-      fetch(`${API}/ready`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
-      fetch(`${API}/runtime/readiness`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
-      fetch(`${API}/capabilities`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+    const readJson = (path) => fetch(`${API}${path}`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {});
+    const postJson = (path, body = {}) => fetch(`${API}${path}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+      body: JSON.stringify(body),
+    }).then(r => r.ok ? r.json() : {});
+    const [
+      contract, health, ready, runtime, capabilities, configStatus, license, platformHeartbeat,
+      documentParse, memoryPending, reports, ingestReports, sourceRefs, channelsStatus,
+      channelsTargets, channelsApprovals, avatarStatus, avatarManifest, codegraphStatus,
+    ] = await Promise.all([
+      readJson("/frontend/contract"),
+      readJson("/health"),
+      readJson("/ready"),
+      readJson("/runtime/readiness"),
+      readJson("/capabilities"),
+      readJson("/config/status"),
+      readJson("/license"),
+      readJson("/platform/heartbeat"),
+      readJson("/document/parse/status"),
+      postJson("/document/parse/memory-review-pending", {}),
+      readJson("/reports"),
+      readJson("/document/ingest-reports"),
+      readJson("/source-refs"),
+      readJson("/channels/status"),
+      readJson("/channels/targets"),
+      readJson("/channels/approvals"),
+      readJson("/avatar/status"),
+      readJson("/avatar/manifest"),
+      readJson("/codegraph/status"),
     ]);
     renderActivationOverlay(contract.frontend_contract || contract, {
+      health,
       ready,
       runtime_readiness: runtime.runtime_readiness || runtime,
       capabilities: capabilities.capabilities || [],
+      config_status: configStatus,
+      license,
+      platform_heartbeat: platformHeartbeat,
+      document_parse: documentParse,
+      memory_pending: memoryPending,
+      reports,
+      ingest_reports: ingestReports,
+      source_refs: sourceRefs,
+      channels_status: channelsStatus,
+      channels_targets: channelsTargets,
+      channels_approvals: channelsApprovals,
+      avatar_status: avatarStatus,
+      avatar_manifest: avatarManifest,
+      codegraph_status: codegraphStatus,
     });
   } catch (error) {
     renderActivationOverlay({ activation_flow: [] }, { ready: { status: "blocked" }, runtime_readiness: { blockers: [error.message] } });
@@ -2611,6 +2805,62 @@ function initTTSSettings() {
 
   let cachedProviders = null;
 
+  function ensureSettingsOverviewTab() {
+    const nav = overlay.querySelector(".settings-nav");
+    const content = overlay.querySelector(".settings-content");
+    if (!nav || !content || nav.querySelector('[data-tab="system"]')) return;
+    nav.insertAdjacentHTML("afterbegin", `
+      <button class="settings-nav-item active" data-tab="system" type="button">系统总览</button>
+    `);
+    nav.querySelector('[data-tab="appearance"]')?.classList.remove("active");
+    content.insertAdjacentHTML("afterbegin", `
+      <div class="settings-tab active" data-tab="system">
+        <div class="settings-section">
+          <div class="settings-section-label">系统总览</div>
+          <p class="settings-hint">这里读取真实后端状态，只显示是否已配置和修复方向，不回显任何密钥。</p>
+          <div class="settings-overview-hero">
+            <div>
+              <span>Readiness</span>
+              <strong id="settings-overview-readiness">检查中</strong>
+              <small id="settings-overview-blockers">等待后端状态</small>
+            </div>
+            <button class="settings-save-btn" id="settings-overview-refresh" type="button">重新检查</button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-label">核心配置</div>
+          <div class="settings-overview-list" id="settings-config-status-list">
+            <div class="settings-overview-empty">正在读取配置诊断…</div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-label">运行能力</div>
+          <div class="settings-runtime-grid" id="settings-runtime-status-grid">
+            <div class="settings-overview-empty">正在读取 runtime 状态…</div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-label">安全修复</div>
+          <div class="settings-config-row">
+            <span class="settings-config-type">Secret</span>
+            <span class="settings-config-info" id="settings-secret-policy">密钥只显示 configured / missing_config</span>
+          </div>
+          <div class="settings-config-row">
+            <span class="settings-config-type">Backup</span>
+            <span class="settings-config-info" id="settings-backup-plan">正在读取备份计划…</span>
+          </div>
+          <div class="settings-config-row">
+            <span class="settings-config-type">Next</span>
+            <span class="settings-config-info" id="settings-config-next-step">等待配置诊断…</span>
+          </div>
+        </div>
+      </div>
+    `);
+    content.querySelector('[data-tab="appearance"]')?.classList.remove("active");
+  }
+
+  ensureSettingsOverviewTab();
+
   overlay.querySelectorAll(".settings-nav-item").forEach(btn => {
     btn.addEventListener("click", () => {
       overlay.querySelectorAll(".settings-nav-item").forEach(b => b.classList.remove("active"));
@@ -2618,6 +2868,7 @@ function initTTSSettings() {
       btn.classList.add("active");
       const tab = btn.dataset.tab;
       overlay.querySelector(`.settings-tab[data-tab="${tab}"]`)?.classList.add("active");
+      if (tab === "system") loadRuntimeSettingsOverview();
       if (tab === "social") loadSocialSettings();
       if (tab === "security") loadSecuritySettings();
       if (tab === "web-search") loadWebSearchSettings();
@@ -2631,6 +2882,103 @@ function initTTSSettings() {
     el.className = "settings-feedback" + (isError ? " error" : "");
     setTimeout(() => { el.textContent = ""; el.className = "settings-feedback"; }, 3000);
   }
+
+  function settingsSafeText(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function settingsRuntimeStatus(payload, key) {
+    const item = key ? payload?.[key] : payload;
+    return item?.status || item?.state || item?.ready || item?.configured || "unknown";
+  }
+
+  function settingsStatusClass(status) {
+    return activationStatusClass(status);
+  }
+
+  function renderSettingsConfigItems(items = []) {
+    if (!items.length) return `<div class="settings-overview-empty">暂无配置诊断。</div>`;
+    return items.map((item) => `
+      <div class="settings-overview-item ${settingsStatusClass(item.status)}">
+        <div>
+          <strong>${settingsSafeText(item.label || item.id)}</strong>
+          <small>${settingsSafeText(item.detail || "")}</small>
+        </div>
+        <span>${settingsSafeText(item.status || "unknown")}</span>
+      </div>
+    `).join("");
+  }
+
+  function renderRuntimeTiles(entries) {
+    return entries.map((entry) => `
+      <div class="settings-runtime-tile ${settingsStatusClass(entry.status)}">
+        <span>${settingsSafeText(entry.label)}</span>
+        <strong>${settingsSafeText(entry.status)}</strong>
+        <small>${settingsSafeText(entry.detail || entry.path)}</small>
+      </div>
+    `).join("");
+  }
+
+  async function loadRuntimeSettingsOverview() {
+    const setText = (id, text) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
+    const configList = document.getElementById("settings-config-status-list");
+    const runtimeGrid = document.getElementById("settings-runtime-status-grid");
+    const readJson = (path) => fetch(`${API}${path}`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {});
+    try {
+      const [
+        readiness, configStatus, backupStatus, backupPlan, memory, voiceAsr,
+        documentParse, intel, simulation, search, index, avatar, codegraph,
+      ] = await Promise.all([
+        readJson("/runtime/readiness"),
+        readJson("/config/status"),
+        readJson("/backup/status"),
+        readJson("/backup/plan"),
+        readJson("/memory/status"),
+        readJson("/voice/asr/status"),
+        readJson("/document/parse/status"),
+        readJson("/intel/status"),
+        readJson("/simulation/status"),
+        readJson("/search/status"),
+        readJson("/index/status"),
+        readJson("/avatar/status"),
+        readJson("/codegraph/status"),
+      ]);
+      const runtime = readiness.runtime_readiness || readiness;
+      const config = configStatus.config_status || {};
+      const blockers = Array.isArray(runtime.blockers) ? runtime.blockers : [];
+      setText("settings-overview-readiness", runtime.status || "unknown");
+      setText("settings-overview-blockers", blockers.length ? `${blockers.length} 个阻塞项` : "没有运行阻塞项");
+      setText("settings-secret-policy", config.secret_policy || "密钥只显示 configured / missing_config");
+      setText("settings-config-next-step", config.next_step || "无下一步");
+      setText("settings-backup-plan", backupPlan.backup_plan?.status || backupStatus.backup?.status || "unknown");
+      if (configList) configList.innerHTML = renderSettingsConfigItems(config.items || []);
+      const tiles = [
+        { label: "Memory", status: settingsRuntimeStatus(memory, "memory"), path: "/memory/status" },
+        { label: "Voice ASR", status: settingsRuntimeStatus(voiceAsr, "voice_asr"), path: "/voice/asr/status" },
+        { label: "Documents", status: settingsRuntimeStatus(documentParse, "document_parse"), path: "/document/parse/status" },
+        { label: "Intelligence", status: settingsRuntimeStatus(intel, "intelligence"), path: "/intel/status" },
+        { label: "Simulation", status: settingsRuntimeStatus(simulation, "simulation"), path: "/simulation/status" },
+        { label: "Search", status: settingsRuntimeStatus(search, "search"), path: "/search/status" },
+        { label: "Index", status: settingsRuntimeStatus(index, "index"), path: "/index/status" },
+        { label: "Avatar", status: settingsRuntimeStatus(avatar, "avatar"), path: "/avatar/status" },
+        { label: "CodeGraph", status: settingsRuntimeStatus(codegraph, "codegraph"), path: "/codegraph/status" },
+      ];
+      if (runtimeGrid) runtimeGrid.innerHTML = renderRuntimeTiles(tiles);
+    } catch (error) {
+      setText("settings-overview-readiness", "blocked");
+      setText("settings-overview-blockers", error?.message || "状态读取失败");
+      if (configList) configList.innerHTML = `<div class="settings-overview-empty">配置诊断读取失败。</div>`;
+      if (runtimeGrid) runtimeGrid.innerHTML = `<div class="settings-overview-empty">runtime 状态读取失败。</div>`;
+    }
+  }
+
+  document.getElementById("settings-overview-refresh")?.addEventListener("click", loadRuntimeSettingsOverview);
 
   function refreshConfigSummary({ llm, minimax }) {
     const cfgLlm = document.getElementById("settings-cfg-llm");
@@ -3109,7 +3457,9 @@ function initTTSSettings() {
 
   function openSettings(tab = null) {
     overlay.hidden = false;
+    ensureSettingsOverviewTab();
     loadSettings();
+    loadRuntimeSettingsOverview();
     loadVoiceSettings();
     if (tab) {
       overlay.querySelectorAll(".settings-nav-item").forEach(b => {
@@ -3120,6 +3470,7 @@ function initTTSSettings() {
       });
       if (tab === "social") loadSocialSettings();
       if (tab === "web-search") loadWebSearchSettings();
+      if (tab === "system") loadRuntimeSettingsOverview();
       if (tab === "update") loadUpdateSettings();
     }
   }
@@ -3168,18 +3519,19 @@ function initTTSSettings() {
         return;
       }
       try {
-        const res = await fetch(`${API}/activate`, {
+        const res = await fetch(`${API}/config/apply`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider: "custom", baseURL, model, apiKey: apiKey || "none" }),
+          headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+          body: JSON.stringify({ values: { model_base_url: baseURL, model_name: model, ...(apiKey ? { model_api_key: apiKey } : {}) } }),
         });
         const data = await res.json();
-        if (data.ok) {
-          showFeedback(llmFeedback, `已连接：${data.model}`);
+        if (data.ok !== false && !data.error) {
+          showFeedback(llmFeedback, `已保存：${model}`);
           llmKeyInput.value = "";
           loadSettings();
+          loadRuntimeSettingsOverview();
         } else {
-          showFeedback(llmFeedback, data.error || "连接失败", true);
+          showFeedback(llmFeedback, data.error || "保存失败", true);
         }
       } catch { showFeedback(llmFeedback, "请求失败", true); }
       finally { saveLlmBtn.disabled = false; }
@@ -3188,19 +3540,19 @@ function initTTSSettings() {
 
     const model = modelSelect.value;
     try {
-      const body = apiKey
-        ? { provider, apiKey, ...(provider === "auto" ? {} : { model }) }
-        : { model };
-      const res = await fetch(apiKey ? `${API}/activate` : `${API}/settings/model`, {
+      const values = { model_name: model };
+      if (apiKey) values.model_api_key = apiKey;
+      const res = await fetch(`${API}/config/apply`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+        body: JSON.stringify({ values }),
       });
       const data = await res.json();
-      if (data.ok) {
+      if (data.ok !== false && !data.error) {
         showFeedback(llmFeedback, "已保存");
         llmKeyInput.value = "";
         loadSettings();
+        loadRuntimeSettingsOverview();
       } else {
         showFeedback(llmFeedback, data.error || "保存失败", true);
       }

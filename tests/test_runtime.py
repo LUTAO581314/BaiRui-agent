@@ -1456,11 +1456,17 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("showActivationOverlay()", app_js)
         self.assertIn("renderActivationOverlay", app_js)
         self.assertIn("/frontend/contract", app_js)
+        self.assertIn("/config/status", app_js)
+        self.assertIn("/backup/status", app_js)
+        self.assertIn("/voice/asr/status", app_js)
+        self.assertIn("/document/parse/status", app_js)
+        self.assertIn("/codegraph/status", app_js)
         self.assertIn("bairui Activation", app_js)
         self.assertIn("bootstrapACUI", app_js)
         self.assertIn("BAIRUI_ENABLE_ACUI_WS", Path("web/bairui-console/acui/bootstrap.js").read_text(encoding="utf-8"))
         self.assertIn(".bairui-activation-overlay", styles)
         self.assertIn(".activation-stepper", styles)
+        self.assertIn(".activation-selected-detail", styles)
         self.assertIn(".panel", styles)
         self.assertIn("#graph", styles)
 
@@ -1526,6 +1532,7 @@ class RuntimeFoundationTests(unittest.TestCase):
 
     def test_settings_console_surfaces_runtime_readiness_and_safe_repair_actions(self):
         api_js = Path("web/bairui-console/api-client.js").read_text(encoding="utf-8")
+        app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
         shell_js = Path("web/bairui-console/app-shell.js").read_text(encoding="utf-8")
         server_py = Path("src/hermes/server.py").read_text(encoding="utf-8")
 
@@ -1540,6 +1547,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("X-Bairui-Owner-Token", api_js)
         self.assertIn("设置", shell_js)
         self.assertIn("OpenAI-compatible", shell_js)
+        self.assertIn("settings-overview", app_js)
+        self.assertIn("/config/apply", app_js)
         self.assertIn('if self.path == "/settings/tts"', server_py)
 
     def test_events_console_surfaces_audit_timeline_and_safety_evidence(self):
