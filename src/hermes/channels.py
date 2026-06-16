@@ -38,6 +38,8 @@ class ChannelStatus:
     requires_owner_confirmation: bool
     blockers: tuple[str, ...]
     warnings: tuple[str, ...]
+    approval_queue_count: int
+    configured_targets: tuple[dict[str, Any], ...]
 
 
 @dataclass(frozen=True)
@@ -83,12 +85,15 @@ class ChannelApprovalReviewResult:
 def channel_status(settings: Settings) -> ChannelStatus:
     targets = channel_targets(settings)
     enabled = _channels_enabled()
+    approvals = list_channel_approvals(settings, only_pending=True)
     blockers: list[str] = []
     warnings: list[str] = []
     if not enabled:
         blockers.append("channels_disabled")
     if not targets:
         blockers.append("missing_targets")
+    if enabled and not approvals and targets:
+        warnings.append("no_pending_approvals")
     if targets and not enabled:
         warnings.append("targets_configured_but_channels_disabled")
     status = "ready" if enabled and targets else "missing_config"
@@ -100,6 +105,8 @@ def channel_status(settings: Settings) -> ChannelStatus:
         requires_owner_confirmation=True,
         blockers=tuple(blockers),
         warnings=tuple(warnings),
+        approval_queue_count=len(approvals),
+        configured_targets=tuple(targets),
     )
 
 

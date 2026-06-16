@@ -234,6 +234,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     "/events",
                 ),
                 "actions": (
+                    {"id": "apply_channel_config", "method": "POST", "path": "/config/apply", "schema": "config_apply"},
                     {"id": "plan_channel_send", "method": "POST", "path": "/channels/send", "schema": "channel_send"},
                     {
                         "id": "review_channel_approval",

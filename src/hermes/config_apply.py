@@ -12,6 +12,7 @@ FIELD_TO_ENV = {
     "model_base_url": "BAIRUI_MODEL_BASE_URL",
     "model_api_key": "BAIRUI_MODEL_API_KEY",
     "model_name": "BAIRUI_MODEL_NAME",
+    "channel_enabled": "BAIRUI_CHANNELS_ENABLED",
     "document_output_dir": "MINERU_OUTPUT_DIR",
     "memory_vault_dir": "HERMES_OBSIDIAN_VAULT_DIR",
     "channel_targets_json": "BAIRUI_CHANNEL_TARGETS_JSON",
@@ -24,7 +25,7 @@ FIELD_TO_ENV = {
 
 SECRET_FIELDS = {"model_api_key", "database_url", "owner_token"}
 PATH_FIELDS = {"document_output_dir", "memory_vault_dir", "avatar_assets_dir", "codegraph_root"}
-HIGH_RISK_FIELDS = {"database_url", "owner_token", "memory_vault_dir", "channel_targets_json", "codegraph_root"}
+HIGH_RISK_FIELDS = {"database_url", "owner_token", "memory_vault_dir", "channel_enabled", "channel_targets_json", "codegraph_root"}
 DANGEROUS_CONFIRMATION_PHRASE = "APPLY BAIRUI CONFIG"
 PATH_SCOPE_POLICY = "paths must stay inside the bairui workspace, configured data/log/vault roots, or ~/bairui / ~/.bairui"
 

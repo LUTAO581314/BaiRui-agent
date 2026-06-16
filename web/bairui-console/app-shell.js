@@ -302,61 +302,36 @@ const createSettingsModal = () => `
         <!-- ── 社交媒体 tab ── -->
         <div class="settings-tab" data-tab="social">
           <div class="settings-section">
-            <div class="settings-section-label">Discord</div>
-            <div class="settings-platform-status" id="social-status-discord"></div>
-            <div class="settings-row">
-              <label class="settings-label" for="social-discord-token">Bot Token</label>
-              <input class="settings-input" id="social-discord-token" type="password" placeholder="留空保持原值不变…" autocomplete="new-password">
+            <div class="settings-section-label">渠道总控</div>
+            <p class="settings-hint">这里完整暴露内核渠道配置：总开关、目标列表、个人扫码、企业 webhook、诊断状态和审批边界。所有外发都默认先进入审批，不会直接发送。</p>
+            <div class="settings-config-row">
+              <span class="settings-config-type">Channels</span>
+              <span class="settings-config-info" id="social-channels-summary">正在读取…</span>
+            </div>
+            <div class="settings-config-row">
+              <span class="settings-config-type">Queue</span>
+              <span class="settings-config-info" id="social-approval-queue">正在读取…</span>
             </div>
           </div>
           <div class="settings-section">
-            <div class="settings-section-label">飞书</div>
-            <div class="settings-platform-status" id="social-status-feishu"></div>
+            <div class="settings-section-label">总开关与目标</div>
             <div class="settings-row">
-              <label class="settings-label" for="social-feishu-appid">App ID</label>
-              <input class="settings-input" id="social-feishu-appid" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+              <label class="settings-label" for="social-channels-enabled">启用渠道内核</label>
+              <label class="settings-toggle">
+                <input type="checkbox" id="social-channels-enabled">
+                <span class="settings-toggle-track"></span>
+              </label>
             </div>
             <div class="settings-row">
-              <label class="settings-label" for="social-feishu-secret">App Secret</label>
-              <input class="settings-input" id="social-feishu-secret" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+              <label class="settings-label" for="social-targets-json">渠道目标 JSON</label>
+              <textarea class="settings-input" id="social-targets-json" rows="8" placeholder='[{"id":"owner_review","label":"Owner Review","channel_type":"personal_chat","supports":["text","image","video","file"],"requires_owner_confirmation":true}]'></textarea>
             </div>
-            <div class="settings-row">
-              <label class="settings-label" for="social-feishu-token">Verify Token</label>
-              <input class="settings-input" id="social-feishu-token" type="password" placeholder="留空保持原值…" autocomplete="new-password">
-            </div>
+            <p class="settings-hint">每个 target 对应一个可投递目标：扫码个人账号、开放平台应用、企业机器人、自定义 webhook 等都按 JSON target 暴露。字段缺失时后端会给出诊断。</p>
           </div>
           <div class="settings-section">
-            <div class="settings-section-label">渠道授权</div>
-            <div class="settings-platform-status" id="social-status-wechat"></div>
-            <div class="settings-row">
-              <label class="settings-label" for="social-wechat-appid">App ID</label>
-              <input class="settings-input" id="social-wechat-appid" type="password" placeholder="留空保持原值…" autocomplete="new-password">
-            </div>
-            <div class="settings-row">
-              <label class="settings-label" for="social-wechat-secret">App Secret</label>
-              <input class="settings-input" id="social-wechat-secret" type="password" placeholder="留空保持原值…" autocomplete="new-password">
-            </div>
-            <div class="settings-row">
-              <label class="settings-label" for="social-wechat-token">Token</label>
-              <input class="settings-input" id="social-wechat-token" type="password" placeholder="留空保持原值…" autocomplete="new-password">
-            </div>
-          </div>
-          <div class="settings-section">
-            <div class="settings-section-label">企业协作渠道</div>
-            <div class="settings-platform-status" id="social-status-wecom"></div>
-            <div class="settings-row">
-              <label class="settings-label" for="social-wecom-botkey">Bot Key</label>
-              <input class="settings-input" id="social-wecom-botkey" type="password" placeholder="留空保持原值…" autocomplete="new-password">
-            </div>
-            <div class="settings-row">
-              <label class="settings-label" for="social-wecom-token">Incoming Token</label>
-              <input class="settings-input" id="social-wecom-token" type="password" placeholder="留空保持原值…" autocomplete="new-password">
-            </div>
-          </div>
-          <div class="settings-section">
-            <div class="settings-section-label">个人渠道授权</div>
+            <div class="settings-section-label">个人扫码渠道</div>
             <div class="settings-platform-status" id="social-status-clawbot">○ 未连接</div>
-            <p class="settings-hint">点击「连接渠道」后会生成二维码，用授权客户端扫码即可绑定个人账号。凭证保存在本地，重启后无需重新扫码。</p>
+            <p class="settings-hint">点击「连接渠道」后会生成二维码，用授权客户端扫码即可绑定个人账号。凭证保存在服务器侧，重启后无需重新扫码。</p>
             <div class="settings-row" style="gap:8px;flex-wrap:wrap;">
               <button class="settings-save-btn" id="clawbot-connect-btn" type="button" style="width:auto;padding:0 16px;">连接渠道</button>
               <button class="settings-save-btn" id="clawbot-logout-btn" type="button" style="width:auto;padding:0 16px;background:var(--danger,#c0392b);">断开</button>
@@ -368,8 +343,57 @@ const createSettingsModal = () => `
             </div>
             <span class="settings-feedback" id="clawbot-feedback"></span>
           </div>
+          <div class="settings-section">
+            <div class="settings-section-label">企业/机器人渠道字段</div>
+            <div class="settings-row">
+              <label class="settings-label" for="social-discord-token">机器人 Bot Token</label>
+              <input class="settings-input" id="social-discord-token" type="password" placeholder="留空保持原值不变…" autocomplete="new-password">
+            </div>
+            <div class="settings-row">
+              <label class="settings-label" for="social-feishu-appid">开放平台 App ID</label>
+              <input class="settings-input" id="social-feishu-appid" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+            </div>
+            <div class="settings-row">
+              <label class="settings-label" for="social-feishu-secret">开放平台 App Secret</label>
+              <input class="settings-input" id="social-feishu-secret" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+            </div>
+            <div class="settings-row">
+              <label class="settings-label" for="social-feishu-token">开放平台 Verify Token</label>
+              <input class="settings-input" id="social-feishu-token" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+            </div>
+            <div class="settings-row">
+              <label class="settings-label" for="social-wechat-appid">扫码平台 App ID</label>
+              <input class="settings-input" id="social-wechat-appid" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+            </div>
+            <div class="settings-row">
+              <label class="settings-label" for="social-wechat-secret">扫码平台 App Secret</label>
+              <input class="settings-input" id="social-wechat-secret" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+            </div>
+            <div class="settings-row">
+              <label class="settings-label" for="social-wechat-token">扫码平台 Token</label>
+              <input class="settings-input" id="social-wechat-token" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+            </div>
+            <div class="settings-row">
+              <label class="settings-label" for="social-wecom-botkey">企业机器人 Bot Key</label>
+              <input class="settings-input" id="social-wecom-botkey" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+            </div>
+            <div class="settings-row">
+              <label class="settings-label" for="social-wecom-token">企业机器人 Incoming Token</label>
+              <input class="settings-input" id="social-wecom-token" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+            </div>
+            <p class="settings-hint">这些字段只在 target JSON 指向对应 channel_type 时才真正生效；未启用的渠道会被诊断面板标成 blocked。</p>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-label">诊断与审批</div>
+            <div class="settings-overview-list" id="social-diagnostic-list">
+              <div class="settings-overview-empty">正在读取渠道诊断…</div>
+            </div>
+            <div class="settings-overview-list" id="social-approval-list" style="margin-top:12px;">
+              <div class="settings-overview-empty">正在读取审批队列…</div>
+            </div>
+          </div>
           <div class="settings-section settings-section-action">
-            <button class="settings-save-btn" id="settings-save-social" type="button">保存所有</button>
+            <button class="settings-save-btn" id="settings-save-social" type="button">保存渠道配置</button>
             <span class="settings-feedback" id="settings-social-feedback"></span>
           </div>
         </div>

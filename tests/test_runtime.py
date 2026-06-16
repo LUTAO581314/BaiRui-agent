@@ -200,6 +200,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/channels/diagnostics", screens["channels"]["read"])
         self.assertIn("/channels/approvals", screens["channels"]["read"])
         self.assertIn("/channels/approvals/reviews", screens["channels"]["read"])
+        self.assertIn("/config/apply", {action["path"] for action in screens["channels"]["actions"]})
         self.assertIn("channel_send", contract["forms"])
         self.assertIn("channel_approval_review", contract["forms"])
         self.assertIn("/document/parse/session-list", screens["document_ingest"]["read"])
@@ -1615,15 +1616,48 @@ class RuntimeFoundationTests(unittest.TestCase):
 
     def test_channels_console_keeps_approval_and_no_send_boundary_visible(self):
         shell_js = Path("web/bairui-console/app-shell.js").read_text(encoding="utf-8")
+        app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
         popup_js = Path("web/bairui-console/wechat-popup.js").read_text(encoding="utf-8")
         server_py = Path("src/hermes/server.py").read_text(encoding="utf-8")
 
         self.assertIn("渠道授权", shell_js)
+        self.assertIn("渠道总控", shell_js)
+        self.assertIn("social-channels-enabled", shell_js)
+        self.assertIn("social-targets-json", shell_js)
+        self.assertIn("social-diagnostic-list", shell_js)
+        self.assertIn("social-approval-list", shell_js)
+        self.assertIn("个人扫码渠道", shell_js)
+        self.assertIn("企业/机器人渠道字段", shell_js)
+        self.assertIn("/channels/status", app_js)
+        self.assertIn("/channels/diagnostics", app_js)
+        self.assertIn("/channels/approvals", app_js)
+        self.assertIn("channel_targets_json", app_js)
+        self.assertIn("channel_enabled", app_js)
+        self.assertIn("/config/apply", app_js)
         self.assertIn("安全沙箱", shell_js)
         self.assertIn("渠道", popup_js)
         self.assertIn("向 bairui 发送消息", popup_js)
         self.assertIn("will_send", Path("src/hermes/config_status.py").read_text(encoding="utf-8"))
         self.assertIn("channel authorization is managed by bairui approvals", server_py)
+
+    def test_channel_status_exposes_targets_and_approval_queue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                plan_channel_send(settings, {"target_id": "owner_review", "text": "hello", "media_kind": "text"})
+                status = channel_status(settings)
+
+        self.assertTrue(status.enabled)
+        self.assertEqual(status.approval_queue_count, 1)
+        self.assertEqual(status.configured_targets[0]["id"], "owner_review")
+        self.assertEqual(status.supported_media_kinds, ("text", "image", "video", "file"))
 
     def test_codegraph_console_keeps_source_structure_separate_from_memory(self):
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")

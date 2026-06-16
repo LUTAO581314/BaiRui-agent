@@ -3155,6 +3155,8 @@ function initTTSSettings() {
   const minimaxFeedback = document.getElementById("settings-minimax-feedback");
   const saveSocialBtn   = document.getElementById("settings-save-social");
   const socialFeedback  = document.getElementById("settings-social-feedback");
+  const socialChannelsEnabled = document.getElementById("social-channels-enabled");
+  const socialTargetsJson = document.getElementById("social-targets-json");
   const saveVoiceBtn    = document.getElementById("settings-save-voice");
   const voiceFeedback   = document.getElementById("settings-voice-feedback");
   const voiceThreshSlider = document.getElementById("settings-voice-threshold");
@@ -3851,23 +3853,64 @@ function initTTSSettings() {
 
   async function loadSocialSettings() {
     try {
-      const { social } = await fetch(`${API}/settings/social`).then(r => r.json());
-      for (const [statusId, keys] of Object.entries(SOCIAL_PLATFORM_STATUS)) {
-        const el = document.getElementById(statusId);
-        if (!el) continue;
-        const configuredCount = keys.filter(k => social[k]?.configured).length;
-        if (configuredCount === keys.length) {
-          el.textContent = "● 已配置";
-          el.className = "settings-platform-status ok";
-        } else if (configuredCount > 0) {
-          el.textContent = `● 部分配置 (${configuredCount}/${keys.length})`;
-          el.className = "settings-platform-status miss";
-        } else {
-          el.textContent = "○ 未配置";
-          el.className = "settings-platform-status miss";
-        }
+      const [statusBody, targetsBody, diagnosticsBody, approvalsBody] = await Promise.all([
+        fetch(`${API}/channels/status`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+        fetch(`${API}/channels/targets`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+        fetch(`${API}/channels/diagnostics`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+        fetch(`${API}/channels/approvals`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+      ]);
+      const channels = statusBody.channels || {};
+      const targets = targetsBody.channel_targets || channels.configured_targets || [];
+      const diagnostics = diagnosticsBody.channel_diagnostics || [];
+      const approvals = approvalsBody.channel_approvals || [];
+      if (socialChannelsEnabled) socialChannelsEnabled.checked = Boolean(channels.enabled);
+      if (socialTargetsJson && !socialTargetsJson.value.trim()) {
+        socialTargetsJson.value = JSON.stringify(targets, null, 2);
       }
+      const summary = document.getElementById("social-channels-summary");
+      if (summary) summary.textContent = `${channels.status || "unknown"} · ${targets.length} targets · ${channels.supported_media_kinds?.join("/") || "text/image/video/file"}`;
+      const queue = document.getElementById("social-approval-queue");
+      if (queue) queue.textContent = `${channels.approval_queue_count ?? approvals.length} pending · will_send=false`;
+      const diagList = document.getElementById("social-diagnostic-list");
+      if (diagList) diagList.innerHTML = renderChannelDiagnostics(diagnostics);
+      const approvalList = document.getElementById("social-approval-list");
+      if (approvalList) approvalList.innerHTML = renderChannelApprovals(approvals);
     } catch {}
+  }
+
+  function renderChannelDiagnostics(diagnostics = []) {
+    if (!diagnostics.length) return `<div class="settings-overview-empty">暂无渠道诊断。</div>`;
+    return diagnostics.map((item) => {
+      const detail = [
+        item.channel_type,
+        `supports=${(item.supports || []).join("/") || "missing"}`,
+        item.requires_owner_confirmation ? "approval_required" : "unsafe_no_approval",
+        ...(item.blockers || []),
+        ...(item.warnings || []),
+      ].filter(Boolean).join(" · ");
+      return `
+        <div class="settings-overview-item ${settingsStatusClass(item.status)}">
+          <div>
+            <strong>${settingsSafeText(item.label || item.id)}</strong>
+            <small>${settingsSafeText(detail)}</small>
+          </div>
+          <span>${settingsSafeText(item.status || "unknown")}</span>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderChannelApprovals(approvals = []) {
+    if (!approvals.length) return `<div class="settings-overview-empty">暂无待审批渠道动作。</div>`;
+    return approvals.slice(0, 12).map((item) => `
+      <div class="settings-overview-item ${settingsStatusClass(item.review_status || item.status)}">
+        <div>
+          <strong>${settingsSafeText(item.target_id || item.channel_type || "channel approval")}</strong>
+          <small>${settingsSafeText(item.media_kind || "text")} · ${settingsSafeText(item.message_preview || item.reason || "")}</small>
+        </div>
+        <span>${settingsSafeText(item.review_status || item.status || "pending")}</span>
+      </div>
+    `).join("");
   }
 
   const fileSandboxToggle = document.getElementById("security-file-sandbox");
@@ -3997,23 +4040,40 @@ function initTTSSettings() {
         const val = document.getElementById(fieldId)?.value?.trim() || "";
         if (val) updates[envKey] = val;
       }
+      const channelTargetsRaw = socialTargetsJson?.value?.trim() || "";
+      if (socialChannelsEnabled) updates.channel_enabled = socialChannelsEnabled.checked ? "1" : "0";
+      if (socialTargetsJson) {
+        try {
+          const parsed = JSON.parse(channelTargetsRaw || "[]");
+          if (!Array.isArray(parsed)) throw new Error("渠道目标 JSON 必须是数组");
+          updates.channel_targets_json = JSON.stringify(parsed);
+        } catch (error) {
+          showFeedback(socialFeedback, error?.message || "渠道目标 JSON 格式错误", true);
+          return;
+        }
+      }
       saveSocialBtn.disabled = true;
       try {
-        const res = await fetch(`${API}/settings/social`, {
+        const res = await fetch(`${API}/config/apply`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(updates),
+          headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+          body: JSON.stringify({
+            values: updates,
+            danger_confirmation: "APPLY BAIRUI CONFIG",
+            create_dirs: true,
+          }),
         });
         const data = await res.json();
-        if (data.ok) {
-          showFeedback(socialFeedback, "已保存");
+        const result = data.config_apply || data;
+        if (res.ok && ["saved", "no_changes"].includes(result.status)) {
+          showFeedback(socialFeedback, result.restart_required ? "已保存，重启服务后完全生效" : "已保存");
           Object.keys(SOCIAL_FIELD_MAP).forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = "";
           });
           loadSocialSettings();
         } else {
-          showFeedback(socialFeedback, data.error || "保存失败", true);
+          showFeedback(socialFeedback, result.message || data.error || "保存失败", true);
         }
       } catch {
         showFeedback(socialFeedback, "请求失败", true);
