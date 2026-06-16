@@ -1463,6 +1463,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("activation-command-list", app_js)
         self.assertIn("首次激活", app_js)
         self.assertIn("data-activation-tab", app_js)
+        self.assertIn("activation-mode-card", app_js)
         self.assertIn("第一步", app_js)
         self.assertIn("第二步", app_js)
         self.assertIn("第三步", app_js)
