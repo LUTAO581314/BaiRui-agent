@@ -255,12 +255,51 @@ body {
   gap: 14px;
 }
 
+.activation-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.activation-tab {
+  display: grid;
+  gap: 3px;
+  min-height: 56px;
+  padding: 10px 12px;
+  border: 1px solid rgba(143, 182, 216, 0.16);
+  border-radius: 12px;
+  background: rgba(11, 18, 26, 0.6);
+  color: var(--ink2);
+  text-align: left;
+}
+
+.activation-tab span {
+  color: var(--dim);
+  font: 10px/1 "JetBrains Mono", ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.activation-tab strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.activation-tab.active {
+  border-color: rgba(101, 214, 255, 0.8);
+  background: rgba(12, 25, 36, 0.95);
+  color: var(--ink);
+}
+
 .activation-panel {
   border: 1px solid rgba(143, 182, 216, 0.16);
   border-radius: 14px;
   background: rgba(7, 12, 19, 0.72);
   padding: 14px;
 }
+
+.activation-tab-panel { display: none; }
+.activation-tab-panel.active { display: block; }
 
 .activation-section-head {
   display: flex;
@@ -397,6 +436,19 @@ body {
 .activation-command-list {
   display: grid;
   gap: 8px;
+}
+
+.activation-inline-subsection {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.activation-verify-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .activation-command-row {
@@ -698,9 +750,11 @@ body {
   .activation-header h1 { font-size: 28px; }
   .activation-grid,
   .activation-wizard { grid-template-columns: 1fr; }
+  .activation-tabs { grid-template-columns: 1fr 1fr; }
   .activation-mode-grid,
   .activation-capability-grid,
   .activation-form-grid { grid-template-columns: 1fr; }
+  .activation-verify-grid { grid-template-columns: 1fr; }
   .settings-core-form,
   .settings-plan-grid { grid-template-columns: 1fr; }
   .activation-step { grid-template-columns: 38px minmax(0, 1fr); }

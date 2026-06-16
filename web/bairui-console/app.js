@@ -446,6 +446,21 @@ function renderActivationCommandPlan(setupPlan = {}) {
   return rows.join("") || `<div class="activation-empty">当前没有可展示的安装命令。已集成能力会在状态区显示。</div>`;
 }
 
+function renderActivationTabs() {
+  const tabs = [
+    ["mode", "第一步", "部署模式"],
+    ["model", "第二步", "模型网关"],
+    ["capabilities", "第三步", "能力配置"],
+    ["verify", "第四步", "检查进入"],
+  ];
+  return tabs.map(([id, step, label], index) => `
+    <button class="activation-tab ${index === 0 ? "active" : ""}" type="button" data-activation-tab="${id}">
+      <span>${step}</span>
+      <strong>${label}</strong>
+    </button>
+  `).join("");
+}
+
 function activationSelectedCapabilities(overlay) {
   return [...overlay.querySelectorAll(".activation-capability-toggle")]
     .filter((input) => input.checked)
@@ -532,8 +547,8 @@ function renderActivationOverlay(contract = {}, state = {}) {
       <header class="activation-header">
         <div>
           <div class="activation-kicker">bairui Activation</div>
-          <h1>首次配置</h1>
-          <p>先填模型网关，再选择要启用的能力。更多路径、数据库、访问保护和高级插件配置在设置页继续完善。</p>
+          <h1>首次激活</h1>
+          <p>按步骤完成首次可用配置：先选择部署模式，再填写模型网关，最后按需启用情报、搜索、爬虫索引、文档和语音等能力。</p>
         </div>
         <div class="activation-status ${activationStatusClass(readyStatus)}">
           <span></span>${readyStatus}
@@ -542,7 +557,11 @@ function renderActivationOverlay(contract = {}, state = {}) {
 
       <div class="activation-wizard">
         <section class="activation-setup-main">
-          <div class="activation-panel">
+          <nav class="activation-tabs" aria-label="首次激活步骤">
+            ${renderActivationTabs()}
+          </nav>
+
+          <div class="activation-panel activation-tab-panel active" data-activation-panel="mode">
             <div class="activation-section-head">
               <span>01</span>
               <div>
@@ -555,7 +574,7 @@ function renderActivationOverlay(contract = {}, state = {}) {
             </div>
           </div>
 
-          <div class="activation-panel activation-model-form" id="activation-model-form">
+          <div class="activation-panel activation-model-form activation-tab-panel" id="activation-model-form" data-activation-panel="model">
             <div class="activation-section-head">
               <span>02</span>
               <div>
@@ -583,29 +602,57 @@ function renderActivationOverlay(contract = {}, state = {}) {
             </div>
           </div>
 
-          <div class="activation-panel">
+          <div class="activation-panel activation-tab-panel" data-activation-panel="capabilities">
             <div class="activation-section-head">
               <span>03</span>
               <div>
                 <strong>选择要启用的能力</strong>
-                <small>未启用的能力不会阻塞进入控制台，可以在设置页继续安装。</small>
+                <small>舆情/情报、联网搜索和本地索引属于同一条情报输入链路，建议一起配置；未启用的能力不会阻塞进入控制台。</small>
               </div>
             </div>
             <div class="activation-capability-grid">
               ${renderActivationCapabilityCards(setupPlan)}
             </div>
+
+            <div class="activation-inline-subsection">
+              <div>
+                <strong>安装 / 启动计划</strong>
+                <small>这里显示可用状态；完整运维命令进入设置页受控查看。</small>
+              </div>
+              <div class="activation-command-list" id="activation-command-list">
+                ${renderActivationCommandPlan(setupPlan)}
+              </div>
+            </div>
           </div>
 
-          <div class="activation-panel">
+          <div class="activation-panel activation-tab-panel" data-activation-panel="verify">
             <div class="activation-section-head">
               <span>04</span>
               <div>
-                <strong>安装 / 启动计划</strong>
-                <small>命令来自后端内核的真实适配器；危险操作仍需要主人确认后手动执行。</small>
+                <strong>检查并进入</strong>
+                <small>模型网关 ready 后即可进入控制台；数据库、平台标识、备份和高级能力可在设置页继续补齐。</small>
               </div>
             </div>
-            <div class="activation-command-list" id="activation-command-list">
-              ${renderActivationCommandPlan(setupPlan)}
+            <div class="activation-verify-grid">
+              <div class="activation-evidence-card">
+                <span>Readiness</span>
+                <strong>${readyStatus}</strong>
+                <small>${blockerCount} blockers</small>
+              </div>
+              <div class="activation-evidence-card">
+                <span>Database</span>
+                <strong>${databaseStatus}</strong>
+                <small>PostgreSQL / local fallback</small>
+              </div>
+              <div class="activation-evidence-card">
+                <span>Platform</span>
+                <strong>${platformStatus}</strong>
+                <small>server id / license visibility</small>
+              </div>
+            </div>
+            <div class="activation-safety">
+              <b>安全边界</b>
+              <p>不会自动外发消息，不会自动写入长期记忆；渠道发送和记忆入库都需要主人审核。</p>
             </div>
           </div>
         </section>
@@ -657,13 +704,44 @@ function renderActivationOverlay(contract = {}, state = {}) {
       </details>
 
       <footer class="activation-actions">
+        <button class="activation-secondary" id="activation-prev-tab-btn" type="button">上一步</button>
         <button class="activation-secondary" id="activation-recheck-btn" type="button">重新检查</button>
+        <button class="activation-secondary" id="activation-next-tab-btn" type="button">下一步</button>
         <button class="activation-primary" id="activation-enter-btn" type="button">进入控制台</button>
       </footer>
     </div>
   `;
 
   document.body.appendChild(overlay);
+  const activationTabOrder = ["mode", "model", "capabilities", "verify"];
+  let activeActivationTab = "mode";
+  const setActivationTab = (tabId) => {
+    if (!activationTabOrder.includes(tabId)) return;
+    activeActivationTab = tabId;
+    overlay.querySelectorAll(".activation-tab").forEach((tab) => {
+      tab.classList.toggle("active", tab.dataset.activationTab === tabId);
+    });
+    overlay.querySelectorAll(".activation-tab-panel").forEach((panel) => {
+      panel.classList.toggle("active", panel.dataset.activationPanel === tabId);
+    });
+    const index = activationTabOrder.indexOf(tabId);
+    const prevBtn = overlay.querySelector("#activation-prev-tab-btn");
+    const nextBtn = overlay.querySelector("#activation-next-tab-btn");
+    if (prevBtn) prevBtn.disabled = index === 0;
+    if (nextBtn) nextBtn.hidden = index === activationTabOrder.length - 1;
+  };
+  overlay.querySelectorAll(".activation-tab").forEach((tab) => {
+    tab.addEventListener("click", () => setActivationTab(tab.dataset.activationTab));
+  });
+  overlay.querySelector("#activation-prev-tab-btn")?.addEventListener("click", () => {
+    const index = activationTabOrder.indexOf(activeActivationTab);
+    setActivationTab(activationTabOrder[Math.max(0, index - 1)]);
+  });
+  overlay.querySelector("#activation-next-tab-btn")?.addEventListener("click", () => {
+    const index = activationTabOrder.indexOf(activeActivationTab);
+    setActivationTab(activationTabOrder[Math.min(activationTabOrder.length - 1, index + 1)]);
+  });
+  setActivationTab(activeActivationTab);
   overlay.querySelector("#activation-enter-btn")?.addEventListener("click", () => {
     try { localStorage.setItem(ACTIVATION_DISMISSED_KEY, "1"); } catch {}
     overlay.classList.add("is-leaving");
