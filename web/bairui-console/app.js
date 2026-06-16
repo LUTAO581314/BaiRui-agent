@@ -15,6 +15,7 @@ sanitizePublicBrandText();
 const THEME_KEY = "bairui-brain-ui-theme";
 const PHYSICS_STORAGE_KEY = "bairui-brain-ui-physics";
 const ACTIVATION_WARMUP_KEY = "bairui_activation_warmup_until";
+const ACTIVATION_DISMISSED_KEY = "bairui.activation.dismissed.v1";
 const UI_ZOOM_STORAGE_KEY = "bairui_ui_zoom_factor";
 const MAX_CHAT_HISTORY = 60;
 const DEFAULT_AGENT_NAME = "bairui";
@@ -211,6 +212,149 @@ async function loadAgentProfile() {
     setAgentName(DEFAULT_AGENT_NAME);
   } catch {}
 }
+
+function activationStatusClass(status) {
+  const value = String(status || "").toLowerCase();
+  if (value === "ready" || value === "ok" || value === "passed") return "is-ready";
+  if (value === "blocked" || value === "failed" || value === "error") return "is-blocked";
+  if (value === "missing_config" || value === "partial" || value === "needs_review") return "is-partial";
+  return "is-unknown";
+}
+
+function activationStepStatus(step, state = {}) {
+  const id = step?.id || "";
+  const ready = state.ready || {};
+  const runtime = state.runtime_readiness || {};
+  const blockers = Array.isArray(runtime.blockers) ? runtime.blockers : [];
+  if (id === "brand_lock") return "ready";
+  if (id === "runtime_health") return ready.status === "ready" || blockers.length === 0 ? "ready" : "blocked";
+  if (id === "model_gateway") {
+    const capabilities = state.capabilities || [];
+    const model = capabilities.find((item) => item.name === "model_gateway" || item.id === "model_gateway");
+    return model?.status || "partial";
+  }
+  return "partial";
+}
+
+function renderActivationOverlay(contract = {}, state = {}) {
+  const flow = Array.isArray(contract.activation_flow) ? contract.activation_flow : [];
+  const overlay = document.createElement("section");
+  overlay.className = "bairui-activation-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "bairui Activation");
+
+  const readyStatus = state.ready?.status || "checking";
+  const blockerCount = Array.isArray(state.runtime_readiness?.blockers) ? state.runtime_readiness.blockers.length : 0;
+  const databaseStatus = state.ready?.database?.status || "unknown";
+  const platformStatus = state.ready?.platform || "missing_config";
+
+  overlay.innerHTML = `
+    <div class="activation-core-bg" aria-hidden="true">
+      <div class="activation-core-orbit orbit-a"></div>
+      <div class="activation-core-orbit orbit-b"></div>
+      <div class="activation-core-pulse"></div>
+    </div>
+    <div class="activation-shell">
+      <header class="activation-header">
+        <div>
+          <div class="activation-kicker">bairui Activation</div>
+          <h1>系统激活</h1>
+          <p>首次进入先完成运行状态、模型、文档、记忆、渠道、Avatar 与 CodeGraph 的检查。</p>
+        </div>
+        <div class="activation-status ${activationStatusClass(readyStatus)}">
+          <span></span>${readyStatus}
+        </div>
+      </header>
+      <div class="activation-grid">
+        <div class="activation-stepper">
+          ${flow.map((step, index) => {
+            const status = activationStepStatus(step, state);
+            return `
+              <button class="activation-step ${activationStatusClass(status)}" type="button" data-step-id="${step.id || ""}">
+                <span class="activation-step-index">${String(index + 1).padStart(2, "0")}</span>
+                <span class="activation-step-copy">
+                  <strong>${step.title || step.id || "Activation Step"}</strong>
+                  <small>${step.complete_when || "等待后端状态"}</small>
+                </span>
+                <span class="activation-step-state">${status}</span>
+              </button>
+            `;
+          }).join("")}
+        </div>
+        <aside class="activation-evidence">
+          <div class="activation-evidence-card">
+            <span>Readiness</span>
+            <strong>${readyStatus}</strong>
+            <small>${blockerCount} blockers</small>
+          </div>
+          <div class="activation-evidence-card">
+            <span>Database</span>
+            <strong>${databaseStatus}</strong>
+            <small>PostgreSQL / local fallback</small>
+          </div>
+          <div class="activation-evidence-card">
+            <span>Platform</span>
+            <strong>${platformStatus}</strong>
+            <small>server id / license visibility</small>
+          </div>
+          <div class="activation-safety">
+            <b>安全边界</b>
+            <p>不会自动外发消息，不会自动写入长期记忆；渠道发送和记忆入库都需要主人审核。</p>
+          </div>
+        </aside>
+      </div>
+      <footer class="activation-actions">
+        <button class="activation-secondary" id="activation-recheck-btn" type="button">重新检查</button>
+        <button class="activation-primary" id="activation-enter-btn" type="button">进入控制台</button>
+      </footer>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  overlay.querySelector("#activation-enter-btn")?.addEventListener("click", () => {
+    try { localStorage.setItem(ACTIVATION_DISMISSED_KEY, "1"); } catch {}
+    overlay.classList.add("is-leaving");
+    setTimeout(() => overlay.remove(), 260);
+  });
+  overlay.querySelector("#activation-recheck-btn")?.addEventListener("click", () => {
+    overlay.remove();
+    showActivationOverlay({ force: true });
+  });
+  sanitizePublicBrandText(overlay);
+}
+
+async function showActivationOverlay({ force = false } = {}) {
+  if (!force) {
+    try {
+      if (localStorage.getItem(ACTIVATION_DISMISSED_KEY) === "1") return;
+    } catch {}
+  }
+  if (document.querySelector(".bairui-activation-overlay")) return;
+  try {
+    const [contract, ready, runtime, capabilities] = await Promise.all([
+      fetch(`${API}/frontend/contract`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+      fetch(`${API}/ready`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+      fetch(`${API}/runtime/readiness`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+      fetch(`${API}/capabilities`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+    ]);
+    renderActivationOverlay(contract.frontend_contract || contract, {
+      ready,
+      runtime_readiness: runtime.runtime_readiness || runtime,
+      capabilities: capabilities.capabilities || [],
+    });
+  } catch (error) {
+    renderActivationOverlay({ activation_flow: [] }, { ready: { status: "blocked" }, runtime_readiness: { blockers: [error.message] } });
+  }
+}
+
+window.bairuiActivation = {
+  show: () => showActivationOverlay({ force: true }),
+  reset: () => {
+    try { localStorage.removeItem(ACTIVATION_DISMISSED_KEY); } catch {}
+    showActivationOverlay({ force: true });
+  },
+};
 
 const physicsSettings = {
   gravity: 1,
@@ -2157,6 +2301,7 @@ bootstrapACUI();
 initPanelCollapse();
 initWechatPopup();
 sanitizePublicBrandText();
+showActivationOverlay();
 
 // ── TTS settings panel init ───────────────────────────────────────────────────
 function initTTSSettings() {
