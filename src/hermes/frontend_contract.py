@@ -157,6 +157,9 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             {"id": "capabilities", "method": "GET", "path": "/capabilities", "purpose": "capability list"},
             {"id": "config_status", "method": "GET", "path": "/config/status", "purpose": "safe configuration diagnostics"},
             {"id": "runtime_readiness", "method": "GET", "path": "/runtime/readiness", "purpose": "runtime blockers and warnings"},
+            {"id": "avatar_status", "method": "GET", "path": "/avatar/status", "purpose": "browser avatar runtime state"},
+            {"id": "avatar_manifest", "method": "GET", "path": "/avatar/manifest", "purpose": "browser avatar model manifest"},
+            {"id": "codegraph_status", "method": "GET", "path": "/codegraph/status", "purpose": "source structure index state"},
             {"id": "platform_heartbeat", "method": "GET", "path": "/platform/heartbeat", "purpose": "platform heartbeat payload"},
         ),
         "screens": (

@@ -1,6929 +1,4235 @@
-import * as THREE from "/console/vendor/three.module.js";
-
-const api = {
-  async get(path) {
-    const response = await fetch(path, { cache: "no-store", headers: ownerAuthHeaders() });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw createApiError(path, response.status, data);
-    return data;
-  },
-  async post(path, payload = {}) {
-    const response = await fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw createApiError(path, response.status, data);
-    return data;
-  },
+﻿import { renderBrainUiApp } from "./app-shell.js";
+import { API, ownerAuthHeaders } from "./api-client.js";
+import { bootstrapACUI } from "./acui/bootstrap.js";
+import { initChat, friendlyChannelLabel } from "./chat.js";
+import { initPanelCollapse } from "./panel-collapse.js";
+import { ThoughtStream } from "./thought-stream.js";
+import { initVoicePanel } from "./voice-panel.js";
+import { initHotspot, toggleHotspot, setHotspotMode, moveVoicePanelToBody, restoreVoicePanel } from "./hotspot.js";
+import { enrichVisiblePersonCardFromText, initPersonCard, setPersonCardMode, showPersonCardByName } from "./person-card.js";
+import { initDocPanel, setDocPanelMode } from "./doc.js";
+import { initWechatPopup, showWechatPopup } from "./wechat-popup.js";
+import { attachbairuiFx, isFxEnabledForVoice, setFxEnabledForVoice, getbairuiFxParams, setbairuiFxParams, resetbairuiFxParams, isFxUnlocked, tryUnlockFx } from "./tts-fx.js";
+renderBrainUiApp(document.body);
+sanitizePublicBrandText();
+const THEME_KEY = "bairui-brain-ui-theme";
+const PHYSICS_STORAGE_KEY = "bairui-brain-ui-physics";
+const ACTIVATION_WARMUP_KEY = "bairui_activation_warmup_until";
+const UI_ZOOM_STORAGE_KEY = "bairui_ui_zoom_factor";
+const MAX_CHAT_HISTORY = 60;
+const DEFAULT_AGENT_NAME = "bairui";
+const DEFAULT_UI_ZOOM = 1.1;
+const MIN_UI_ZOOM = 0.8;
+const MAX_UI_ZOOM = 1.8;
+const UI_ZOOM_STEP = 0.1;
+const UI_ZOOM_WHEEL_STEP = 0.05;
+const SAFETY_BOUNDARY = {
+  external_send_performed: false,
+  long_term_memory_auto_write: false,
 };
-
-const OWNER_TOKEN_KEY = "bairui.console.ownerToken.v1";
-
-function getOwnerToken() {
-  try {
-    return localStorage.getItem(OWNER_TOKEN_KEY) || "";
-  } catch {
-    return "";
-  }
-}
-
-function setOwnerToken(value) {
-  try {
-    const token = String(value || "").trim();
-    if (token) {
-      localStorage.setItem(OWNER_TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(OWNER_TOKEN_KEY);
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function ownerAuthHeaders() {
-  const token = getOwnerToken();
-  return token ? { "X-Bairui-Owner-Token": token } : {};
-}
-
-function createApiError(path, status, data = {}) {
-  const message = data?.message || data?.chat?.error || data?.error || data?.detail || `${path} ${status}`;
-  const error = new Error(message);
-  error.path = path;
-  error.status = status;
-  error.code = data?.error || data?.config_apply?.status || data?.chat?.status || data?.status || "";
-  error.payload = data;
-  return error;
-}
-
-const screens = [
-  ["activation", "Activation", "A1"],
-  ["dashboard", "Dashboard", "D1"],
-  ["command", "Command", "C1"],
-  ["documents", "Documents", "D2"],
-  ["memory", "Memory Review", "M1"],
-  ["graph", "Knowledge Graph", "G1"],
-  ["entity", "Entity Detail", "E1"],
-  ["reports", "Reports", "R1"],
-  ["intel", "Intelligence Radar", "I1"],
-  ["channels", "Channels", "C2"],
-  ["avatar", "Avatar", "A2"],
-  ["codegraph", "CodeGraph", "CG"],
-  ["settings", "Settings", "S1"],
-  ["events", "Events", "E2"],
-];
-
-const state = {
-  screen: "activation",
-  contract: null,
-  health: null,
-  ready: null,
-  readiness: null,
-  platform: null,
-  adminSession: null,
-  license: null,
-  configStatus: null,
-  capabilities: [],
-  jobs: [],
-  audit: [],
-  events: [],
-  metrics: null,
-  errorLogs: [],
-  agents: [],
-  agentSessions: [],
-  selectedAgentSessionId: "",
-  selectedAgentIds: [],
-  agentEvents: [],
-  agentEventsPage: null,
-  agentPromotions: [],
-  agentEventOffset: 0,
-  agentEventLimit: 20,
-  agentComposerMode: "round",
-  promotionResults: {},
-  avatarStatus: null,
-  avatarManifest: null,
-  avatarValidation: null,
-  avatarActionResult: null,
-  runtimeStatus: {},
-  documentSessions: [],
-  selectedIngestId: "",
-  documentSession: null,
-  memoryQueue: null,
-  memoryCandidates: [],
-  memoryReviews: [],
-  memoryReviewResult: null,
-  documentActionResult: null,
-  reportWriteResult: null,
-  reports: [],
-  sourceRefs: [],
-  documentPlanDraft: { input_path: "", title: "", output_dir: "", backend: "", language: "", device: "cpu" },
-  channels: null,
-  channelTargets: [],
-  channelDiagnostics: [],
-  channelApprovals: [],
-  channelApprovalReviews: [],
-  channelPlanResult: null,
-  channelReviewResult: null,
-  codegraph: null,
-  codegraphRepos: [],
-  selectedCodegraphRepoId: "",
-  codegraphOverview: null,
-  codegraphQuery: null,
-  codegraphImpact: null,
-  codegraphActionResult: null,
-  activationProbe: null,
-  activationAction: null,
-  activationMode: "server_production",
-  configApplyResult: null,
-  configApplyVerification: null,
-  settingsConfigDraft: {},
-  databaseMigrationResult: null,
-  backupStatus: null,
-  backupPlan: null,
-  demoSeed: null,
-  demoFlow: null,
-  auditFilter: "all",
-  selectedEntity: null,
-  selectedStep: "brand_lock",
-  loading: new Set(),
-  errors: {},
-  errorDetails: {},
-  toast: "",
-};
-
-let activationThreeCore = null;
-
-const UI_STATE_KEY = "bairui.console.ui.v1";
-const validScreenIds = new Set(screens.map(([id]) => id));
-
-const el = {
-  rail: document.getElementById("left-rail"),
-  title: document.getElementById("screen-title"),
-  kicker: document.getElementById("screen-kicker"),
-  actions: document.getElementById("screen-actions"),
-  body: document.getElementById("screen-body"),
-  topbar: document.getElementById("topbar-status"),
-  drawer: document.getElementById("detail-drawer"),
-  drawerContent: document.getElementById("drawer-content"),
-  drawerClose: document.getElementById("drawer-close"),
-  commandMeta: document.getElementById("command-meta"),
-  commandInput: document.getElementById("global-command"),
-  commandSend: document.getElementById("global-command-send"),
-  avatarState: document.getElementById("avatar-state"),
-};
-
-function clsStatus(value = "") {
-  return `status-pill is-${String(value || "unknown").replaceAll("-", "_")}`;
-}
-
-function pill(value, label = value) {
-  return `<span class="${clsStatus(value)}">${escapeHtml(label || value || "unknown")}</span>`;
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function shortId(value) {
-  const text = String(value || "");
-  return text.length > 12 ? text.slice(0, 8) : text || "-";
-}
-
-function firstNonEmpty(...values) {
-  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "") || "";
-}
-
-function exportTimestamp() {
-  return new Date().toISOString().replaceAll(":", "").replaceAll(".", "").replace("T", "-").replace("Z", "Z");
-}
-
-function downloadJson(filename, payload) {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function exportConsoleData(kind, payload) {
-  downloadJson(`bairui-${kind}-${exportTimestamp()}.json`, {
-    product: "bairui",
-    export_kind: kind,
-    exported_at: new Date().toISOString(),
-    public_brand_policy: "customer export contains only bairui public branding; upstream runtime names and secrets are redacted",
-    safety: {
-      secrets_included: false,
-      external_send_performed: false,
-      long_term_memory_auto_write: false,
-    },
-    payload: customerSafeExportPayload(payload),
-  });
-}
-
-function customerSafeExportPayload(value) {
-  if (Array.isArray(value)) return value.map(customerSafeExportPayload);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [
-        key,
-        isSecretExportKey(key) ? "redacted" : customerSafeExportPayload(item),
-      ]),
-    );
-  }
-  if (typeof value === "string") return customerSafeRuntimeText(value);
-  return value;
-}
-
-function isSecretExportKey(key) {
-  return /secret|token|api[_-]?key|password|database_url|authorization/i.test(String(key || ""));
-}
-
-function setBusy(key, active) {
-  if (active) state.loading.add(key);
-  else state.loading.delete(key);
-}
-
-function persistUiState() {
-  try {
-    const entity = state.selectedEntity
-      ? {
-          type: state.selectedEntity.type || "",
-          title: state.selectedEntity.title || "",
-          status: state.selectedEntity.status || "",
-          ref: state.selectedEntity.ref || state.selectedEntity.raw?.id || state.selectedEntity.raw?.path || "",
-        }
-      : null;
-    const snapshot = {
-      screen: validScreenIds.has(state.screen) ? state.screen : "activation",
-      selectedStep: state.selectedStep || "brand_lock",
-      activationMode: state.activationMode || "server_production",
-      selectedIngestId: state.selectedIngestId || "",
-      selectedAgentSessionId: state.selectedAgentSessionId || "",
-      selectedAgentIds: Array.isArray(state.selectedAgentIds) ? state.selectedAgentIds.slice(0, 12) : [],
-      agentComposerMode: state.agentComposerMode || "round",
-      selectedCodegraphRepoId: state.selectedCodegraphRepoId || "",
-      auditFilter: state.auditFilter || "all",
-      selectedEntity: entity,
-    };
-    localStorage.setItem(UI_STATE_KEY, JSON.stringify(snapshot));
-  } catch (error) {
-    console.warn("Could not persist bairui UI state", error);
-  }
-}
-
-function restoreUiState() {
-  try {
-    const snapshot = JSON.parse(localStorage.getItem(UI_STATE_KEY) || "{}");
-    if (!snapshot || typeof snapshot !== "object") return;
-    if (validScreenIds.has(snapshot.screen)) state.screen = snapshot.screen;
-    if (typeof snapshot.selectedStep === "string") state.selectedStep = snapshot.selectedStep || state.selectedStep;
-    if (activationDeploymentModes().some((mode) => mode.id === snapshot.activationMode)) state.activationMode = snapshot.activationMode;
-    if (typeof snapshot.selectedIngestId === "string") state.selectedIngestId = snapshot.selectedIngestId;
-    if (typeof snapshot.selectedAgentSessionId === "string") state.selectedAgentSessionId = snapshot.selectedAgentSessionId;
-    if (Array.isArray(snapshot.selectedAgentIds)) state.selectedAgentIds = snapshot.selectedAgentIds.filter(Boolean).slice(0, 12);
-    if (["round", "message"].includes(snapshot.agentComposerMode)) state.agentComposerMode = snapshot.agentComposerMode;
-    if (typeof snapshot.selectedCodegraphRepoId === "string") state.selectedCodegraphRepoId = snapshot.selectedCodegraphRepoId;
-    if (typeof snapshot.auditFilter === "string") state.auditFilter = snapshot.auditFilter || "all";
-    if (snapshot.selectedEntity?.type && snapshot.selectedEntity?.ref) {
-      state.selectedEntity = {
-        type: snapshot.selectedEntity.type,
-        title: snapshot.selectedEntity.title || snapshot.selectedEntity.ref,
-        status: snapshot.selectedEntity.status || "partial",
-        ref: snapshot.selectedEntity.ref,
-        raw: { id: snapshot.selectedEntity.ref, restored: true },
-      };
-    }
-  } catch (error) {
-    console.warn("Could not restore bairui UI state", error);
-  }
-}
-
-async function runAction(key, fn, after = refreshScreenData) {
-  setBusy(key, true);
-  state.errors[key] = "";
-  state.errorDetails[key] = null;
-  render();
-  try {
-    const result = await fn();
-    await after();
-    return result;
-  } catch (error) {
-    const detail = productErrorGuide(error, key);
-    state.errors[key] = detail.summary;
-    state.errorDetails[key] = detail;
-    render();
-    return null;
-  } finally {
-    setBusy(key, false);
-    render();
-  }
-}
-
-async function copyText(text) {
-  const value = String(text || "");
-  if (!value) return false;
-  try {
-    if (navigator?.clipboard?.writeText) {
-      await navigator.clipboard.writeText(value);
-      return true;
-    }
-  } catch (error) {
-    // fallback below
-  }
-  const fallback = document.createElement("textarea");
-  fallback.value = value;
-  fallback.setAttribute("readonly", "readonly");
-  fallback.style.position = "fixed";
-  fallback.style.top = "-9999px";
-  fallback.style.opacity = "0";
-  document.body.appendChild(fallback);
-  fallback.select();
-  const copied = document.execCommand("copy");
-  document.body.removeChild(fallback);
-  return copied;
-}
-
-function errorConfigTarget(key = "", error = {}) {
-  const text = `${key} ${error?.path || ""} ${error?.code || ""} ${error?.message || ""}`.toLowerCase();
-  if (/codegraph|repo|scan|source/.test(text)) return "codegraph_root";
-  if (/doc|mineru|parse|ingest/.test(text)) return "document_output_dir";
-  if (/memory|vault|obsidian/.test(text)) return "memory_vault";
-  if (/channel|approval|send/.test(text)) return "channel_targets";
-  if (/avatar|live2d/.test(text)) return "avatar_assets";
-  if (/database|postgres/.test(text)) return "database";
-  if (/license/.test(text)) return "license";
-  if (/agent|chat|model|command/.test(text)) return "model_gateway";
-  if (/settings|config/.test(text)) return "model_gateway";
-  return "";
-}
-
-function configStatusItem(id) {
-  return (state.configStatus?.config_status?.items || []).find((item) => item.id === id) || null;
-}
-
-function configChecklistStep(id) {
-  return (state.configStatus?.config_status?.checklist?.steps || []).find((step) => step.id === id || (id === "document_output_dir" && step.id === "documents")) || null;
-}
-
-function configRepairGuide(key = "", error = {}) {
-  const target = errorConfigTarget(key, error);
-  const checklist = state.configStatus?.config_status?.checklist || {};
-  const item = configStatusItem(target);
-  const step = configChecklistStep(target);
-  const command = (checklist.commands || [])[0] || "python -m src.hermes config-status";
-  if (!target) {
-    return {
-      target: "runtime",
-      fix: "Open Settings, refresh checks, then use the visible blocker list to repair the missing runtime.",
-      verify: command,
-    };
-  }
-  if (target === "model_gateway") {
-    return {
-      target,
-      fix: "Set BAIRUI_MODEL_BASE_URL, BAIRUI_MODEL_API_KEY, and BAIRUI_MODEL_NAME, then refresh Settings.",
-      verify: command,
-    };
-  }
-  if (target === "channel_targets") {
-    return {
-      target,
-      fix: "Configure BAIRUI_CHANNEL_TARGETS_JSON only for owner-reviewed targets. This still creates approvals only; will_send=false.",
-      verify: command,
-    };
-  }
-  const path = item?.fields?.path || step?.detail || "";
-  return {
-    target,
-    fix: path ? `Create or configure ${target}: ${path}` : step?.detail || "Open Settings and complete the mapped configuration item.",
-    verify: command,
-  };
-}
-
-function productErrorGuide(error, key = "") {
-  const path = error?.path || "";
-  const status = error?.status || "";
-  const raw = error?.message || "Action failed.";
-  const code = error?.code || "";
-  const repair = configRepairGuide(key, error);
-  const guide = {
-    title: "Action needs attention",
-    summary: raw,
-    reason: "The backend returned an error before completing the requested action.",
-    next: "Review the visible configuration and try again after the missing input is fixed.",
-    fix: repair.fix,
-    verify: repair.verify,
-    safety: "No external send or long-term memory write was completed.",
-    technical: [path, status ? `HTTP ${status}` : "", code, repair.target ? `config=${repair.target}` : "", raw].filter(Boolean).join(" | "),
-  };
-  if (status === 400 || code === "invalid_request" || /required/i.test(raw)) {
-    guide.title = "Required input is missing";
-    guide.reason = "The action did not have all required fields.";
-    guide.next = "Fill the highlighted path, id, message, decision, or prompt field, then run the action again.";
-  }
-  if (status === 401 && code === "owner_token_required") {
-    guide.title = "Owner token required";
-    guide.reason = "The server is in owner-gated mode and refused a write API request without the local owner token.";
-    guide.next = "Open Settings, save the owner token for this browser, then retry the action.";
-    guide.fix = "Use the Owner token for this browser field. The token is sent as X-Bairui-Owner-Token and is never included in exports.";
-    guide.verify = "Open Settings and refresh /config/status; owner_gate should be configured.";
-    guide.safety = "No write action was completed before owner authorization.";
-  }
-  if (status === 404 || code === "not_found" || /not found/i.test(raw)) {
-    guide.title = "Record was not found";
-    guide.reason = "The selected item no longer exists or the page is using an outdated reference.";
-    guide.next = "Refresh this screen, select the item again, then retry.";
-  }
-  if (status === 503 || code === "missing_config" || /missing_config|disabled|not configured/i.test(raw)) {
-    guide.title = "Runtime is not configured";
-    guide.reason = "A required local runtime, model, channel, parser, or path is missing.";
-    guide.next = "Open Activation or Settings, complete the mapped missing_config item, then return here.";
-    guide.fix = repair.fix;
-    guide.verify = repair.verify;
-  }
-  if (status === 409 || /already/i.test(raw)) {
-    guide.title = "Already reviewed";
-    guide.reason = "This review item has already been handled.";
-    guide.next = "Refresh the queue and open the latest review record.";
-  }
-  if (status === 409 && code === "confirmation_required") {
-    guide.title = "Dangerous change needs confirmation";
-    guide.reason = "The requested configuration touches admin-level or restart-sensitive fields.";
-    guide.next = "Type the exact confirmation phrase shown in Settings, then save again.";
-    guide.fix = "Review dangerous_fields, type APPLY BAIRUI CONFIG, and retry only if this is an intentional owner action.";
-    guide.safety = "The backend did not save the high-risk configuration because confirmation was missing.";
-  }
-  if (key.startsWith("codegraph")) {
-    guide.next = "Register a source repository, select it, scan it, then run query or impact again.";
-    guide.fix = "Open CodeGraph, register the repository path, run Scan, then retry the query or impact action.";
-    guide.verify = "python -m src.hermes codegraph status";
-    guide.safety = "CodeGraph reads source structure only and does not write long-term memory.";
-  }
-  if (key.startsWith("doc") || key === "documents") {
-    guide.next = "Check the document path and selected ingest session, then advance the workbench one step.";
-    guide.fix = "Open Documents, confirm the local input path exists, then run Next Step or Run Until Blocked.";
-    guide.verify = "python -m src.hermes document parse status";
-    guide.safety = "Document parsing may create candidates, but memory still requires owner review.";
-  }
-  if (key.startsWith("channel")) {
-    guide.next = "Check channel target diagnostics, message text, media type, and attachment path.";
-    guide.fix = "Open Channels, inspect target diagnostics, then create or review the approval draft.";
-    guide.verify = "python -m src.hermes channels diagnostics";
-    guide.safety = "Channel actions only create approval records; will_send remains false.";
-  }
-  if (key.startsWith("demo")) {
-    guide.next = "Run Seed Demo first if resources are empty, then run Demo Flow again.";
-    guide.fix = "Open Dashboard and run Seed Demo, then Run Demo Flow. If configuration is blocked, copy the Settings checklist.";
-    guide.verify = ".\\scripts\\smoke-test.ps1 -FullAcceptance";
-    guide.safety = "Demo Flow verifies approvals without sending externally or writing memory automatically.";
-  }
-  return guide;
-}
-
-function renderProductError(key) {
-  const detail = state.errorDetails[key];
-  if (!detail) return "";
-  return `
-    <div class="product-error" role="alert">
-      <div class="step-title"><span>${escapeHtml(detail.title)}</span>${pill("blocked", "needs action")}</div>
-      <p>${escapeHtml(detail.summary)}</p>
-      <div class="error-guide-grid">
-        <div><span>Why</span><strong>${escapeHtml(detail.reason)}</strong></div>
-        <div><span>Next</span><strong>${escapeHtml(detail.next)}</strong></div>
-        <div><span>Fix</span><strong>${escapeHtml(detail.fix)}</strong></div>
-        <div><span>Verify</span><strong>${escapeHtml(detail.verify)}</strong></div>
-        <div><span>Safety</span><strong>${escapeHtml(detail.safety)}</strong></div>
-      </div>
-      <p class="muted mono compact-copy">${escapeHtml(detail.technical)}</p>
-    </div>`;
-}
-
-function renderRail() {
-  el.rail.innerHTML = screens
-    .map(
-      ([id, label, icon]) => `
-        <button class="nav-btn ${state.screen === id ? "active" : ""}" type="button" data-screen="${id}" title="${label}">
-          <span class="nav-icon">${icon}</span>
-          <span class="nav-label">${label}</span>
-        </button>`,
-    )
-    .join("");
-  el.rail.querySelectorAll("[data-screen]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      state.screen = button.dataset.screen;
-      persistUiState();
-      render();
-      await refreshScreenData();
-    });
-  });
-}
-
-function renderTopbar() {
-  const health = state.health?.status || "loading";
-  const ready = state.ready?.status || "partial";
-  const runtime = state.readiness?.runtime_readiness?.status || "loading";
-  const eventCount = state.events.length || state.audit.length || 0;
-  el.topbar.innerHTML = [
-    pill(health, `health ${health}`),
-    pill(ready, `ready ${ready}`),
-    pill(runtime, `runtime ${runtime}`),
-    `<span class="status-pill">events ${eventCount}</span>`,
-  ].join("");
-  el.commandMeta.textContent = state.contract ? `contract ${state.contract.contract_version || "loaded"}` : "contract loading";
-  el.avatarState.textContent = state.avatarStatus?.avatar?.status || state.avatarManifest?.avatar_manifest?.engine?.status || "idle";
-}
-
-function setScreenHead(title, kicker = "bairui") {
-  el.title.textContent = title;
-  el.kicker.textContent = kicker;
-  el.actions.innerHTML = "";
-}
-
-function renderActivation() {
-  disposeActivationThreeCore();
-  setScreenHead("bairui 激活", "生产启动");
-  const flow = state.contract?.activation_flow || [];
-  const selected = flow.find((step) => step.id === state.selectedStep) || flow[0];
-  if (!state.selectedStep && selected) state.selectedStep = selected.id;
-  const selectedState = inferStepState(selected || {});
-  const targetScreen = activationTargetScreen(selected?.id || "");
-  el.actions.innerHTML = `
-    <button class="ghost-btn" type="button" id="refresh-activation">刷新状态</button>
-    <button class="primary-btn" type="button" id="open-activation-target" ${!targetScreen ? "disabled" : ""}>处理当前步骤</button>`;
-  el.body.innerHTML = `
-    ${renderActivationModeSelector()}
-    <div class="activation-layout">
-      <section class="panel pad">
-        <h2 class="panel-title">激活步骤</h2>
-        ${renderActivationProgress(flow)}
-        <div class="step-list">
-          ${flow
-            .map((step) => {
-              const stepState = inferStepState(step);
-              return `
-                <button class="step-item ${selected?.id === step.id ? "active" : ""}" type="button" data-step="${step.id}">
-                  <div class="step-title">
-                    <span>${escapeHtml(step.title)}</span>
-                    ${pill(stepState)}
-                  </div>
-                  <div class="step-copy">${escapeHtml(step.complete_when || "")}</div>
-                  <div class="agent-meta">
-                    ${(step.read || []).slice(0, 3).map((path) => `<span class="chip mono">${escapeHtml(path)}</span>`).join("")}
-                  </div>
-                </button>`;
-            })
-            .join("") || `<div class="empty-state">Backend contract is loading.</div>`}
-        </div>
-      </section>
-      ${renderActivationCoreStage(flow, selected)}
-      <section class="panel pad">
-        <h2 class="panel-title">${escapeHtml(selected?.title || "激活详情")}</h2>
-        <div class="agent-meta">${pill(selectedState)}<span class="chip">${escapeHtml(selected?.blocking ? "blocking" : "guided")}</span></div>
-        <p class="muted">${escapeHtml(selected?.complete_when || "加载后端契约后检查激活状态。")}</p>
-        ${renderActivationModeNextStep(selected)}
-        ${renderActivationEvidence(selected?.id || "")}
-        ${renderActivationDiagnostics(selected, selectedState)}
-        ${renderActivationRepairCard(selected, selectedState, targetScreen)}
-        ${renderActivationStepOperations(selected, selectedState, targetScreen)}
-        <div class="grid">
-          ${(selected?.read || []).map((path) => `<span class="status-pill">${escapeHtml(path)}</span>`).join("")}
-        </div>
-        ${renderActivationAction(selected)}
-        <hr class="rule">
-        ${renderReadinessBlockers()}
-      </section>
-    </div>`;
-  el.body.querySelectorAll("[data-step]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.selectedStep = button.dataset.step;
-      persistUiState();
-      renderActivation();
-    });
-  });
-  el.body.querySelectorAll("[data-activation-mode]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const mode = button.dataset.activationMode || "server_production";
-      if (!activationDeploymentModes().some((item) => item.id === mode)) return;
-      state.activationMode = mode;
-      persistUiState();
-      renderActivation();
-    });
-  });
-  document.getElementById("refresh-activation")?.addEventListener("click", refresh);
-  document.getElementById("open-activation-target")?.addEventListener("click", async () => {
-    if (!targetScreen) return;
-    state.screen = targetScreen;
-    persistUiState();
-    render();
-    await refreshScreenData();
-  });
-  document.getElementById("activation-run-action")?.addEventListener("click", () => runActivationStepAction(selected));
-  bindActivationCoreInteractions();
-  initActivationThreeCore(flow, selected);
-}
-
-function activationDeploymentModes() {
-  return [
-    {
-      id: "server_production",
-      title: "服务器 / 域名生产环境",
-      badge: "推荐",
-      detail: "适合正式交付客户：服务器可访问，域名或内网解析已准备，启用 owner token、PostgreSQL、运行时健康检查和审计日志。",
-      checks: ["服务器地址", "域名解析", "PostgreSQL", "owner token", "运行时 readiness"],
-      settingsHint: "进入设置后优先填写模型网关、PostgreSQL、数据目录、渠道目标和 owner token。",
-    },
-    {
-      id: "local_production",
-      title: "本地生产环境",
-      badge: "内网",
-      detail: "适合公司内网或单机长期运行：服务只在本机或局域网开放，路径必须落在受控工作目录，仍然保留审计和显式审批。",
-      checks: ["本机服务", "本地路径", "模型网关", "知识库目录", "审计日志"],
-      settingsHint: "进入设置后优先确认文档输出目录、长期记忆目录、Avatar 资源目录和模型网关。",
-    },
-    {
-      id: "local_trial",
-      title: "本地试用 / 演示",
-      badge: "快速",
-      detail: "适合演示和功能验收：先跑通界面、命令、文档、记忆审核和 Avatar 状态，不默认开放真实外发渠道。",
-      checks: ["试用配置", "演示数据", "模型探针", "文档解析", "外发关闭"],
-      settingsHint: "进入设置后只填最小模型配置和本地目录；渠道发送保持 will_send=false。",
-    },
-  ];
-}
-
-function selectedActivationMode() {
-  return activationDeploymentModes().find((mode) => mode.id === state.activationMode) || activationDeploymentModes()[0];
-}
-
-function renderActivationModeSelector() {
-  const current = selectedActivationMode();
-  return `
-    <section class="panel pad activation-mode-panel" aria-label="选择 bairui 激活方式">
-      <div class="activation-mode-head">
-        <div>
-          <span class="section-label">第一步</span>
-          <h2 class="panel-title">先选择激活方式</h2>
-          <p class="muted compact-copy">这里决定后续检查口径：本地、服务器域名、试用演示的配置要求不一样。选好后再进入下面的技术步骤。</p>
-        </div>
-        <div class="activation-mode-current">
-          <span>当前模式</span>
-          <strong>${escapeHtml(current.title)}</strong>
-        </div>
-      </div>
-      <div class="activation-mode-grid">
-        ${activationDeploymentModes()
-          .map(
-            (mode) => `
-              <button class="activation-mode-card ${mode.id === current.id ? "active" : ""}" type="button" data-activation-mode="${escapeHtml(mode.id)}">
-                <span class="activation-mode-badge">${escapeHtml(mode.badge)}</span>
-                <strong>${escapeHtml(mode.title)}</strong>
-                <p>${escapeHtml(mode.detail)}</p>
-                <div class="agent-meta">
-                  ${mode.checks.map((check) => `<span class="chip">${escapeHtml(check)}</span>`).join("")}
-                </div>
-              </button>`,
-          )
-          .join("")}
-      </div>
-    </section>`;
-}
-
-function renderActivationModeNextStep(selected) {
-  const mode = selectedActivationMode();
-  const target = selected?.id ? activationTargetScreen(selected.id) : "settings";
-  const targetLabel = target ? screens.find(([id]) => id === target)?.[1] || target : "设置";
-  return `
-    <div class="activation-mode-next">
-      <span>当前激活方式</span>
-      <strong>${escapeHtml(mode.title)}</strong>
-      <p>${escapeHtml(mode.settingsHint)}</p>
-      <p class="muted compact-copy">当前步骤完成后进入 ${escapeHtml(targetLabel)}，继续处理缺失配置、探针验证或审批边界。</p>
-    </div>`;
-}
-
-function renderActivationCoreStage(flow, selected) {
-  const steps = activationCoreSteps(flow);
-  const selectedId = selected?.id || steps[0]?.id || "loading";
-  const selectedState = selected ? inferStepState(selected) : "partial";
-  const camera = activationCoreCameraState(selectedId);
-  const ready = steps.filter((step) => inferStepState(step) === "ready").length;
-  const blocked = steps.filter((step) => ["blocked", "missing_config", "failed", "error"].includes(inferStepState(step))).length;
-  const review = steps.filter((step) => ["needs_review", "approval_required", "pending_review"].includes(inferStepState(step))).length;
-  const summary = state.readiness?.runtime_readiness?.summary || "diagnostic startup";
-  return `
-    <section class="panel activation-core-stage" aria-label="bairui activation system core">
-      <div class="activation-core-head">
-        <div>
-          <span class="section-label">bairui core</span>
-          <strong>${escapeHtml(selected?.title || "Activation")}</strong>
-        </div>
-        ${pill(selectedState)}
-      </div>
-      <div class="activation-core-viewport" data-core-viewport style="--core-base-x: ${camera.x}; --core-base-y: ${camera.y}; --core-focus-z: ${camera.z};">
-        <canvas
-          class="activation-three-canvas"
-          data-activation-three
-          data-selected-step="${escapeHtml(selectedId)}"
-          aria-label="bairui activation 3D readiness core"
-        ></canvas>
-        <div class="activation-three-overlay" aria-hidden="true">
-          <span>${escapeHtml(selectedState)}</span>
-          <strong>${escapeHtml(selected?.title || "Activation")}</strong>
-        </div>
-        <div class="activation-cinema-hint" aria-hidden="true">
-          <span>drag orbit</span>
-          <span>wheel zoom</span>
-          <span>click node</span>
-        </div>
-        <div class="activation-core-shell is-${escapeHtml(activationCoreStateClass(selectedState))}" data-core-shell>
-          <div class="activation-core-ring ring-outer" aria-hidden="true"></div>
-          <div class="activation-core-ring ring-inner" aria-hidden="true"></div>
-          <div class="activation-core-grid" aria-hidden="true"></div>
-          <div class="activation-core-brand">
-            <strong>bairui</strong>
-            <span>${escapeHtml(selectedState)}</span>
-          </div>
-          ${steps.map((step, index) => renderActivationCoreLayer(step, index, steps.length, selectedId)).join("")}
-        </div>
-      </div>
-      <div class="activation-core-footer">
-        <div><span>Ready</span><strong>${escapeHtml(String(ready))}</strong></div>
-        <div><span>Review</span><strong>${escapeHtml(String(review))}</strong></div>
-        <div><span>Blocked</span><strong>${escapeHtml(String(blocked))}</strong></div>
-      </div>
-      <p class="activation-core-summary">${escapeHtml(summary)}</p>
-    </section>`;
-}
-
-function initActivationThreeCore(flow, selected) {
-  const canvas = el.body.querySelector("[data-activation-three]");
-  if (!canvas) return;
-  const viewport = el.body.querySelector("[data-core-viewport]");
-  const steps = activationCoreSteps(flow);
-  const selectedId = selected?.id || steps[0]?.id || "loading";
-  const selectedIndex = Math.max(
-    0,
-    steps.findIndex((step) => step.id === selectedId),
-  );
-  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-  const renderer = new THREE.WebGLRenderer({
-    canvas,
-    alpha: true,
-    antialias: true,
-    powerPreference: "high-performance",
-    preserveDrawingBuffer: true,
-  });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.shadowMap.enabled = true;
-  renderer.setClearColor(0x02070c, 0.18);
-
-  const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x061018, 0.058);
-  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 120);
-  camera.position.set(0, 1.4, 9.2);
-  camera.lookAt(0, 0, 0);
-
-  const postScene = new THREE.Scene();
-  const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const postMaterial = createActivationPostMaterial();
-  const postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMaterial);
-  postScene.add(postQuad);
-  const renderTarget = new THREE.WebGLRenderTarget(1, 1, {
-    colorSpace: THREE.SRGBColorSpace,
-    samples: 2,
-  });
-  postMaterial.uniforms.tDiffuse.value = renderTarget.texture;
-  scene.add(new THREE.AmbientLight(0x8fd7ff, 0.56));
-
-  const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
-  keyLight.position.set(4, 5, 6);
-  keyLight.castShadow = true;
-  scene.add(keyLight);
-  const rimLight = new THREE.PointLight(0x35e6c7, 4.8, 24);
-  rimLight.position.set(-4.2, 2.4, 4.8);
-  scene.add(rimLight);
-  const warningLight = new THREE.PointLight(0xf6c85f, 1.8, 18);
-  warningLight.position.set(4, -1.2, 2.2);
-  scene.add(warningLight);
-
-  const root = new THREE.Group();
-  scene.add(root);
-
-  const cameraRig = {
-    baseZ: 9.2,
-    baseY: 1.4,
-    focus: new THREE.Vector3(0, 0.08, 0),
-    targetFocus: new THREE.Vector3(0, 0.08, 0),
-  };
-
-  const particleGeometry = new THREE.BufferGeometry();
-  const particleCount = 260;
-  const particlePositions = new Float32Array(particleCount * 3);
-  const particleColors = new Float32Array(particleCount * 3);
-  const particlePalette = [0x35e6c7, 0x67a8ff, 0xf6c85f, 0x5ef0a4];
-  for (let index = 0; index < particleCount; index += 1) {
-    const radius = 4.6 + Math.random() * 3.2;
-    const angle = Math.random() * Math.PI * 2;
-    const height = (Math.random() - 0.5) * 4.2;
-    particlePositions[index * 3] = Math.cos(angle) * radius;
-    particlePositions[index * 3 + 1] = height;
-    particlePositions[index * 3 + 2] = Math.sin(angle) * radius * 0.72;
-    const color = new THREE.Color(particlePalette[index % particlePalette.length]);
-    particleColors[index * 3] = color.r;
-    particleColors[index * 3 + 1] = color.g;
-    particleColors[index * 3 + 2] = color.b;
-  }
-  particleGeometry.setAttribute("position", new THREE.BufferAttribute(particlePositions, 3));
-  particleGeometry.setAttribute("color", new THREE.BufferAttribute(particleColors, 3));
-  const particleField = new THREE.Points(
-    particleGeometry,
-    new THREE.PointsMaterial({
-      size: 0.035,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.42,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
-  );
-  root.add(particleField);
-
-  const coreMaterial = new THREE.MeshStandardMaterial({
-    color: 0x0b1820,
-    emissive: 0x0c4b52,
-    emissiveIntensity: 1.08,
-    metalness: 0.72,
-    roughness: 0.12,
-    transparent: true,
-    opacity: 0.84,
-  });
-  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.02, 5), coreMaterial);
-  core.castShadow = true;
-  core.receiveShadow = true;
-  root.add(core);
-
-  const fresnelCore = new THREE.Mesh(
-    new THREE.SphereGeometry(1.18, 96, 48),
-    createActivationFresnelMaterial(0x35e6c7, 0x67a8ff),
-  );
-  fresnelCore.renderOrder = 2;
-  root.add(fresnelCore);
-
-  const glassShell = new THREE.Mesh(
-    new THREE.SphereGeometry(1.32, 72, 36),
-    new THREE.MeshPhysicalMaterial({
-      color: 0xa8fff0,
-      emissive: 0x0b6c68,
-      emissiveIntensity: 0.24,
-      metalness: 0.05,
-      roughness: 0.04,
-      clearcoat: 1,
-      clearcoatRoughness: 0.08,
-      transparent: true,
-      opacity: 0.18,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
-  );
-  root.add(glassShell);
-
-  const coreWire = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.08, 3)),
-    new THREE.LineBasicMaterial({ color: 0xa8fff0, transparent: true, opacity: 0.34 }),
-  );
-  root.add(coreWire);
-
-  const coreAura = createActivationGlowSprite(0x35e6c7, 0.24, 4.2);
-  coreAura.position.set(0, 0.04, -0.18);
-  root.add(coreAura);
-
-  const lensAura = createActivationGlowSprite(0x67a8ff, 0.13, 7.6);
-  lensAura.position.set(-0.42, 0.18, -0.8);
-  root.add(lensAura);
-
-  const apertureGroup = new THREE.Group();
-  root.add(apertureGroup);
-  const apertureBlades = Array.from({ length: 9 }, (_, index) => {
-    const blade = new THREE.Mesh(
-      new THREE.BoxGeometry(0.035, 0.9, 0.012),
-      new THREE.MeshBasicMaterial({
-        color: index % 3 === 0 ? 0x67a8ff : 0x35e6c7,
-        transparent: true,
-        opacity: 0.22,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-    );
-    const angle = (Math.PI * 2 * index) / 9;
-    blade.position.set(Math.cos(angle) * 1.74, Math.sin(angle) * 1.74, -0.08);
-    blade.rotation.z = angle;
-    apertureGroup.add(blade);
-    return blade;
-  });
-
-  const innerGlow = new THREE.Mesh(
-    new THREE.SphereGeometry(0.68, 48, 24),
-    new THREE.MeshBasicMaterial({ color: 0x35e6c7, transparent: true, opacity: 0.14 }),
-  );
-  root.add(innerGlow);
-
-  const verticalBeam = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.34, 1.08, 5.8, 64, 1, true),
-    new THREE.MeshBasicMaterial({
-      color: 0x35e6c7,
-      transparent: true,
-      opacity: 0.07,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    }),
-  );
-  verticalBeam.position.y = 0.18;
-  root.add(verticalBeam);
-
-  const scanPlane = new THREE.Mesh(
-    new THREE.RingGeometry(1.42, 4.62, 160),
-    new THREE.MeshBasicMaterial({
-      color: 0x67a8ff,
-      transparent: true,
-      opacity: 0.12,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    }),
-  );
-  scanPlane.rotation.x = Math.PI / 2;
-  root.add(scanPlane);
-
-  const floor = new THREE.GridHelper(9.4, 28, 0x35e6c7, 0x16384a);
-  floor.position.y = -1.9;
-  floor.material.transparent = true;
-  floor.material.opacity = 0.22;
-  floor.rotation.x = 0.02;
-  scene.add(floor);
-
-  const starGate = new THREE.Group();
-  starGate.position.z = -1.8;
-  root.add(starGate);
-  const starGateRings = [5.4, 6.2, 7.1].map((radius, index) => {
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(radius, 0.01, 8, 220),
-      new THREE.MeshBasicMaterial({
-        color: index === 1 ? 0x67a8ff : 0x35e6c7,
-        transparent: true,
-        opacity: index === 0 ? 0.1 : 0.07,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-    );
-    ring.rotation.x = Math.PI / 2.18;
-    ring.rotation.z = index * 0.42;
-    starGate.add(ring);
-    return ring;
-  });
-
-  const bokehField = createActivationBokehField();
-  bokehField.position.z = -2.8;
-  root.add(bokehField);
-
-  const orbitGroup = new THREE.Group();
-  root.add(orbitGroup);
-  const ringSpecs = [
-    [2.4, 0x35e6c7, Math.PI / 2.5, 0.28, 0.24],
-    [3.08, 0x67a8ff, Math.PI / 2.04, -0.54, 0.2],
-    [3.78, 0xf6c85f, Math.PI / 2.18, 0.95, 0.12],
-    [4.32, 0xff5c7a, Math.PI / 2.8, -1.2, 0.1],
-  ];
-  const rings = ringSpecs.map(([radius, color, x, z, opacity]) => {
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(radius, 0.014, 10, 180),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity }),
-    );
-    ring.rotation.x = x;
-    ring.rotation.z = z;
-    orbitGroup.add(ring);
-    return ring;
-  });
-
-  const pickables = [];
-  const activeEnergyPaths = [];
-  const nodes = steps.map((step, index) => {
-    const status = step?.id === "loading" ? "partial" : inferStepState(step);
-    const statusColor = activationThreeColor(status);
-    const isActive = step.id === selectedId;
-    const angle = (Math.PI * 2 * index) / Math.max(steps.length, 1) - Math.PI / 2;
-    const radius = 3.1 + (index % 3) * 0.28;
-    const y = Math.sin(index * 1.7) * 0.52;
-    const group = new THREE.Group();
-    group.userData = { id: step.id, active: isActive };
-    const material = new THREE.MeshStandardMaterial({
-      color: statusColor,
-      emissive: statusColor,
-      emissiveIntensity: isActive ? 2.9 : 1.2,
-      metalness: 0.34,
-      roughness: 0.22,
-    });
-    const node = new THREE.Mesh(new THREE.SphereGeometry(isActive ? 0.24 : 0.17, 36, 18), material);
-    node.userData = { id: step.id, angle, radius, y, active: isActive, baseScale: isActive ? 1.26 : 1 };
-    node.castShadow = true;
-    group.add(node);
-
-    const nodeFresnel = new THREE.Mesh(
-      new THREE.SphereGeometry(isActive ? 0.32 : 0.22, 36, 18),
-      createActivationFresnelMaterial(statusColor, 0xffffff, isActive ? 0.42 : 0.22),
-    );
-    nodeFresnel.userData = { id: step.id, active: isActive };
-    group.add(nodeFresnel);
-
-    const cap = createActivationGlowSprite(statusColor, isActive ? 0.36 : 0.22, isActive ? 1.34 : 0.86);
-    cap.position.z = 0.04;
-    cap.userData = { id: step.id, active: isActive };
-    group.add(cap);
-
-    const halo = new THREE.Mesh(
-      new THREE.TorusGeometry(isActive ? 0.48 : 0.34, 0.008, 8, 96),
-      new THREE.MeshBasicMaterial({ color: statusColor, transparent: true, opacity: isActive ? 0.46 : 0.2 }),
-    );
-    halo.userData = { id: step.id, active: isActive };
-    group.add(halo);
-
-    if (isActive) {
-      const profile = activationCoreRuntimeProfile(step.id || "");
-      const label = createActivationThreeLabel(profile?.display_name || step.title || step.id || "Activation", status, statusColor);
-      label.position.set(0, 0.72, 0.1);
-      label.userData = { id: step.id, active: true };
-      group.add(label);
-    }
-
-    group.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius * 0.68);
-    group.lookAt(0, y * 0.25, 0);
-    orbitGroup.add(group);
-
-    const lineGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), group.position.clone()]);
-    const line = new THREE.Line(
-      lineGeometry,
-      new THREE.LineBasicMaterial({ color: statusColor, transparent: true, opacity: isActive ? 0.42 : 0.16 }),
-    );
-    orbitGroup.add(line);
-
-    if (isActive) {
-      const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(group.position.x * 0.36, 0.78, group.position.z * 0.36),
-        new THREE.Vector3(group.position.x * 0.72, -0.24, group.position.z * 0.72),
-        group.position.clone(),
-      ]);
-      const energyPath = new THREE.Mesh(
-        new THREE.TubeGeometry(curve, 80, 0.018, 8, false),
-        new THREE.MeshBasicMaterial({
-          color: statusColor,
-          transparent: true,
-          opacity: 0.5,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-        }),
-      );
-      energyPath.userData = { activeStepId: step.id };
-      orbitGroup.add(energyPath);
-      activeEnergyPaths.push(energyPath);
-    }
-
-    pickables.push(node, cap, halo);
-    return { group, node, nodeFresnel, cap, halo, line, status, id: step.id, angle };
-  });
-
-  const pointer = { x: 0, y: 0, zoom: 0 };
-  const target = { x: 0, y: 0, zoom: 0 };
-  const drag = { active: false, x: 0, y: 0, moved: false };
-  const raycaster = new THREE.Raycaster();
-  const mouse = new THREE.Vector2();
-  const selectedAngle = nodes[selectedIndex]?.angle ?? -Math.PI / 2;
-  const baseRotationY = Math.PI / 2 - selectedAngle;
-  const selectedNode = nodes[selectedIndex];
-  if (selectedNode) {
-    cameraRig.targetFocus.set(
-      Math.cos(selectedNode.angle) * 0.62,
-      0.12,
-      Math.sin(selectedNode.angle) * 0.32,
-    );
-  }
-  let frame = 0;
-  let width = 0;
-  let height = 0;
-
-  function resize() {
-    const rect = canvas.getBoundingClientRect();
-    width = Math.max(1, Math.floor(rect.width));
-    height = Math.max(1, Math.floor(rect.height));
-    renderer.setSize(width, height, false);
-    renderTarget.setSize(width, height);
-    postMaterial.uniforms.uResolution.value.set(width, height);
-    camera.aspect = width / height;
-    cameraRig.baseZ = width < 440 ? 10.8 : 9.4;
-    cameraRig.baseY = width < 440 ? 1.24 : 1.46;
-    camera.position.z = cameraRig.baseZ;
-    camera.position.y = cameraRig.baseY;
-    camera.updateProjectionMatrix();
-    renderer.render(scene, camera);
-  }
-
-  const resizeObserver = new ResizeObserver(resize);
-  resizeObserver.observe(canvas);
-  resize();
-
-  function pointerEventPoint(event) {
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: (event.clientX - rect.left) / Math.max(rect.width, 1),
-      y: (event.clientY - rect.top) / Math.max(rect.height, 1),
-    };
-  }
-
-  function onPointerMove(event) {
-    const point = pointerEventPoint(event);
-    if (drag.active) {
-      const dx = event.clientX - drag.x;
-      const dy = event.clientY - drag.y;
-      if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
-      target.x += dx * 0.006;
-      target.y = Math.max(-0.52, Math.min(0.52, target.y + dy * 0.003));
-      drag.x = event.clientX;
-      drag.y = event.clientY;
-      return;
-    }
-    target.x = (point.x - 0.5) * 0.34;
-    target.y = (point.y - 0.5) * 0.22;
-    mouse.x = point.x * 2 - 1;
-    mouse.y = -(point.y * 2 - 1);
-    raycaster.setFromCamera(mouse, camera);
-    const hit = raycaster.intersectObjects(pickables, false)[0];
-    if (viewport) viewport.classList.toggle("is-picking-core", Boolean(hit));
-  }
-
-  function onPointerLeave() {
-    if (!drag.active) {
-      target.x = 0;
-      target.y = 0;
-    }
-    if (viewport) viewport.classList.remove("is-picking-core");
-  }
-
-  function onPointerDown(event) {
-    drag.active = true;
-    drag.x = event.clientX;
-    drag.y = event.clientY;
-    drag.moved = false;
-    canvas.setPointerCapture?.(event.pointerId);
-  }
-
-  function onPointerUp(event) {
-    drag.active = false;
-    canvas.releasePointerCapture?.(event.pointerId);
-    if (drag.moved) return;
-    const point = pointerEventPoint(event);
-    mouse.x = point.x * 2 - 1;
-    mouse.y = -(point.y * 2 - 1);
-    raycaster.setFromCamera(mouse, camera);
-    const hit = raycaster.intersectObjects(pickables, false)[0];
-    const stepId = hit?.object?.userData?.id;
-    if (!stepId || stepId.startsWith("loading")) return;
-    state.selectedStep = stepId;
-    persistUiState();
-    renderActivation();
-  }
-
-  function onWheel(event) {
-    event.preventDefault();
-    target.zoom = Math.max(-1.2, Math.min(1.1, target.zoom + Math.sign(event.deltaY) * 0.22));
-  }
-
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerleave", onPointerLeave);
-  canvas.addEventListener("pointerdown", onPointerDown);
-  canvas.addEventListener("pointerup", onPointerUp);
-  canvas.addEventListener("wheel", onWheel, { passive: false });
-
-  function animate(time = 0) {
-    pointer.x += (target.x - pointer.x) * 0.08;
-    pointer.y += (target.y - pointer.y) * 0.08;
-    pointer.zoom += (target.zoom - pointer.zoom) * 0.1;
-    cameraRig.focus.lerp(cameraRig.targetFocus, 0.035);
-    root.rotation.y = baseRotationY + pointer.x + time * 0.00008;
-    root.rotation.x = -0.22 + pointer.y;
-    camera.position.x = Math.sin(time * 0.00028) * 0.18 + pointer.x * 0.26;
-    camera.position.y = cameraRig.baseY + Math.sin(time * 0.00021) * 0.08 - pointer.y * 0.24;
-    camera.position.z = cameraRig.baseZ + pointer.zoom + Math.cos(time * 0.00024) * 0.16;
-    camera.lookAt(cameraRig.focus);
-    core.rotation.y += 0.0052;
-    core.rotation.x += 0.002;
-    fresnelCore.rotation.y -= 0.0022;
-    fresnelCore.rotation.x += 0.0011;
-    fresnelCore.material.uniforms.uTime.value = time * 0.001;
-    glassShell.rotation.y -= 0.0018;
-    glassShell.rotation.x += 0.0009;
-    apertureGroup.rotation.z -= 0.0016;
-    apertureBlades.forEach((blade, index) => {
-      blade.material.opacity = 0.12 + Math.sin(time * 0.0018 + index) * 0.06;
-    });
-    starGate.rotation.z += 0.00055;
-    starGateRings.forEach((ring, index) => {
-      ring.rotation.z += index % 2 ? -0.0012 : 0.0016;
-      ring.material.opacity = 0.055 + Math.sin(time * 0.0013 + index) * 0.024;
-    });
-    bokehField.rotation.y -= 0.00032;
-    coreWire.rotation.copy(core.rotation);
-    innerGlow.scale.setScalar(1 + Math.sin(time * 0.002) * 0.055);
-    verticalBeam.rotation.y += 0.003;
-    verticalBeam.material.opacity = 0.055 + Math.sin(time * 0.0021) * 0.018;
-    scanPlane.position.y = -0.9 + (Math.sin(time * 0.0014) + 1) * 0.78;
-    scanPlane.rotation.z += 0.004;
-    scanPlane.material.opacity = 0.07 + Math.sin(time * 0.0022) * 0.035;
-    coreAura.material.opacity = 0.2 + Math.sin(time * 0.0018) * 0.055;
-    lensAura.material.opacity = 0.1 + Math.sin(time * 0.0012) * 0.035;
-    particleField.rotation.y += 0.0007;
-    particleField.rotation.x = Math.sin(time * 0.00045) * 0.045;
-    floor.rotation.z += 0.00018;
-    rings.forEach((ring, index) => {
-      ring.rotation.z += index % 2 ? -0.0024 : 0.0028;
-    });
-    activeEnergyPaths.forEach((path, index) => {
-      path.material.opacity = 0.38 + Math.sin(time * 0.004 + index) * 0.14;
-      path.scale.setScalar(1 + Math.sin(time * 0.0025 + index) * 0.02);
-    });
-    nodes.forEach(({ group, node, nodeFresnel, cap, halo, line }, index) => {
-      const pulse = 1 + Math.sin(time * 0.003 + index) * (node.userData.active ? 0.16 : 0.07);
-      node.scale.setScalar(node.userData.baseScale * pulse);
-      nodeFresnel.scale.setScalar((node.userData.active ? 1.18 : 1) * (1 + Math.sin(time * 0.0022 + index) * 0.08));
-      nodeFresnel.material.uniforms.uTime.value = time * 0.001 + index;
-      cap.scale.setScalar((node.userData.active ? 1.12 : 1) * pulse);
-      halo.rotation.z += node.userData.active ? 0.018 : 0.008;
-      halo.scale.setScalar(1 + Math.sin(time * 0.0025 + index) * 0.13);
-      cap.material.opacity = (node.userData.active ? 0.32 : 0.18) + Math.sin(time * 0.002 + index) * 0.05;
-      group.position.y += Math.sin(time * 0.0016 + index) * 0.0009;
-      line.material.opacity = node.userData.active ? 0.42 + Math.sin(time * 0.003) * 0.08 : 0.16;
-    });
-    postMaterial.uniforms.uTime.value = time * 0.001;
-    postMaterial.uniforms.uBoost.value = 0.74 + Math.sin(time * 0.0012) * 0.05 + Math.abs(pointer.x) * 0.08;
-    renderer.setRenderTarget(renderTarget);
-    renderer.render(scene, camera);
-    renderer.setRenderTarget(null);
-    renderer.render(postScene, postCamera);
-    if (!reduceMotion) frame = requestAnimationFrame(animate);
-  }
-
-  renderer.setRenderTarget(renderTarget);
-  renderer.render(scene, camera);
-  renderer.setRenderTarget(null);
-  renderer.render(postScene, postCamera);
-  if (!reduceMotion) frame = requestAnimationFrame(animate);
-
-  activationThreeCore = {
-    canvas,
-    renderer,
-    scene,
-    resizeObserver,
-    frame,
-    dispose() {
-      if (frame) cancelAnimationFrame(frame);
-      resizeObserver.disconnect();
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerleave", onPointerLeave);
-      canvas.removeEventListener("pointerdown", onPointerDown);
-      canvas.removeEventListener("pointerup", onPointerUp);
-      canvas.removeEventListener("wheel", onWheel);
-      scene.traverse((object) => {
-        if (object.geometry) object.geometry.dispose();
-        if (object.material) {
-          const materials = Array.isArray(object.material) ? object.material : [object.material];
-          materials.forEach((material) => {
-            if (material.map) material.map.dispose();
-            material.dispose();
-          });
-        }
-      });
-      postQuad.geometry.dispose();
-      postMaterial.dispose();
-      renderTarget.dispose();
-      renderer.dispose();
-    },
-  };
-}
-
-function activationCoreSteps(flow) {
-  if (flow.length) return flow;
-  return [
-    { id: "loading_contract", title: "Contract", status: "checking", complete_when: "Backend contract is loading." },
-    { id: "loading_health", title: "Health", status: "checking", complete_when: "Health probe is waiting for contract data." },
-    { id: "loading_config", title: "Config", status: "partial", complete_when: "Configuration state will appear after contract load." },
-    { id: "loading_runtime", title: "Runtime", status: "checking", complete_when: "Runtime readiness is loading." },
-    { id: "loading_review", title: "Review", status: "partial", complete_when: "Owner review gates remain closed until loaded." },
-  ];
-}
-
-function createActivationPostMaterial() {
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      tDiffuse: { value: null },
-      uResolution: { value: new THREE.Vector2(1, 1) },
-      uTime: { value: 0 },
-      uBoost: { value: 0.75 },
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = vec4(position.xy, 0.0, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D tDiffuse;
-      uniform vec2 uResolution;
-      uniform float uTime;
-      uniform float uBoost;
-      varying vec2 vUv;
-
-      float random(vec2 value) {
-        return fract(sin(dot(value, vec2(12.9898, 78.233))) * 43758.5453);
-      }
-
-      void main() {
-        vec2 uv = vUv;
-        vec2 center = uv - 0.5;
-        float dist = length(center);
-        vec2 aberration = center * 0.0045 * smoothstep(0.16, 0.78, dist);
-
-        vec3 base;
-        base.r = texture2D(tDiffuse, uv + aberration).r;
-        base.g = texture2D(tDiffuse, uv).g;
-        base.b = texture2D(tDiffuse, uv - aberration).b;
-
-        vec2 texel = 1.0 / max(uResolution, vec2(1.0));
-        vec3 glow = vec3(0.0);
-        glow += texture2D(tDiffuse, uv + texel * vec2(0.0, 2.0)).rgb;
-        glow += texture2D(tDiffuse, uv + texel * vec2(0.0, -2.0)).rgb;
-        glow += texture2D(tDiffuse, uv + texel * vec2(2.0, 0.0)).rgb;
-        glow += texture2D(tDiffuse, uv + texel * vec2(-2.0, 0.0)).rgb;
-        glow += texture2D(tDiffuse, uv + texel * vec2(3.0, 3.0)).rgb;
-        glow += texture2D(tDiffuse, uv + texel * vec2(-3.0, -3.0)).rgb;
-        glow /= 6.0;
-
-        float luminance = dot(glow, vec3(0.2126, 0.7152, 0.0722));
-        vec3 bloom = glow * smoothstep(0.14, 0.78, luminance) * (0.72 + uBoost * 0.46);
-        float vignette = smoothstep(0.98, 0.24, dist);
-        float scanline = sin((uv.y * uResolution.y + uTime * 34.0) * 1.65) * 0.006;
-        float grain = (random(uv * uResolution + uTime * 37.0) - 0.5) * 0.012;
-        vec3 grade = vec3(0.98, 1.08, 1.1);
-        vec3 color = (base + bloom) * grade;
-        color += scanline + grain;
-        color *= 0.82 + vignette * 0.34;
-        color = color / (color + vec3(1.0));
-        color = pow(color, vec3(0.72));
-        gl_FragColor = vec4(color, 1.0);
-      }
-    `,
-  });
-}
-
-function createActivationGlowSprite(color, opacity, scale) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 256;
-  const context = canvas.getContext("2d");
-  const accent = new THREE.Color(color);
-  const gradient = context.createRadialGradient(128, 128, 0, 128, 128, 128);
-  const rgb = `${Math.round(accent.r * 255)}, ${Math.round(accent.g * 255)}, ${Math.round(accent.b * 255)}`;
-  gradient.addColorStop(0, `rgba(255, 255, 255, ${Math.min(0.92, opacity + 0.42)})`);
-  gradient.addColorStop(0.18, `rgba(${rgb}, ${opacity})`);
-  gradient.addColorStop(0.52, `rgba(${rgb}, ${opacity * 0.28})`);
-  gradient.addColorStop(1, `rgba(${rgb}, 0)`);
-  context.fillStyle = gradient;
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: texture,
-      transparent: true,
-      opacity,
-      depthWrite: false,
-      depthTest: false,
-      blending: THREE.AdditiveBlending,
-    }),
-  );
-  sprite.scale.set(scale, scale, 1);
-  return sprite;
-}
-
-function createActivationFresnelMaterial(edgeColor, fillColor, opacity = 0.34) {
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      uEdgeColor: { value: new THREE.Color(edgeColor) },
-      uFillColor: { value: new THREE.Color(fillColor) },
-      uOpacity: { value: opacity },
-      uTime: { value: 0 },
-    },
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    vertexShader: `
-      varying vec3 vNormal;
-      varying vec3 vViewPosition;
-      void main() {
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        vNormal = normalize(normalMatrix * normal);
-        vViewPosition = -mvPosition.xyz;
-        gl_Position = projectionMatrix * mvPosition;
-      }
-    `,
-    fragmentShader: `
-      uniform vec3 uEdgeColor;
-      uniform vec3 uFillColor;
-      uniform float uOpacity;
-      uniform float uTime;
-      varying vec3 vNormal;
-      varying vec3 vViewPosition;
-      void main() {
-        vec3 viewDir = normalize(vViewPosition);
-        float rim = 1.0 - max(dot(viewDir, normalize(vNormal)), 0.0);
-        float pulse = 0.74 + sin(uTime * 1.8) * 0.12;
-        float fresnel = pow(rim, 2.35) * pulse;
-        float scan = smoothstep(0.48, 0.52, fract((vNormal.y + uTime * 0.18) * 7.0)) * 0.12;
-        vec3 color = mix(uFillColor, uEdgeColor, fresnel + scan);
-        float alpha = clamp((fresnel * 0.88 + scan + 0.04) * uOpacity * 2.4, 0.0, 0.92);
-        gl_FragColor = vec4(color, alpha);
-      }
-    `,
-  });
-}
-
-function createActivationBokehField() {
-  const geometry = new THREE.BufferGeometry();
-  const count = 110;
-  const positions = new Float32Array(count * 3);
-  const colors = new Float32Array(count * 3);
-  const sizes = new Float32Array(count);
-  for (let index = 0; index < count; index += 1) {
-    const angle = Math.random() * Math.PI * 2;
-    const radius = 3.8 + Math.random() * 5.8;
-    positions[index * 3] = Math.cos(angle) * radius;
-    positions[index * 3 + 1] = (Math.random() - 0.5) * 5.6;
-    positions[index * 3 + 2] = Math.sin(angle) * radius * 0.6;
-    const color = new THREE.Color(index % 5 === 0 ? 0xf6c85f : index % 3 === 0 ? 0x67a8ff : 0x35e6c7);
-    colors[index * 3] = color.r;
-    colors[index * 3 + 1] = color.g;
-    colors[index * 3 + 2] = color.b;
-    sizes[index] = 0.04 + Math.random() * 0.12;
-  }
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
-  return new THREE.Points(
-    geometry,
-    new THREE.PointsMaterial({
-      size: 0.09,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.34,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
-  );
-}
-
-function createActivationThreeLabel(text, status, color) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 448;
-  canvas.height = 128;
-  const context = canvas.getContext("2d");
-  const accent = new THREE.Color(color);
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = "rgba(7, 10, 15, 0.68)";
-  roundRect(context, 18, 22, canvas.width - 36, 84, 42);
-  context.fill();
-  context.strokeStyle = `rgba(${Math.round(accent.r * 255)}, ${Math.round(accent.g * 255)}, ${Math.round(accent.b * 255)}, 0.72)`;
-  context.lineWidth = 3;
-  roundRect(context, 18, 22, canvas.width - 36, 84, 42);
-  context.stroke();
-  context.fillStyle = "rgba(234, 242, 248, 0.92)";
-  context.font = "600 28px Inter, Arial, sans-serif";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText(clampActivationLabel(text), canvas.width / 2, 54);
-  context.fillStyle = `rgba(${Math.round(accent.r * 255)}, ${Math.round(accent.g * 255)}, ${Math.round(accent.b * 255)}, 0.88)`;
-  context.font = "500 16px ui-monospace, SFMono-Regular, Consolas, monospace";
-  context.fillText(String(status || "pending").toUpperCase(), canvas.width / 2, 84);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: texture,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-      depthTest: false,
-    }),
-  );
-  sprite.scale.set(1.32, 0.38, 1);
-  return sprite;
-}
-
-function clampActivationLabel(text) {
-  const value = String(text || "Activation").trim();
-  return value.length > 18 ? `${value.slice(0, 17)}...` : value;
-}
-
-function roundRect(context, x, y, width, height, radius) {
-  const r = Math.min(radius, width / 2, height / 2);
-  context.beginPath();
-  context.moveTo(x + r, y);
-  context.arcTo(x + width, y, x + width, y + height, r);
-  context.arcTo(x + width, y + height, x, y + height, r);
-  context.arcTo(x, y + height, x, y, r);
-  context.arcTo(x, y, x + width, y, r);
-  context.closePath();
-}
-
-function disposeActivationThreeCore() {
-  if (!activationThreeCore) return;
-  activationThreeCore.dispose();
-  activationThreeCore = null;
-}
-
-function activationThreeColor(status) {
-  const stateClass = activationCoreStateClass(status);
-  if (stateClass === "ready") return 0x5ef0a4;
-  if (stateClass === "blocked") return 0xff5c7a;
-  if (stateClass === "review") return 0xf6c85f;
-  if (stateClass === "checking") return 0x67a8ff;
-  return 0x35e6c7;
-}
-
-function renderActivationCoreLayer(step, index, total, selectedId) {
-  const status = step?.id === "loading" ? "partial" : inferStepState(step);
-  const className = activationCoreStateClass(status);
-  const angle = total ? Math.round((360 / total) * index - 90) : -90;
-  const depth = index % 2 ? 42 : 70;
-  const isActive = step.id === selectedId;
-  const profile = activationCoreRuntimeProfile(step.id || "");
-  const label = profile?.display_name || step.title || step.id || "Activation";
-  const context = profile ? step.title || profile.name || "" : status;
-  const detail = profile?.display_detail || step.complete_when || status;
-  return `
-    <button
-      class="activation-core-layer is-${escapeHtml(className)} ${isActive ? "active" : ""}"
-      type="button"
-      data-core-step="${escapeHtml(step.id || "")}"
-      data-runtime="${escapeHtml(profile?.name || "")}"
-      style="--layer-angle: ${angle}deg; --layer-depth: ${depth}px;"
-      aria-label="${escapeHtml(`Select ${label}`)}"
-      ${step.id === "loading" ? "disabled" : ""}
-    >
-      <span class="activation-core-node" aria-hidden="true"></span>
-      <span class="activation-core-layer-copy">
-        <strong>${escapeHtml(label)}</strong>
-        <small>${escapeHtml(context)} · ${escapeHtml(status)}</small>
-        <em>${escapeHtml(customerSafeRuntimeText(detail))}</em>
-      </span>
-    </button>`;
-}
-
-function activationCoreRuntimeProfile(stepId) {
-  const map = {
-    runtime_health: "everos_memory",
-    document_runtime: "mineru_document_parse",
-    memory_review: "everos_memory",
-    channels: "bairui_agents",
-    avatar: "bairui_avatar_runtime",
-    codegraph: "bairui_codegraph",
-  };
-  const runtimeName = map[stepId];
-  if (!runtimeName) return null;
-  return (state.readiness?.runtime_readiness?.items || []).find((item) => item.name === runtimeName) || null;
-}
-
-function activationCoreStateClass(status) {
-  if (["ready", "completed", "configured", "done"].includes(status)) return "ready";
-  if (["blocked", "missing_config", "failed", "error"].includes(status)) return "blocked";
-  if (["needs_review", "approval_required", "pending_review"].includes(status)) return "review";
-  if (["loading", "checking", "running", "thinking"].includes(status)) return "checking";
-  return "partial";
-}
-
-function activationCoreCameraState(stepId) {
-  return (
-    {
-      brand_lock: { x: "0deg", y: "0deg", z: "24px" },
-      runtime_health: { x: "4deg", y: "-12deg", z: "30px" },
-      license_and_platform: { x: "-4deg", y: "18deg", z: "32px" },
-      model_gateway: { x: "2deg", y: "34deg", z: "42px" },
-      document_runtime: { x: "3deg", y: "-30deg", z: "38px" },
-      memory_review: { x: "-12deg", y: "8deg", z: "52px" },
-      reports_and_sources: { x: "-8deg", y: "-16deg", z: "36px" },
-      channels: { x: "6deg", y: "28deg", z: "46px" },
-      avatar: { x: "10deg", y: "-38deg", z: "50px" },
-      codegraph: { x: "-10deg", y: "42deg", z: "48px" },
-    }[stepId] || { x: "0deg", y: "0deg", z: "24px" }
-  );
-}
-
-function bindActivationCoreInteractions() {
-  const viewport = el.body.querySelector("[data-core-viewport]");
-  if (!viewport) return;
-  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-  el.body.querySelectorAll("[data-core-step]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (!button.dataset.coreStep) return;
-      state.selectedStep = button.dataset.coreStep;
-      persistUiState();
-      renderActivation();
-    });
-  });
-  if (reduceMotion) return;
-  viewport.addEventListener("pointermove", (event) => {
-    const box = viewport.getBoundingClientRect();
-    const x = ((event.clientX - box.left) / box.width - 0.5) * 10;
-    const y = ((event.clientY - box.top) / box.height - 0.5) * -8;
-    viewport.style.setProperty("--core-pointer-y", `${x.toFixed(2)}deg`);
-    viewport.style.setProperty("--core-pointer-x", `${y.toFixed(2)}deg`);
-  });
-  viewport.addEventListener("pointerleave", () => {
-    viewport.style.setProperty("--core-pointer-y", "0deg");
-    viewport.style.setProperty("--core-pointer-x", "0deg");
-  });
-}
-
-function inferStepState(step) {
-  if (!state.readiness) return "partial";
-  const capabilities = Object.fromEntries(state.capabilities.map((item) => [item.name, item.status]));
-  const runtimeItems = Object.fromEntries((state.readiness.runtime_readiness?.items || []).map((item) => [item.name, item.status]));
-  if (step?.id === "brand_lock") {
-    return state.contract?.brand?.name === "bairui" && state.contract?.visibility_policy?.public_brand === "bairui" ? "ready" : "blocked";
-  }
-  if (step?.id === "model_gateway") return capabilities.model_gateway || "missing_config";
-  if (step?.id === "document_runtime") return lookupStatus(runtimeItems, "document_parse") || lookupStatus(capabilities, "document_parse") || "missing_config";
-  if (step?.blocking && state.readiness.runtime_readiness?.blockers?.length) return "blocked";
-  if (step?.id === "memory_review") return (state.memoryQueue?.pending_count || 0) > 0 ? "needs_review" : "ready";
-  if (step?.id === "reports_and_sources") return state.reports.length || state.sourceRefs.length ? "ready" : "partial";
-  if (step?.id === "channels") return state.channels?.channels?.status || "missing_config";
-  if (step?.id === "avatar") return state.avatarStatus?.avatar?.status || state.avatarManifest?.avatar_manifest?.engine?.status || "missing_config";
-  if (step?.id === "codegraph") return runtimeItems.bairui_codegraph || state.codegraph?.codegraph?.status || "missing_config";
-  return "ready";
-}
-
-function activationTargetScreen(stepId) {
-  return (
-    {
-      runtime_health: "dashboard",
-      license_and_platform: "settings",
-      model_gateway: "settings",
-      document_runtime: "documents",
-      memory_review: "memory",
-      reports_and_sources: "reports",
-      channels: "channels",
-      avatar: "avatar",
-      codegraph: "codegraph",
-      brand_lock: "dashboard",
-    }[stepId] || ""
-  );
-}
-
-function activationConfigTarget(stepId) {
-  return (
-    {
-      license_and_platform: "license",
-      model_gateway: "model_gateway",
-      document_runtime: "document_output_dir",
-      channels: "channel_targets",
-      avatar: "avatar_assets",
-      codegraph: "codegraph_root",
-    }[stepId] || ""
-  );
-}
-
-function activationRepairDetail(step, stepState, targetScreen) {
-  const stepId = step?.id || "";
-  const target = activationConfigTarget(stepId);
-  const item = configStatusItem(target);
-  const checklist = state.configStatus?.config_status?.checklist || {};
-  const stepRepair = configChecklistStep(target);
-  const command = (checklist.commands || [])[0] || "python -m src.hermes config-status";
-  if (target === "model_gateway") {
-    return {
-      title: "Set model gateway env",
-      target,
-      status: item?.status || stepState || "missing_config",
-      fix: "Set BAIRUI_MODEL_BASE_URL, BAIRUI_MODEL_API_KEY, and BAIRUI_MODEL_NAME, then run the probe.",
-      verify: command,
-    };
-  }
-  if (target === "channel_targets") {
-    return {
-      title: "Prepare owner-reviewed channel targets",
-      target,
-      status: item?.status || stepState || "missing_config",
-      fix: "Set BAIRUI_CHANNEL_TARGETS_JSON only for approved targets. Activation still shows will_send=false.",
-      verify: "python -m src.hermes channels diagnostics",
-    };
-  }
-  if (target) {
-    const path = item?.fields?.path || stepRepair?.detail || "";
-    return {
-      title: `Check ${target}`,
-      target,
-      status: item?.status || stepState || "partial",
-      fix: path ? `Create or configure this path: ${path}` : stepRepair?.detail || "Refresh Settings and follow the generated deployment checklist.",
-      verify: command,
-    };
-  }
-  return {
-    title: stepState === "ready" ? "Evidence is healthy" : "Continue guided setup",
-    target: targetScreen || "workflow",
-    status: stepState || "partial",
-    fix: targetScreen ? `Open ${screens.find(([id]) => id === targetScreen)?.[1] || targetScreen} and complete the visible next action.` : "Refresh Activation and inspect runtime blockers.",
-    verify: command,
-  };
-}
-
-function renderActivationProgress(flow) {
-  if (!flow.length) return "";
-  const states = flow.map((step) => inferStepState(step));
-  const ready = states.filter((status) => status === "ready").length;
-  const needsReview = states.filter((status) => status === "needs_review").length;
-  const blocked = states.filter((status) => ["blocked", "missing_config"].includes(status)).length;
-  const percent = Math.round((ready / flow.length) * 100);
-  return `
-    <div class="activation-progress" aria-label="Activation progress">
-      <div class="conversation-head">
-        <div>
-          <span class="section-label">启动就绪</span>
-          <strong>${ready}/${flow.length}</strong>
-        </div>
-        <div class="agent-meta">
-          ${pill("ready", `${ready} 就绪`)}
-          ${pill(needsReview ? "needs_review" : "ready", `${needsReview} 待审核`)}
-          ${pill(blocked ? "blocked" : "ready", `${blocked} 阻塞`)}
-        </div>
-      </div>
-      <div class="activation-progress-track"><span style="width: ${Math.max(0, Math.min(100, percent))}%"></span></div>
-    </div>`;
-}
-
-function renderActivationRepairCard(step, stepState, targetScreen) {
-  if (!step) return "";
-  const repair = activationRepairDetail(step, stepState, targetScreen);
-  return `
-    <div class="activation-repair-card">
-      <div>
-        <span>修复目标</span>
-        <strong>${escapeHtml(repair.title)}</strong>
-        <p>${escapeHtml(repair.fix)}</p>
-      </div>
-      <div>
-        <span>映射配置</span>
-        ${pill(repair.status || "partial")}
-        <p>${escapeHtml(repair.target || "workflow")}</p>
-      </div>
-      <div>
-        <span>验证命令</span>
-        <strong>${escapeHtml(repair.verify)}</strong>
-        <p>命令返回 ready 或 partial 且不再出现必需阻塞后，刷新激活页。</p>
-      </div>
-    </div>`;
-}
-
-function lookupStatus(map, fragment) {
-  const key = Object.keys(map || {}).find((name) => name.includes(fragment));
-  return key ? map[key] : "";
-}
-
-function renderActivationEvidence(stepId) {
-  const db = state.ready?.database || state.platform?.heartbeat?.database || {};
-  const license = state.license?.license || {};
-  const heartbeat = state.platform?.heartbeat || {};
-  const model = state.capabilities.find((item) => item.name === "model_gateway") || {};
-  const document = state.runtimeStatus.document?.document_parse || {};
-  const memoryPending = state.memoryQueue?.pending_count || 0;
-  const channelStatus = state.channels?.channels || {};
-  const avatarStatus = state.avatarStatus?.avatar_state || state.avatarStatus?.avatar || {};
-  const avatarEngine = state.avatarManifest?.avatar_manifest?.engine || {};
-  const codegraphStatus = state.codegraph?.codegraph || state.runtimeStatus.codegraph?.codegraph || {};
-  const reportsCount = state.reports.length;
-  const sourcesCount = state.sourceRefs.length;
-  const base = [
-    ["Health", state.health?.status || "loading", state.health?.version || "service pending"],
-    ["Database", db.status || "missing_config", db.error || db.detail || "PostgreSQL readiness"],
-    ["License", license.status || state.ready?.license || "missing_config", license.error || license.license_id || license.path || "license file"],
-    ["Platform", heartbeat.health_status || state.ready?.platform || "missing_config", heartbeat.server_id || state.ready?.server_id || "server id pending"],
-  ];
-  const extras = {
-    runtime_health: [
-      ["Runtime", state.readiness?.runtime_readiness?.status || "partial", state.readiness?.runtime_readiness?.summary || "runtime readiness pending"],
-      ["Blockers", state.readiness?.runtime_readiness?.blockers?.length || 0, "required blockers visible before use"],
-    ],
-    license_and_platform: [
-      ["Audit", state.audit.length ? "ready" : "partial", `${state.audit.length} audit events loaded`],
-      ["Server", heartbeat.server_id || state.ready?.server_id || "missing_config", heartbeat.protocol_version || "heartbeat protocol pending"],
-    ],
-    model_gateway: [["Model Gateway", model.status || "missing_config", state.activationProbe?.detail || model.detail || "Run probe to verify /chat."]],
-    document_runtime: [
-      ["Document Parser", document.status || "missing_config", document.detail || "parser runtime status"],
-      ["Workbench", state.documentSessions.length ? "ready" : "partial", `${state.documentSessions.length} ingest sessions loaded`],
-    ],
-    memory_review: [
-      ["Pending Review", memoryPending ? "needs_review" : "ready", `${memoryPending} memory candidates need owner decision`],
-      ["Reviews", state.memoryReviews.length ? "ready" : "partial", `${state.memoryReviews.length} review records loaded`],
-    ],
-    reports_and_sources: [
-      ["Reports", reportsCount ? "ready" : "partial", `${reportsCount} report objects loaded`],
-      ["Sources", sourcesCount ? "ready" : "partial", `${sourcesCount} source references loaded`],
-    ],
-    channels: [
-      ["Channels", channelStatus.status || "missing_config", channelStatus.detail || "approval-bound outbound planning"],
-      ["Approvals", state.channelApprovals.length ? "needs_review" : "ready", `${state.channelApprovals.length} approval records loaded; will_send=false`],
-    ],
-    avatar: [
-      ["Avatar State", avatarStatus.state || avatarStatus.status || "idle", state.activationAction?.detail || "browser state layer"],
-      ["Avatar Engine", avatarEngine.status || "missing_config", avatarEngine.package || "renderer package pending"],
-    ],
-    codegraph: [
-      ["CodeGraph", codegraphStatus.status || "missing_config", codegraphStatus.memory_boundary || "source structure stays separate from memory"],
-      ["Repositories", state.codegraphRepos.length ? "ready" : "partial", `${state.codegraphRepos.length} registered source repositories`],
-    ],
-  };
-  return `
-    <div class="activation-evidence">
-      ${[...base, ...(extras[stepId] || [])]
-        .map(
-          ([label, status, detail]) => `
-            <div class="evidence-card">
-              <span>${escapeHtml(label)}</span>
-              ${pill(status)}
-              <p>${escapeHtml(detail)}</p>
-            </div>`,
-        )
-        .join("")}
-    </div>`;
-}
-
-function renderActivationDiagnostics(step, stepState) {
-  if (!step) return "";
-  const next = activationNextAction(step.id, stepState);
-  const counts = {
-    reads: (step.read || []).length,
-    actions: step.action ? 1 : 0,
-    blockers: state.readiness?.runtime_readiness?.blockers?.length || 0,
-    warnings: state.readiness?.runtime_readiness?.warnings?.length || 0,
-  };
-  return `
-    <div class="activation-diagnostics">
-      ${renderCountStrip(counts)}
-      <div class="activation-next">
-        <span>下一步</span>
-        <strong>${escapeHtml(next.title)}</strong>
-        <p>${escapeHtml(next.detail)}</p>
-      </div>
-    </div>`;
-}
-
-function renderActivationStepOperations(step, stepState, targetScreen) {
-  if (!step) return "";
-  const action = step.action || null;
-  const safety = activationSafetyBoundary(step.id);
-  const target = targetScreen ? screens.find(([id]) => id === targetScreen)?.[1] || targetScreen : "No linked workbench";
-  return `
-    <div class="activation-operations">
-      <div class="operation-card">
-        <span>读取项</span>
-        <strong>${escapeHtml(String((step.read || []).length))} 个状态端点</strong>
-        <p>${escapeHtml((step.read || []).join(" | ") || "未声明读取端点。")}</p>
-      </div>
-      <div class="operation-card">
-        <span>动作</span>
-        <strong>${escapeHtml(action ? `${action.method} ${action.path}` : "打开关联工作台")}</strong>
-        <p>${escapeHtml(action?.id || `继续进入 ${target}`)}</p>
-      </div>
-      <div class="operation-card">
-        <span>安全边界</span>
-        <strong>${escapeHtml(safety.title)}</strong>
-        <p>${escapeHtml(safety.detail)}</p>
-      </div>
-      <div class="operation-card">
-        <span>State</span>
-        <strong>${escapeHtml(stepState || "partial")}</strong>
-        <p>${escapeHtml(targetScreen ? `Open ${target} for the next real operation.` : "This step is verified from backend evidence only.")}</p>
-      </div>
-    </div>`;
-}
-
-function activationSafetyBoundary(stepId) {
-  const map = {
-    brand_lock: ["bairui only", "Public UI, setup copy, and contract labels must expose only bairui."],
-    runtime_health: ["diagnostic only", "Health and readiness checks do not execute external actions."],
-    license_and_platform: ["no secret echo", "License and heartbeat status are shown without exposing secret values."],
-    model_gateway: ["probe only", "The chat probe sends a minimal local readiness prompt and does not create resources."],
-    document_runtime: ["candidate gated", "Document parsing may create review candidates, but memory writes still require owner approval."],
-    memory_review: ["owner decision", "Long-term memory promotion requires explicit approve or reject decisions."],
-    reports_and_sources: ["source traceable", "Reports must keep source references visible for audit and follow-up."],
-    channels: ["will_send=false", "Channel actions create approval records only; no external send is performed here."],
-    avatar: ["state only", "Avatar activation updates local browser state; Live2D assets are not generated here."],
-    codegraph: ["memory separated", "CodeGraph indexes source structure and never auto-promotes code facts into memory."],
-  };
-  const [title, detail] = map[stepId] || ["governed", "This step uses backend contract evidence and keeps risky actions gated."];
-  return { title, detail };
-}
-
-function renderActivationAction(step) {
-  if (!step?.action) return "";
-  const isProbe = step.action.id === "send_chat_probe";
-  const isAvatarState = step.action.id === "set_avatar_state";
-  const key = isProbe ? "activation-probe" : "activation-action";
-  const loading = state.loading.has(key);
-  const probe = state.activationProbe;
-  const action = state.activationAction;
-  const error = state.errors[key];
-  const status = probe?.status || action?.status || (error ? "missing_config" : "ready");
-  const buttonLabel = isProbe ? "运行探针" : isAvatarState ? "设为空闲" : "";
-  const busyLabel = isProbe ? "探针运行中" : "执行中";
-  return `
-    <div class="activation-action-card">
-      <div class="conversation-head">
-        <div>
-          <span>动作</span>
-          <strong>${escapeHtml(step.action.method || "POST")} ${escapeHtml(step.action.path || "")}</strong>
-          <p>${escapeHtml(step.action.id || "")}</p>
-        </div>
-        ${buttonLabel ? `<button class="primary-btn mini" id="activation-run-action" type="button" ${loading ? "disabled" : ""}>${loading ? busyLabel : buttonLabel}</button>` : ""}
-      </div>
-      ${
-        (probe || action || error)
-          ? `<div class="probe-result">${pill(status)}<p>${escapeHtml(probe?.detail || action?.detail || error)}</p></div>`
-          : ""
-      }
-    </div>`;
-}
-
-async function runActivationStepAction(step) {
-  if (step?.action?.id === "set_avatar_state") {
-    await runActivationAvatarAction();
-    return;
-  }
-  if (step?.action?.id !== "send_chat_probe") return;
-  setBusy("activation-probe", true);
-  state.errors["activation-probe"] = "";
-  state.activationProbe = null;
-  render();
-  try {
-    const result = await api.post("/chat", {
-      system: "You are a bairui activation probe. Reply with a short readiness confirmation.",
-      prompt: "Confirm bairui model gateway readiness in one short sentence.",
-    });
-    const chat = result?.chat || {};
-    state.activationProbe = {
-      status: chat.status || "completed",
-      detail: [chat.provider, chat.model, chat.content || chat.error].filter(Boolean).join(" | "),
-    };
-    await refresh();
-  } catch (error) {
-    state.errors["activation-probe"] = error.message;
-    state.activationProbe = { status: "missing_config", detail: error.message };
-  } finally {
-    setBusy("activation-probe", false);
-    render();
-  }
-}
-
-async function runActivationAvatarAction() {
-  setBusy("activation-action", true);
-  state.errors["activation-action"] = "";
-  state.activationAction = null;
-  render();
-  try {
-    const result = await api.post("/avatar/state", {
-      state: "idle",
-      text: "bairui activation check",
-      audio_url: "",
-      lip_sync: false,
-    });
-    const next = result?.avatar_state || {};
-    state.activationAction = {
-      status: next.status || "accepted",
-      detail: `Avatar state accepted: ${next.state || "idle"}`,
-    };
-    state.avatarStatus = next.state ? { avatar_state: next, avatar: { status: next.state } } : state.avatarStatus;
-    await refresh();
-  } catch (error) {
-    state.errors["activation-action"] = error.message;
-    state.activationAction = { status: "missing_config", detail: error.message };
-  } finally {
-    setBusy("activation-action", false);
-    render();
-  }
-}
-
-function activationNextAction(stepId, stepState) {
-  if (stepId === "model_gateway") {
-    if (stepState === "ready") return { title: "Run gateway probe", detail: "Send a minimal /chat request and confirm the configured model answers." };
-    return { title: "Configure model gateway", detail: "Set BAIRUI_MODEL_BASE_URL, BAIRUI_MODEL_API_KEY, and BAIRUI_MODEL_NAME, then run the probe." };
-  }
-  if (stepState === "blocked" || stepState === "missing_config") {
-    return { title: "Fix missing configuration", detail: "Open the linked workbench and complete the visible missing_config items." };
-  }
-  if (stepId === "memory_review") return { title: "Review candidates", detail: "Approve or reject pending memory candidates before promoting long-term memory." };
-  if (stepId === "channels") return { title: "Check approvals", detail: "Create or review outbound drafts; backend still records will_send=false." };
-  if (stepId === "codegraph") return { title: "Register source", detail: "Register a source repository, scan it, then query source structure separately from memory." };
-  if (stepId === "avatar") return { title: "Set avatar idle", detail: "Run the safe /avatar/state check here, then open Avatar for thinking/speaking states." };
-  return { title: "Continue", detail: "This step is connected to real status endpoints. Open the linked screen to continue setup." };
-}
-
-function renderReadinessBlockers() {
-  const blockers = state.readiness?.runtime_readiness?.blockers || [];
-  const warnings = state.readiness?.runtime_readiness?.warnings || [];
-  if (!blockers.length && !warnings.length) {
-    return `<div class="empty-state">No blocking runtime issues detected. Continue with product checks.</div>`;
-  }
-  return `
-    <div class="grid">
-      ${blockers.map((item) => `<div class="panel pad mini-card">${pill("blocked", "blocked")} <p>${escapeHtml(item)}</p></div>`).join("")}
-      ${warnings.map((item) => `<div class="panel pad mini-card">${pill("partial", "warning")} <p>${escapeHtml(item)}</p></div>`).join("")}
-    </div>`;
-}
-
-function renderDashboard() {
-  setScreenHead("Dashboard", "operational truth");
-  el.actions.innerHTML = `
-    <button class="primary-btn" id="seed-demo-data" type="button">Seed Demo</button>
-    <button class="primary-btn" id="run-demo-flow" type="button">Run Demo Flow</button>
-    <button class="ghost-btn" id="create-sample-job" type="button">Create Job</button>`;
-  const demo = state.demoSeed?.demo_seed;
-  const demoFlow = state.demoFlow?.demo_flow;
-  el.body.innerHTML = `
-    <div class="grid three">
-      <section class="panel pad">
-        <h2 class="panel-title">Readiness</h2>
-        ${pill(state.readiness?.runtime_readiness?.status || "partial")}
-        <p class="muted">${escapeHtml(state.readiness?.runtime_readiness?.summary || "Runtime readiness pending.")}</p>
-        <div class="top-gap">${renderRuntimeDiagnostics()}</div>
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Platform</h2>
-        ${pill(state.ready?.platform === "configured" ? "ready" : "missing_config", state.ready?.platform || "missing_config")}
-        <p class="muted mono">${escapeHtml(state.ready?.server_id || "server pending")}</p>
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Capabilities</h2>
-        <p class="metric">${state.capabilities.length}</p>
-        <p class="muted">runtime surfaces detected</p>
-      </section>
-    </div>
-    <section class="panel pad top-gap">
-      <div class="conversation-head">
-        <div>
-          <h2 class="panel-title">Demo walkthrough</h2>
-          <p class="muted compact-copy">Seed safe records or run the real product closure flow across Command, Reports, Memory Review, Channels, and CodeGraph.</p>
-        </div>
-        ${pill(demoFlow?.status || demo?.status || "ready", demoFlow?.status || demo?.status || "not run")}
-      </div>
-      ${renderDemoSeedState(demo)}
-      ${renderDemoFlowState(demoFlow)}
-      ${renderProductError("demo-seed")}
-      ${renderProductError("demo-flow")}
-    </section>
-    <div class="grid two top-gap">
-      <section class="panel pad">
-        <h2 class="panel-title">Jobs</h2>
-        ${renderTable(["title", "route", "status"], state.jobs.map((job) => ({ title: job.title, route: job.route, status: job.status })))}
-      </section>
-      <section class="panel pad">
-        <div class="conversation-head">
-          <h2 class="panel-title">Recent audit</h2>
-          <button class="ghost-btn mini" type="button" id="open-events-screen">Open Events</button>
-        </div>
-        ${renderAuditCards(state.audit.slice(-8).reverse())}
-      </section>
-    </div>
-    ${state.selectedEntity?.type === "job" ? renderSelectedEntityPanel() : ""}`;
-  bindEntityActions();
-  bindAuditCards();
-  document.getElementById("open-events-screen")?.addEventListener("click", async () => {
-    state.screen = "events";
-    persistUiState();
-    await refreshScreenData();
-  });
-  document.getElementById("seed-demo-data")?.addEventListener("click", async () => {
-    const result = await runAction("demo-seed", () => api.post("/demo/seed", { force: false }), refresh);
-    state.demoSeed = result || state.demoSeed;
-    if (result?.demo_seed?.status === "completed") {
-      const job = result.demo_seed.job;
-      state.selectedEntity = job ? { type: "job", title: job.title, status: job.status, ref: job.id, raw: job } : state.selectedEntity;
-      persistUiState();
-    }
-    await refresh();
-  });
-  document.getElementById("run-demo-flow")?.addEventListener("click", async () => {
-    const result = await runAction("demo-flow", () => api.post("/demo/flow", { force_seed: false }), refresh);
-    state.demoFlow = result || state.demoFlow;
-    if (result?.demo_flow?.reports?.latest) {
-      const report = result.demo_flow.reports.latest;
-      state.selectedEntity = { type: "report", title: report.title, status: report.status, ref: report.id, raw: report };
-      persistUiState();
-    }
-    await refresh();
-  });
-  document.getElementById("create-sample-job")?.addEventListener("click", async () => {
-    await runAction("job", () => api.post("/jobs", { title: "Frontend console check", prompt: "Inspect bairui dashboard state", route: "operations" }));
-  });
-}
-
-function renderDemoFlowState(flow) {
-  if (!flow) {
-    return `<div class="empty-state top-gap">Run Demo Flow to verify the full product path with real backend contracts and safe approval gates.</div>`;
-  }
-  const checkpoints = flow.checkpoints || {};
-  const counts = {
-    checkpoints: Object.values(checkpoints).filter(Boolean).length,
-    reports: flow.reports?.count || 0,
-    channel_reviews: flow.channel?.review_count || 0,
-    memory_reviews: flow.memory?.review_count || 0,
-    code_results: flow.codegraph?.query?.results?.length || 0,
-  };
-  return `
-    <div class="demo-flow-panel top-gap">
-      <div class="conversation-head">
-        <div>
-          <h3 class="sub-title">Product closure flow</h3>
-          <p class="muted compact-copy">Command -> report, memory review, channel approval, CodeGraph query, and audit marker.</p>
-        </div>
-        ${pill(flow.status || "partial")}
-      </div>
-      ${renderCountStrip(counts)}
-      <div class="agent-meta top-gap">
-        ${Object.entries(checkpoints)
-          .map(([key, ok]) => pill(ok ? "ready" : "blocked", `${key}=${ok ? "true" : "false"}`))
-          .join("")}
-      </div>
-      <div class="agent-meta top-gap">
-        ${pill(flow.channel?.plan?.will_send === false ? "ready" : "blocked", "will_send=false")}
-        ${pill(flow.memory?.will_write_long_term_memory === false ? "ready" : "blocked", "will_write_memory=false")}
-        <span class="chip">contract-bound</span>
-      </div>
-    </div>`;
-}
-
-function renderDemoSeedState(demo) {
-  const safety = demo?.audit_marker?.payload || {};
-  const counts = demo?.status === "completed"
-    ? {
-        jobs: demo.job ? 1 : 0,
-        reports: demo.report ? 1 : 0,
-        memory_candidates: demo.memory_candidate ? 1 : 0,
-        channel_drafts: demo.channel_approval ? 1 : 0,
-      }
-    : {
-        jobs: state.jobs.length,
-        reports: state.reports.length,
-        memory_candidates: state.memoryCandidates.length,
-        channel_drafts: state.channelApprovals.length,
-      };
-  return `
-    ${renderCountStrip(counts)}
-    <div class="agent-meta top-gap">
-      ${pill(safety.will_send === false ? "ready" : "partial", "will_send=false")}
-      ${pill(safety.will_write_long_term_memory === false ? "ready" : "partial", "will_write_memory=false")}
-      <span class="chip">local data only</span>
-      <span class="chip">owner review required</span>
-    </div>
-    <p class="muted compact-copy top-gap">${
-      demo?.status === "skipped"
-        ? "Demo data already exists. Existing review queues and reports remain available."
-        : "The seed action writes local demo records only. Channel drafts and memory candidates still require explicit owner review."
-    }</p>`;
-}
-
-function renderCommand() {
-  setScreenHead("Command", "multi-agent workspace");
-  const agents = state.agents.length ? state.agents : [];
-  const session = state.agentSessions.find((item) => item.id === state.selectedAgentSessionId) || state.agentSessions.at(-1);
-  if (session && !state.selectedAgentSessionId) state.selectedAgentSessionId = session.id;
-  if (!state.selectedAgentIds.length) {
-    state.selectedAgentIds = session?.agent_ids?.length ? [...session.agent_ids] : agents.map((agent) => agent.id);
-  }
-  const selectedCount = state.selectedAgentIds.length;
-  el.actions.innerHTML = `
-    <button class="ghost-btn" id="refresh-agents" type="button">Refresh</button>
-    <button class="primary-btn" id="create-agent-session" type="button">New Session (${selectedCount})</button>
-    <button class="ghost-btn" id="save-agent-title" type="button" ${!state.selectedAgentSessionId ? "disabled" : ""}>Save Title</button>
-    <button class="ghost-btn" id="append-agent-message" type="button" ${!state.selectedAgentSessionId ? "disabled" : ""}>Append Message</button>
-    <button class="ghost-btn" id="run-agent-round" type="button" ${!state.selectedAgentSessionId ? "disabled" : ""}>Run Round</button>`;
-  el.body.innerHTML = `
-    <div class="agent-layout">
-      <section class="panel pad">
-        <h2 class="panel-title">Agent roster</h2>
-        <p class="muted compact-copy">Choose the agents that join the next session. Approval agents can draft review items only.</p>
-        <div class="agent-roster">
-          ${agents.map((agent) => renderAgentRow(agent)).join("") || `<div class="empty-state">No agent roster loaded yet.</div>`}
-        </div>
-        <div class="session-stack top-gap">
-          <h3 class="section-label">Sessions</h3>
-          ${
-            state.agentSessions
-              .slice(-5)
-              .reverse()
-              .map(
-                (item) => `
-                  <button class="session-item ${item.id === state.selectedAgentSessionId ? "active" : ""}" type="button" data-agent-session="${escapeHtml(item.id)}">
-                    <span>${escapeHtml(item.title || "bairui command session")}</span>
-                    <span class="chip mono">${escapeHtml(shortId(item.id))}</span>
-                  </button>`,
-              )
-              .join("") || `<div class="empty-state">No sessions yet.</div>`
-          }
-        </div>
-      </section>
-      <section class="panel pad">
-        <div class="conversation-head">
-          <div>
-            <h2 class="panel-title">Conversation ${session ? `<span class="chip mono">${escapeHtml(shortId(session.id))}</span>` : ""}</h2>
-            <p class="muted compact-copy">${escapeHtml(session?.status || "no active session")} - ${escapeHtml(String(session?.agent_ids?.length || selectedCount || 0))} agents</p>
-          </div>
-          ${pill(state.errors["agent-round"] ? "blocked" : "ready", state.errors["agent-round"] ? "blocked" : "governed")}
-        </div>
-        ${renderAgentComposer(session, selectedCount)}
-        <div class="command-session-tools">
-          <input class="field" id="agent-session-title" placeholder="Session title" value="${escapeHtml(session?.title || "")}" ${!session ? "disabled" : ""} />
-          <div class="pager-actions">
-            <button class="ghost-btn mini" type="button" id="agent-events-prev" ${!state.agentEventsPage?.pagination?.previous_offset && state.agentEventsPage?.pagination?.previous_offset !== 0 ? "disabled" : ""}>Previous</button>
-            <span class="chip mono">${escapeHtml(agentPageLabel())}</span>
-            <button class="ghost-btn mini" type="button" id="agent-events-next" ${state.agentEventsPage?.pagination?.next_offset === null || state.agentEventsPage?.pagination?.next_offset === undefined ? "disabled" : ""}>Next</button>
-          </div>
-        </div>
-        ${renderCommandResourceClosure()}
-        ${renderProductError("agent-session")}
-        ${renderProductError("agent-title")}
-        ${renderProductError("agent-message")}
-        ${renderProductError("agent-round")}
-        ${renderProductError("agent-promote")}
-        ${renderProductError("agent-retry")}
-        <div class="conversation">
-          ${
-            state.agentEvents.length
-              ? state.agentEvents.map((event) => renderMessage(event)).join("")
-              : `<div class="empty-state">Create a session and run a round to record governed agent events.</div>`
-          }
-        </div>
-        ${renderAgentPromotionLedger()}
-      </section>
-    </div>`;
-  document.getElementById("refresh-agents")?.addEventListener("click", refreshScreenData);
-  el.body.querySelectorAll("[data-agent-toggle]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const next = new Set(state.selectedAgentIds);
-      if (input.checked) next.add(input.dataset.agentToggle);
-      else next.delete(input.dataset.agentToggle);
-      state.selectedAgentIds = [...next];
-      persistUiState();
-      renderCommand();
-    });
-  });
-  el.body.querySelectorAll("[data-agent-composer]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.agentComposerMode = button.dataset.agentComposer || "round";
-      persistUiState();
-      renderCommand();
-    });
-  });
-  el.body.querySelectorAll("[data-agent-session]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      state.selectedAgentSessionId = button.dataset.agentSession;
-      state.agentEventOffset = 0;
-      const selected = state.agentSessions.find((item) => item.id === state.selectedAgentSessionId);
-      state.selectedAgentIds = selected?.agent_ids?.length ? [...selected.agent_ids] : state.selectedAgentIds;
-      persistUiState();
-      await loadAgents();
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-promote-event]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const eventId = button.dataset.promoteEvent;
-      const target = button.dataset.promoteTarget;
-      const result = await runAction("agent-promote", () => api.post(`/agents/session/${state.selectedAgentSessionId}/promote`, { event_id: eventId, target }));
-      const promotion = result?.agent_promotion;
-      if (promotion?.created_resource) {
-        const list = state.promotionResults[eventId] || [];
-        state.promotionResults[eventId] = [...list.filter((item) => item.target !== target), promotion];
-      }
-      await loadAgents();
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-retry-event]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      await runAction("agent-retry", () => api.post(`/agents/session/${state.selectedAgentSessionId}/retry`, { event_id: button.dataset.retryEvent }), loadAgents);
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-open-promotion]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      await openPromotionResource(button.dataset.openPromotion, button.dataset.resourceId);
-    });
-  });
-  document.getElementById("save-agent-title")?.addEventListener("click", async () => {
-    const title = document.getElementById("agent-session-title")?.value || "";
-    await runAction("agent-title", () => api.post(`/agents/session/${state.selectedAgentSessionId}/title`, { title }), loadAgents);
-    render();
-  });
-  document.getElementById("append-agent-message")?.addEventListener("click", async () => {
-    const content = el.commandInput.value.trim();
-    if (!content) {
-      state.errors["agent-message"] = "message is required";
-      render();
-      return;
-    }
-    await submitAgentCommand(content, { mode: "message" });
-  });
-  document.getElementById("agent-events-prev")?.addEventListener("click", async () => {
-    const previous = state.agentEventsPage?.pagination?.previous_offset;
-    if (previous === null || previous === undefined) return;
-    state.agentEventOffset = previous;
-    await loadAgents();
-    render();
-  });
-  document.getElementById("agent-events-next")?.addEventListener("click", async () => {
-    const next = state.agentEventsPage?.pagination?.next_offset;
-    if (next === null || next === undefined) return;
-    state.agentEventOffset = next;
-    await loadAgents();
-    render();
-  });
-  document.getElementById("create-agent-session")?.addEventListener("click", async () => {
-    const result = await runAction("agent-session", () =>
-      api.post("/agents/session", {
-        title: "bairui command session",
-        agent_ids: state.selectedAgentIds.length ? state.selectedAgentIds : agents.map((agent) => agent.id),
-      }),
-    );
-    state.selectedAgentSessionId = result?.agent_session?.id || state.selectedAgentSessionId;
-    state.agentEventOffset = 0;
-    state.selectedAgentIds = result?.agent_session?.agent_ids || state.selectedAgentIds;
-    await loadAgents();
-    render();
-  });
-  document.getElementById("run-agent-round")?.addEventListener("click", async () => {
-    const promptText = el.commandInput.value.trim() || "Inspect current bairui workspace state.";
-    await submitAgentCommand(promptText, { mode: "round" });
-  });
-}
-
-function renderAgentComposer(session, selectedCount) {
-  const mode = state.agentComposerMode || "round";
-  const activeAgents = selectedAgentLabels(session).join(", ") || "selected agents";
-  return `
-    <section class="agent-composer-card" aria-label="Command composer">
-      <div>
-        <div class="section-label">Composer target</div>
-        <div class="agent-meta">
-          <span class="chip">${escapeHtml(activeAgents)}</span>
-          <span class="chip">${escapeHtml(String(selectedCount || 0))} selected</span>
-          <span class="chip">event source tracked</span>
-        </div>
-      </div>
-      <div class="composer-toggle" role="group" aria-label="Command mode">
-        <button class="ghost-btn mini ${mode === "message" ? "active" : ""}" type="button" data-agent-composer="message">Append Only</button>
-        <button class="ghost-btn mini ${mode === "round" ? "active" : ""}" type="button" data-agent-composer="round">Run Round</button>
-      </div>
-      <div class="composer-safety">
-        ${pill("ready", "no external send")}
-        ${pill("ready", "no auto memory write")}
-        ${pill(session ? "ready" : "partial", session ? "session ready" : "session will be created")}
-      </div>
-      <p class="muted compact-copy">Use the bottom command bar. Append Only records the owner message; Run Round records the owner message and calls the governed multi-agent backend.</p>
-    </section>`;
-}
-
-function agentPageLabel() {
-  const page = state.agentEventsPage?.pagination;
-  if (!page) return "events 0";
-  const start = page.total ? page.offset + 1 : 0;
-  const end = Math.min(page.offset + page.limit, page.total);
-  return `${start}-${end}/${page.total}`;
-}
-
-function agentName(agentId) {
-  return state.agents.find((agent) => agent.id === agentId)?.display_name || agentId || "Agent";
-}
-
-function agentProfile(agentId) {
-  return state.agents.find((agent) => agent.id === agentId) || {};
-}
-
-function selectedAgentLabels(session) {
-  const ids = session?.agent_ids?.length ? session.agent_ids : state.selectedAgentIds;
-  return ids.slice(0, 4).map((id) => agentName(id));
-}
-
-function renderAgentRow(agent) {
-  const selected = state.selectedAgentIds.includes(agent.id);
-  return `
-    <label class="agent-row ${selected ? "selected" : ""}">
-      <input class="agent-check" type="checkbox" data-agent-toggle="${escapeHtml(agent.id)}" ${selected ? "checked" : ""}>
-      <div class="agent-avatar">${escapeHtml(agent.avatar_initials || agent.role.slice(0, 2))}</div>
-      <div>
-        <div class="agent-name">${escapeHtml(agent.display_name)}</div>
-        <div class="agent-meta">
-          <span class="chip">${escapeHtml(agent.role)}</span>
-          <span class="chip">${escapeHtml(agent.model)}</span>
-          <span class="chip">${escapeHtml(agent.permission)}</span>
-          ${pill(agent.status)}
-        </div>
-      </div>
-    </label>`;
-}
-
-function renderMessage(event) {
-  const profile = agentProfile(event.agent_id);
-  const role = event.role || profile.role || event.agent_id || "agent";
-  const content = event.content || event.error || "";
-  const actionable = event.agent_id !== "owner" && !["missing_config", "failed", "blocked"].includes(event.status || "");
-  const retryable = ["failed", "missing_config", "blocked"].includes(event.status || "");
-  return `
-    <article class="message">
-      <div class="agent-avatar">${escapeHtml(profile.avatar_initials || role.slice(0, 2))}</div>
-      <div class="message-body">
-        <div class="message-titleline">
-          <div class="agent-name">${escapeHtml(agentName(event.agent_id))}</div>
-          <span class="chip mono">${escapeHtml(shortId(event.id))}</span>
-        </div>
-        <div class="agent-meta">
-          <span class="chip">${escapeHtml(role)}</span>
-          <span class="chip">${escapeHtml(event.model || profile.model || "")}</span>
-          <span class="chip">${escapeHtml(event.permission || profile.permission || "")}</span>
-          ${pill(event.status)}
-        </div>
-        <p>${escapeHtml(content)}</p>
-        ${
-          actionable
-            ? `<div class="message-actions">${renderPromotionAction(event, "job", "Task")}${renderPromotionAction(event, "report", "Report")}${renderPromotionAction(event, "memory_review", "Memory Review")}${renderPromotionAction(event, "channel_draft", "Channel Draft")}</div>`
-            : ""
-        }
-        ${
-          retryable
-            ? `<div class="message-actions">
-                <button class="ghost-btn mini" type="button" data-retry-event="${escapeHtml(event.id)}">Retry</button>
-              </div>`
-            : ""
-        }
-        ${renderPromotionResults(event.id)}
-      </div>
-    </article>`;
-}
-
-function renderPromotionAction(event, target, label) {
-  const promotion = promotionForEventTarget(event.id, target);
-  const resource = promotion?.created_resource || {};
-  if (resource.id) {
-    const viewLabel = promotionNextAction(promotion).button;
-    return `<button class="ghost-btn mini is-linked" type="button" data-open-promotion="${escapeHtml(resource.type)}" data-resource-id="${escapeHtml(resource.id)}">${escapeHtml(viewLabel)}</button>`;
-  }
-  return `<button class="ghost-btn mini" type="button" data-promote-event="${escapeHtml(event.id)}" data-promote-target="${escapeHtml(target)}">${escapeHtml(label)}</button>`;
-}
-
-function promotionResourceSummary(promotion) {
-  const resource = promotion?.created_resource || {};
-  const type = resource.type || promotion?.resource_type || "resource";
-  const label =
-    {
-      job: "Task",
-      report: "Report",
-      document_memory_candidate: "Memory candidate",
-      channel_approval_request: "Channel draft",
-    }[type] || type;
-  const reviewRequired = resource.review_required || promotion?.review_required;
-  const screen = promotionScreenFor(type);
-  return {
-    label,
-    type,
-    screen,
-    status: resource.status || promotion?.resource_status || promotion?.status || "planned",
-    resource_id: resource.id || promotion?.resource_id || "",
-    review_required: Boolean(reviewRequired),
-    safety: reviewRequired ? "owner review required" : "no external action",
-    source_ref: resource.source?.source_ref || promotion?.source?.source_ref || promotion?.event_id || "",
-    promotion_id: promotion?.promotion_id || promotion?.id || "",
-    duplicate: Boolean(promotion?.duplicate),
-  };
-}
-
-function promotionNextAction(promotion) {
-  const summary = promotionResourceSummary(promotion);
-  if (summary.type === "job") return { button: "Open Dashboard", detail: "Task is local and traceable from Dashboard." };
-  if (summary.type === "report") return { button: "Open Reports", detail: "Report draft is ready for review with source reference." };
-  if (summary.type === "document_memory_candidate") return { button: "Open Review Queue", detail: "Owner must approve or reject before long-term memory write." };
-  if (summary.type === "channel_approval_request") return { button: "Open Channels", detail: "Owner must review the draft; will_send=false." };
-  return { button: "Open Entity", detail: "Open the entity detail card and inspect source trace." };
-}
-
-function promotionForEventTarget(eventId, target) {
-  const transient = state.promotionResults[eventId] || [];
-  const persisted = state.agentPromotions.filter((promotion) => promotion.event_id === eventId && promotion.target === target).map(normalizeAgentPromotion);
-  return [...transient, ...persisted].at(-1) || null;
-}
-
-function renderPromotionResults(eventId) {
-  const persisted = state.agentPromotions.filter((promotion) => promotion.event_id === eventId).map(normalizeAgentPromotion);
-  const byTarget = new Map();
-  [...persisted, ...(state.promotionResults[eventId] || [])].forEach((promotion) => byTarget.set(promotion.target, promotion));
-  const results = [...byTarget.values()];
-  if (!results.length) return "";
-  return `
-    <div class="promotion-results">
-      ${results
-        .map((promotion) => {
-          const resource = promotion.created_resource || {};
-          const summary = promotionResourceSummary(promotion);
-          const next = promotionNextAction(promotion);
-          return `
-            <div class="promotion-result">
-              <div class="promotion-result-main">
-                <div class="promotion-result-head">
-                  ${pill(summary.status)}
-                  <strong>${escapeHtml(summary.label)}</strong>
-                  <span class="chip">${escapeHtml(promotion.duplicate ? "reused" : "created")}</span>
-                  <span class="chip">${escapeHtml(summary.safety)}</span>
-                </div>
-                <p>${escapeHtml(next.detail)}</p>
-                <div class="promotion-result-meta">
-                  <span class="chip mono">resource ${escapeHtml(shortId(summary.resource_id))}</span>
-                  <span class="chip mono">src ${escapeHtml(shortId(summary.source_ref))}</span>
-                  <span class="chip mono">promotion ${escapeHtml(shortId(summary.promotion_id))}</span>
-                  <span class="chip">screen ${escapeHtml(summary.screen)}</span>
-                </div>
-              </div>
-              <button class="ghost-btn mini" type="button" data-open-promotion="${escapeHtml(resource.type)}" data-resource-id="${escapeHtml(resource.id)}">${escapeHtml(next.button)}</button>
-            </div>`;
-        })
-        .join("")}
-    </div>`;
-}
-
-function renderAgentPromotionLedger() {
-  const rows = allPromotionRecords().slice(-8).reverse();
-  if (!rows.length) {
-    return `<section class="promotion-ledger top-gap"><div class="empty-state compact">Promotion ledger is empty. Promote an agent event to create a traceable resource.</div></section>`;
-  }
-  return `
-    <section class="promotion-ledger top-gap">
-      <div class="conversation-head">
-        <div>
-          <h3 class="sub-title">Promotion ledger</h3>
-          <p class="muted compact-copy">Agent event to resource trace. Memory and channel outputs still require owner review.</p>
-        </div>
-        <span class="chip mono">${escapeHtml(rows.length)} tracked</span>
-      </div>
-      <div class="promotion-ledger-list">
-        ${rows
-          .map((promotion) => {
-            const resource = promotion.created_resource || {};
-            const source = resource.source || promotion.source || {};
-            const summary = promotionResourceSummary(promotion);
-            const next = promotionNextAction(promotion);
-            return `
-              <div class="promotion-ledger-row">
-                <div class="promotion-ledger-main">
-                  <div class="agent-meta">
-                    ${pill(summary.status)}
-                    <span class="chip">${escapeHtml(summary.label)}</span>
-                    <span class="chip">${escapeHtml(promotion.target || source.target || "")}</span>
-                    <span class="chip">${escapeHtml(summary.safety)}</span>
-                    <span class="chip">${escapeHtml(summary.duplicate ? "reused" : "created")}</span>
-                    <span class="chip mono">event ${escapeHtml(shortId(summary.source_ref))}</span>
-                    <span class="chip mono">promotion ${escapeHtml(shortId(summary.promotion_id))}</span>
-                  </div>
-                  <strong>${escapeHtml(summary.label)} ${escapeHtml(shortId(summary.resource_id))}</strong>
-                  <p>${escapeHtml(next.detail)} ${escapeHtml(promotion.detail || "Promotion recorded for owner review.")}</p>
-                </div>
-                <button class="ghost-btn mini" type="button" data-open-promotion="${escapeHtml(resource.type || promotion.resource_type || "")}" data-resource-id="${escapeHtml(resource.id || promotion.resource_id || "")}">${escapeHtml(next.button)}</button>
-              </div>`;
-          })
-          .join("")}
-      </div>
-    </section>`;
-}
-
-function renderCommandResourceClosure() {
-  const rows = allPromotionRecords();
-  const counts = {
-    resources: rows.length,
-    jobs: rows.filter((item) => item.created_resource?.type === "job").length,
-    reports: rows.filter((item) => item.created_resource?.type === "report").length,
-    reviews: rows.filter((item) => item.created_resource?.review_required).length,
-    reused: rows.filter((item) => item.duplicate).length,
-  };
-  return `
-    <section class="command-resource-closure">
-      <div class="conversation-head">
-        <div>
-          <h3 class="sub-title">Resource closure</h3>
-          <p class="muted compact-copy">Every promoted agent event keeps event_id + target idempotency, source_ref, promotion_id, and owner review status visible.</p>
-        </div>
-        ${pill(rows.length ? "ready" : "partial", rows.length ? "traceable" : "no resources")}
-      </div>
-      ${renderCountStrip(counts)}
-      <div class="promotion-trace-strip">
-        <span class="chip">idempotency=event_id+target</span>
-        <span class="chip">will_execute_external_action=false</span>
-        <span class="chip">memory/channel require owner review</span>
-      </div>
-    </section>`;
-}
-
-function normalizeAgentPromotion(promotion) {
-  return {
-    target: promotion.target,
-    status: promotion.status || "planned",
-    detail: promotion.detail || "Promotion recorded for owner review.",
-    duplicate: Boolean(promotion.duplicate),
-    promotion_id: promotion.promotion_id || promotion.id || "",
-    will_execute_external_action: promotion.will_execute_external_action === true,
-    created_resource: promotion.created_resource || {
-      type: promotion.resource_type,
-      id: promotion.resource_id,
-      status: promotion.resource_status,
-      review_required: promotion.review_required,
-      source: promotion.source || {},
-    },
-  };
-}
-
-function allPromotionRecords() {
-  const byResource = new Map();
-  const persisted = state.agentPromotions.map(normalizeAgentPromotion);
-  const transient = Object.values(state.promotionResults).flat().map(normalizeAgentPromotion);
-  [...persisted, ...transient].forEach((promotion) => {
-    const resource = promotion.created_resource || {};
-    const key = `${resource.type || ""}:${resource.id || ""}:${promotion.target || ""}`;
-    if (resource.id) byResource.set(key, promotion);
-  });
-  return [...byResource.values()];
-}
-
-async function openPromotionResource(resourceType, resourceId) {
-  const target = promotionScreenFor(resourceType);
-  if (target === "dashboard") await loadDashboard();
-  if (target === "reports") await loadReports();
-  if (target === "memory") await loadMemory();
-  if (target === "channels") await loadChannels();
-  const entity = findResourceEntity(resourceType, resourceId);
-  const promotion = allPromotionRecords().find((item) => String(item.created_resource?.id || "") === String(resourceId));
-  state.selectedEntity = enrichPromotionEntity(
-    entity || {
-      type: entityTypeForResource(resourceType),
-      title: resourceType,
-      status: promotion?.created_resource?.status || "created",
-      ref: resourceId,
-      raw: { id: resourceId },
-    },
-    promotion,
-  );
-  state.screen = target;
-  persistUiState();
-  render();
-}
-
-function promotionScreenFor(resourceType) {
-  return (
-    {
-      job: "dashboard",
-      report: "reports",
-      document_memory_candidate: "memory",
-      channel_approval_request: "channels",
-    }[resourceType] || "entity"
-  );
-}
-
-function findResourceEntity(resourceType, resourceId) {
-  const collections = {
-    job: state.jobs.map((item) => ({ type: "job", title: item.title, status: item.status, ref: item.id, raw: item })),
-    report: state.reports.map((item) => ({ type: "report", title: item.title, status: item.status, ref: item.id || item.path, raw: item })),
-    source: state.sourceRefs.map((item) => ({ type: "source", title: item.title || item.source_ref || item.id, status: item.confidence || "source_ready", ref: item.source_ref || item.id, raw: item })),
-    document_memory_candidate: state.memoryCandidates.map((item) => ({ type: "memory", title: item.candidate_type, status: item.status, ref: item.id, raw: item })),
-    channel_approval_request: state.channelApprovals.map((item) => ({ type: "channel", title: item.media_kind, status: item.review_status || item.status, ref: item.id, raw: item })),
-    audit: state.audit.map((item) => ({ type: "audit", title: item.action, status: item.risk_level || "low", ref: item.id, raw: item })),
-  };
-  return (collections[resourceType] || []).find((item) => {
-    const values = [item.ref, item.raw?.id, item.raw?.path, item.raw?.source_ref, item.raw?.resource_ref].filter(Boolean).map(String);
-    return values.includes(String(resourceId));
-  });
-}
-
-function entityTypeForResource(resourceType) {
-  return (
-    {
-      document_memory_candidate: "memory",
-      channel_approval_request: "channel",
-    }[resourceType] || resourceType
-  );
-}
-
-function resourceTypeForEntityType(entityType) {
-  return (
-    {
-      memory: "document_memory_candidate",
-      channel: "channel_approval_request",
-      source: "source",
-      audit: "audit",
-    }[entityType] || entityType
-  );
-}
-
-function hydrateSelectedEntity() {
-  if (!state.selectedEntity?.type) return;
-  const ref = String(state.selectedEntity.ref || state.selectedEntity.raw?.id || state.selectedEntity.raw?.path || state.selectedEntity.raw?.source_ref || "");
-  if (!ref) return;
-  const resourceType = resourceTypeForEntityType(state.selectedEntity.type);
-  const hydrated = findResourceEntity(resourceType, ref);
-  if (!hydrated) return;
-  state.selectedEntity = { ...hydrated, title: hydrated.title || state.selectedEntity.title, status: hydrated.status || state.selectedEntity.status };
-}
-
-function enrichPromotionEntity(entity, promotion) {
-  if (!promotion?.created_resource) return entity;
-  const source = promotion.created_resource.source || {};
-  return {
-    ...entity,
-    status: entity.status || promotion.created_resource.status || promotion.status,
-    ref: entity.ref || promotion.created_resource.id,
-    raw: {
-      ...(entity.raw || {}),
-      source: entity.raw?.source || source,
-      promotion_id: entity.raw?.promotion_id || promotion.promotion_id || "",
-      promotion_status: promotion.status || "",
-      promotion_duplicate: Boolean(promotion.duplicate),
-      will_execute_external_action: promotion.will_execute_external_action === true,
-    },
-  };
-}
-
-function renderDocuments() {
-  setScreenHead("Documents", "ingest workbench");
-  const selected = state.documentSession;
-  el.actions.innerHTML = `
-    <button class="ghost-btn" id="refresh-documents" type="button">Refresh</button>
-    <button class="primary-btn" id="create-document-plan" type="button">Create Plan</button>
-    <button class="primary-btn" id="run-next-document" type="button" ${!state.selectedIngestId ? "disabled" : ""}>Run Next</button>
-    <button class="ghost-btn" id="run-until-blocked" type="button" ${!state.selectedIngestId ? "disabled" : ""}>Run Until Blocked</button>
-    <button class="ghost-btn" id="export-document-ingest-pack" type="button" ${!selected ? "disabled" : ""}>Export Ingest Pack</button>
-    <button class="ghost-btn" id="open-document-memory" type="button" ${!selected?.review_queue?.pending_count ? "disabled" : ""}>Review Memory</button>`;
-  el.body.innerHTML = `
-    ${renderCommercialTrialFlow("documents")}
-    ${renderDocumentWorkbenchCommandCenter(selected)}
-    <div class="documents-layout">
-      <section class="panel pad">
-        <h2 class="panel-title">Create ingest</h2>
-        <div class="document-plan-form">
-          <label class="form-label">Document path</label>
-          <input class="field" id="doc-input-path" placeholder="C:\\path\\to\\file.pdf" value="${escapeHtml(state.documentPlanDraft.input_path)}" />
-          <label class="form-label">Title</label>
-          <input class="field" id="doc-title" placeholder="bairui knowledge brief" value="${escapeHtml(state.documentPlanDraft.title)}" />
-          <div class="form-grid two-cols">
-            <label>
-              <span class="form-label">Backend</span>
-              <select class="field" id="doc-backend">
-                ${["", "pipeline", "vlm-transformers", "hybrid-http-client"].map((value) => `<option value="${escapeHtml(value)}" ${state.documentPlanDraft.backend === value ? "selected" : ""}>${escapeHtml(value || "auto")}</option>`).join("")}
-              </select>
-            </label>
-            <label>
-              <span class="form-label">Device</span>
-              <select class="field" id="doc-device">
-                ${["cpu", "cuda"].map((value) => `<option value="${escapeHtml(value)}" ${state.documentPlanDraft.device === value ? "selected" : ""}>${escapeHtml(value)}</option>`).join("")}
-              </select>
-            </label>
-          </div>
-          <div class="form-grid two-cols">
-            <label>
-              <span class="form-label">Language</span>
-              <input class="field" id="doc-language" placeholder="zh / en / auto" value="${escapeHtml(state.documentPlanDraft.language)}" />
-            </label>
-            <label>
-              <span class="form-label">Output directory</span>
-              <input class="field" id="doc-output-dir" placeholder="optional" value="${escapeHtml(state.documentPlanDraft.output_dir)}" />
-            </label>
-          </div>
-          <p class="muted compact-copy">Creates a local ingest plan only. Parsing and memory writes still require explicit workflow and review steps.</p>
-          ${renderProductError("documents")}
-          ${renderProductError("doc-plan")}
-          ${renderProductError("doc-next")}
-          ${renderProductError("doc-run")}
-          ${renderProductError("doc-command")}
-          ${renderProductError("doc-source-refs")}
-          ${renderProductError("doc-ingest-report")}
-          ${renderProductError("doc-ingest-export")}
-        </div>
-        <hr class="rule" />
-        <h2 class="panel-title">Ingest sessions</h2>
-        <div class="step-list">
-          ${state.documentSessions
-            .map(
-              (session) => `
-                <button class="step-item ${state.selectedIngestId === session.ingest_id ? "active" : ""}" type="button" data-ingest="${escapeHtml(session.ingest_id)}">
-                  <div class="step-title">
-                    <span>${escapeHtml(session.title)}</span>
-                    ${pill(session.current_stage || session.status)}
-                  </div>
-                  <div class="step-copy mono">${escapeHtml(shortId(session.ingest_id))} - ${escapeHtml(session.progress_percent)}%</div>
-                  ${progressBar(session.progress_percent)}
-                </button>`,
-            )
-            .join("") || `<div class="empty-state">No ingest sessions yet. Create an ingest plan from the API or CLI, then refresh.</div>`}
-        </div>
-      </section>
-      <section class="panel pad document-pipeline-panel">
-        <h2 class="panel-title">${escapeHtml(selected?.title || "Pipeline")}</h2>
-        ${
-          selected
-            ? `
-          <div class="pipeline-grid">
-            ${(selected.stages || []).map((stage) => stageCard(stage.label, stage.status)).join("")}
-          </div>
-          <div class="top-gap">${renderWarnings(selected.blockers, selected.warnings)}</div>
-          <h3 class="sub-title">Next actions</h3>
-          ${renderActionList(selected.workbench?.next_actions || (selected.primary_action ? [selected.primary_action] : []))}
-          ${renderDocumentActionResult()}
-          ${renderDocumentIngestPackSummary(selected)}
-          <div class="action-row top-gap">
-            <button class="ghost-btn" type="button" data-document-action="source-refs">Generate Source Refs</button>
-            <button class="ghost-btn" type="button" data-document-action="ingest-report">Generate Report</button>
-            <button class="ghost-btn" type="button" data-document-action="open-reports">Open Reports</button>
-            <button class="ghost-btn" type="button" data-document-action="open-memory" ${!selected.review_queue?.pending_count ? "disabled" : ""}>Open Review Queue</button>
-          </div>
-        `
-            : `<div class="empty-state">Select a session to inspect pipeline state, blockers, review queue, and report readiness.</div>`
-        }
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Session evidence</h2>
-        ${
-          selected
-            ? `
-          ${renderCountStrip(selected.counts || {})}
-          ${renderDocumentResourceRoutes(selected)}
-          <h3 class="sub-title">Latest report</h3>
-          ${
-            selected.report
-              ? `<button class="object-card button-card" type="button" data-document-report="${escapeHtml(selected.report.id || selected.report.path || "")}">
-                  ${renderObjectCardInner(selected.report, ["title", "status", "path"])}
-                </button>`
-              : `<div class="empty-state">No report generated yet. Generate source refs first, then create a report.</div>`
-          }
-          <h3 class="sub-title">Review queue</h3>
-          <div class="review-route">
-            ${selected.review_queue?.pending_count ? pill("needs_review", `${selected.review_queue.pending_count} pending`) : pill("ready", "no pending review")}
-            <button class="ghost-btn mini" type="button" data-document-action="open-memory" ${!selected.review_queue?.pending_count ? "disabled" : ""}>Review</button>
-          </div>
-        `
-            : `<div class="empty-state">Session details appear here after selection.</div>`
-        }
-      </section>
-    </div>`;
-  el.body.querySelectorAll("[data-ingest]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      state.selectedIngestId = button.dataset.ingest;
-      persistUiState();
-      await loadDocumentSession();
-      renderDocuments();
-    });
-  });
-  document.getElementById("refresh-documents")?.addEventListener("click", refreshScreenData);
-  document.getElementById("create-document-plan")?.addEventListener("click", createDocumentPlan);
-  document.getElementById("run-next-document")?.addEventListener("click", () => runDocumentStep("/document/parse/workbench-next", "doc-next"));
-  document.getElementById("run-until-blocked")?.addEventListener("click", () => runDocumentStep("/document/parse/workbench-run-until-blocked", "doc-run"));
-  document.getElementById("export-document-ingest-pack")?.addEventListener("click", exportDocumentIngestPack);
-  document.getElementById("open-document-memory")?.addEventListener("click", openDocumentMemoryReview);
-  el.body.querySelectorAll("[data-document-action]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      await runDocumentAction(button.dataset.documentAction);
-    });
-  });
-  el.body.querySelectorAll("[data-document-command]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      await runDocumentCommand(button.dataset.documentCommand);
-    });
-  });
-  el.body.querySelectorAll("[data-document-report]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      await loadReports();
-      const reportId = button.dataset.documentReport;
-      state.selectedEntity =
-        state.reports
-          .map((item) => ({ type: "report", title: item.title, status: item.status, ref: item.id || item.path, raw: item }))
-          .find((item) => String(item.ref) === String(reportId) || String(item.raw?.path) === String(reportId)) || state.selectedEntity;
-      state.screen = "reports";
-      persistUiState();
-      render();
-    });
-  });
-  bindCommercialTrialFlow();
-}
-
-function renderCommercialTrialFlow(current) {
-  const pendingMemory = (state.memoryQueue?.candidates || []).length;
-  const reviewedMemory = state.memoryReviews.length;
-  const pendingChannels = state.channelApprovals.filter((item) => (item.review_status || "pending_review") === "pending_review").length;
-  const hasDocuments = state.documentSessions.length > 0 || Boolean(state.documentSession);
-  const hasReports = state.reports.length > 0;
-  const hasEvents = state.audit.length > 0 || state.events.length > 0 || Boolean(state.metrics);
-  const steps = [
-    {
-      id: "documents",
-      label: "Documents",
-      status: hasDocuments ? "ready" : "partial",
-      metric: hasDocuments ? `${state.documentSessions.length} sessions` : "create plan",
-      detail: "Parse files and create source-linked ingest evidence.",
-    },
-    {
-      id: "memory",
-      label: "Memory Review",
-      status: pendingMemory ? "needs_review" : reviewedMemory ? "ready" : "partial",
-      metric: pendingMemory ? `${pendingMemory} pending` : reviewedMemory ? `${reviewedMemory} reviewed` : "no candidates",
-      detail: "Approve or reject memory candidates before long-term memory writes.",
-    },
-    {
-      id: "reports",
-      label: "Reports",
-      status: hasReports ? "ready" : "partial",
-      metric: hasReports ? `${state.reports.length} reports` : "generate report",
-      detail: "Review deliverables with source references and export evidence.",
-    },
-    {
-      id: "channels",
-      label: "Channels",
-      status: pendingChannels ? "needs_review" : state.channelApprovals.length ? "ready" : "partial",
-      metric: pendingChannels ? `${pendingChannels} approvals` : state.channelApprovals.length ? `${state.channelApprovals.length} drafts` : "plan draft",
-      detail: "Record owner decisions while keeping will_send=false.",
-    },
-    {
-      id: "events",
-      label: "Events",
-      status: hasEvents ? "ready" : "partial",
-      metric: hasEvents ? "evidence ready" : "export handoff",
-      detail: "Export diagnostics, errors, metrics, and trial handoff evidence.",
-    },
-  ];
-  const currentIndex = Math.max(0, steps.findIndex((step) => step.id === current));
-  const next = steps.slice(currentIndex + 1).find((step) => step.status !== "ready") || steps[currentIndex + 1] || steps[steps.length - 1];
-  return `
-    <section class="panel pad trial-flow-panel" aria-label="Commercial trial flow">
-      <div class="trial-flow-head">
-        <div>
-          <p class="eyebrow">Commercial trial flow</p>
-          <h2 class="panel-title">Documents -> Memory Review -> Reports -> Channels -> Events</h2>
-          <p class="muted compact-copy">A single customer demo path: ingest evidence, review memory, deliver reports, approve outbound drafts, then export audit-safe handoff data.</p>
-        </div>
-        <button class="ghost-btn mini" type="button" data-trial-flow-open="${escapeHtml(next.id)}">Next: ${escapeHtml(next.label)}</button>
-      </div>
-      <div class="trial-flow-steps">
-        ${steps
-          .map(
-            (step, index) => `
-              <button class="trial-flow-step ${step.id === current ? "active" : ""}" type="button" data-trial-flow-open="${escapeHtml(step.id)}">
-                <span class="trial-flow-index">${index + 1}</span>
-                <strong>${escapeHtml(step.label)}</strong>
-                ${pill(step.status)}
-                <em>${escapeHtml(step.metric)}</em>
-                <p>${escapeHtml(step.detail)}</p>
-              </button>`,
-          )
-          .join("")}
-      </div>
-    </section>`;
-}
-
-function bindCommercialTrialFlow() {
-  el.body.querySelectorAll("[data-trial-flow-open]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const target = button.dataset.trialFlowOpen;
-      if (!target) return;
-      state.screen = target;
-      persistUiState();
-      await refreshScreenData();
-    });
-  });
-}
-
-function renderDocumentWorkbenchCommandCenter(session) {
-  const action = session?.workbench?.next_actions?.[0] || session?.primary_action || {};
-  const counts = session?.counts || {};
-  const blockers = session?.blockers || [];
-  const warnings = session?.warnings || [];
-  return `
-    <section class="panel pad document-command-center">
-      <div class="conversation-head">
-        <div>
-          <p class="eyebrow">Ingest workbench</p>
-          <h2 class="panel-title">${escapeHtml(session?.title || "No document selected")}</h2>
-          <p class="muted compact-copy">A guided pipeline for parse, artifact registration, indexing, memory candidate review, source refs, and report handoff.</p>
-        </div>
-        ${pill(session?.status || "partial", session?.current_stage || session?.status || "select session")}
-      </div>
-      ${renderCountStrip({
-        sessions: state.documentSessions.length,
-        blockers: blockers.length,
-        warnings: warnings.length,
-        pending_review: session?.review_queue?.pending_count || 0,
-        reports: counts.reports || (session?.report ? 1 : 0),
-      })}
-      <div class="document-workbench-grid">
-        <div><span>Selected ingest</span><strong>${escapeHtml(shortId(state.selectedIngestId || ""))}</strong><p>${escapeHtml(session?.input_path || "Create or select an ingest plan.")}</p></div>
-        <div><span>Next action</span><strong>${escapeHtml(action.command || "create-plan")}</strong><p>${escapeHtml(action.description || action.reason || "Create a plan, then advance one governed step at a time.")}</p></div>
-        <div><span>Owner gate</span><strong>review before memory</strong><p>Parsing can produce candidates; long-term memory writes require explicit owner approval.</p></div>
-        <div><span>External effects</span><strong>no auto-send</strong><p>Document workbench actions do not dispatch channels and do not hide blockers.</p></div>
-      </div>
-    </section>`;
-}
-
-async function runDocumentStep(path, key) {
-  if (!state.selectedIngestId) return;
-  const result = await runAction(key, () => api.post(path, { ingest_id: state.selectedIngestId, max_steps: 10 }), refreshScreenData);
-  state.documentActionResult = documentActionSummary(result, path);
-  const status = result?.document_workbench_step?.status || result?.document_workbench_run?.status || "";
-  if (status === "needs_review") await openDocumentMemoryReview();
-}
-
-async function createDocumentPlan() {
-  const draft = readDocumentPlanDraft();
-  state.documentPlanDraft = draft;
-  if (!draft.input_path.trim()) {
-    state.errors.documents = "Document path is required.";
-    renderDocuments();
-    return;
-  }
-  state.errors.documents = "";
-  const result = await runAction("doc-plan", () => api.post("/document/parse/ingest-plan", draft), refreshScreenData);
-  state.documentActionResult = documentActionSummary(result, "/document/parse/ingest-plan");
-  state.selectedIngestId = result?.document_ingest?.id || state.selectedIngestId;
-  persistUiState();
-  state.documentPlanDraft = { input_path: "", title: "", output_dir: "", backend: "", language: "", device: "cpu" };
-  await refreshScreenData();
-}
-
-function readDocumentPlanDraft() {
-  return {
-    input_path: document.getElementById("doc-input-path")?.value || "",
-    title: document.getElementById("doc-title")?.value || "",
-    output_dir: document.getElementById("doc-output-dir")?.value || "",
-    backend: document.getElementById("doc-backend")?.value || "",
-    language: document.getElementById("doc-language")?.value || "",
-    device: document.getElementById("doc-device")?.value || "cpu",
-  };
-}
-
-async function runDocumentAction(action) {
-  if (action === "open-memory") {
-    await openDocumentMemoryReview();
-    return;
-  }
-  if (action === "open-reports") {
-    state.screen = "reports";
-    persistUiState();
-    await refreshScreenData();
-    return;
-  }
-  if (action === "open-source-refs") {
-    await openDocumentSourceRefs();
-    return;
-  }
-  if (!state.selectedIngestId) return;
-  if (action === "source-refs") {
-    const result = await runAction("doc-source-refs", () => api.post("/document/parse/source-refs", { ingest_id: state.selectedIngestId }), refreshScreenData);
-    state.documentActionResult = documentActionSummary(result, "/document/parse/source-refs");
-    return;
-  }
-  if (action === "ingest-report") {
-    const result = await runAction("doc-ingest-report", () => api.post("/document/parse/ingest-report", { ingest_id: state.selectedIngestId }), refreshScreenData);
-    state.documentActionResult = documentActionSummary(result, "/document/parse/ingest-report");
-  }
-}
-
-async function runDocumentCommand(command) {
-  if (!command || !state.selectedIngestId) return;
-  if (command === "review-memory-candidate") {
-    await openDocumentMemoryReview();
-    return;
-  }
-  if (command === "done") {
-    state.screen = "reports";
-    persistUiState();
-    await refreshScreenData();
-    return;
-  }
-  const path = documentCommandPath(command);
-  if (!path) return;
-  const result = await runAction("doc-command", () => api.post(path, documentCommandPayload(command)), refreshScreenData);
-  state.documentActionResult = documentActionSummary(result, path);
-  const status = result?.document_workbench_step?.status || result?.document_workbench_run?.status || result?.document_memory_candidate_generation?.status || "";
-  if (status === "needs_review") await openDocumentMemoryReview();
-}
-
-function documentCommandPath(command) {
-  return (
-    {
-      "run-ingest": "/document/parse/run-ingest",
-      "register-artifacts": "/document/parse/register-artifacts",
-      "index-artifacts": "/document/parse/index-artifacts",
-      "memory-candidates": "/document/parse/memory-candidates",
-      "source-refs": "/document/parse/source-refs",
-      "ingest-report": "/document/parse/ingest-report",
-    }[command] || ""
-  );
-}
-
-function documentCommandPayload(command) {
-  const payload = { ingest_id: state.selectedIngestId };
-  if (command === "index-artifacts") Object.assign(payload, { collection: "bairui", bucket: "documents" });
-  if (command === "memory-candidates") Object.assign(payload, { max_candidates: 20 });
-  return payload;
-}
-
-function documentActionSummary(result, path) {
-  if (!result) return null;
-  const payload =
-    result.document_workbench_step ||
-    result.document_workbench_run ||
-    result.document_ingest ||
-    result.document_pipeline ||
-    result.document_artifact_registration ||
-    result.document_index ||
-    result.document_memory_candidate_generation ||
-    result.document_source_refs ||
-    result.document_ingest_report ||
-    {};
-  return {
-    path,
-    status: payload.status || "completed",
-    detail: payload.detail || payload.title || "Document action completed.",
-  };
-}
-
-function renderDocumentActionResult() {
-  const result = state.documentActionResult;
-  if (!result) return "";
-  return `
-    <div class="document-action-result">
-      <div>
-        ${pill(result.status || "completed")}
-        <span class="chip mono">${escapeHtml(result.path || "")}</span>
-      </div>
-      <p>${escapeHtml(result.detail || "Document action completed.")}</p>
-    </div>`;
-}
-
-function renderDocumentIngestPackSummary(session) {
-  if (!session) return "";
-  const counts = session.counts || {};
-  return `
-    <div class="document-ingest-pack">
-      <div><span>Ingest pack</span><strong>${escapeHtml(session.current_stage || session.status || "partial")}</strong><p>Exports plan, stages, source refs, report link, memory candidates, reviews, and audit evidence for this session.</p></div>
-      <div><span>Evidence</span><strong>${escapeHtml(String(counts.source_refs || 0))} refs / ${escapeHtml(String(counts.memory_candidates || 0))} candidates</strong><p>Metadata only; original local document contents are not embedded in the export.</p></div>
-      <div><span>Safety</span><strong>no send / no auto memory write</strong><p>Exporting a pack never dispatches channels, writes long-term memory, or changes runtime state.</p></div>
-    </div>`;
-}
-
-async function exportDocumentIngestPack() {
-  const session = state.documentSession;
-  if (!session) {
-    state.errors["doc-ingest-export"] = "Select an ingest session before exporting evidence.";
-    renderDocuments();
-    return;
-  }
-  state.errors["doc-ingest-export"] = "";
-  await Promise.all([loadReports(), loadMemory()]);
-  const ingestId = session.ingest_id || state.selectedIngestId || "";
-  const relatedSourceRefs = state.sourceRefs.filter((item) => item.metadata?.ingest_id === ingestId);
-  const relatedCandidates = state.memoryCandidates.filter((item) => item.ingest_id === ingestId || item.source?.ingest_id === ingestId);
-  const candidateIds = new Set(relatedCandidates.map((item) => item.id));
-  const relatedReviews = state.memoryReviews.filter((item) => candidateIds.has(item.candidate_id));
-  const relatedReports = state.reports.filter((item) => item.ingest_id === ingestId || item.metadata?.ingest_id === ingestId || item.id === session.report?.id || item.path === session.report?.path);
-  const relatedAudit = state.audit.filter((event) => {
-    const raw = JSON.stringify(event || {});
-    return ingestId && raw.includes(ingestId);
-  });
-  exportConsoleData("document-ingest-pack", {
-    handoff_type: "document_ingest_evidence",
-    ingest_id: ingestId,
-    generated_from_screen: "documents",
-    session,
-    reports: relatedReports.length ? relatedReports : session.report ? [session.report] : [],
-    source_refs: relatedSourceRefs,
-    memory_candidates: relatedCandidates,
-    memory_reviews: relatedReviews,
-    audit_evidence: relatedAudit,
-    selected_entity: state.selectedEntity || null,
-    safety_acceptance: {
-      includes_local_file_contents: false,
-      external_send_performed: false,
-      long_term_memory_auto_write: false,
-      changes_runtime_state: false,
-      customer_public_brand: "bairui",
-    },
-    operator_next_steps: [
-      "Generate source refs when source_refs is empty.",
-      "Generate an ingest report before customer handoff.",
-      "Approve or reject memory candidates explicitly in Memory Review before any long-term memory write.",
-    ],
-  });
-}
-
-async function openDocumentMemoryReview() {
-  state.screen = "memory";
-  persistUiState();
-  await refreshScreenData();
-}
-
-async function openDocumentSourceRefs() {
-  await loadReports();
-  const source = state.sourceRefs.find((item) => item.metadata?.ingest_id === state.selectedIngestId);
-  if (source) {
-    state.selectedEntity = {
-      type: "source",
-      title: source.title,
-      status: source.confidence,
-      ref: source.source_ref || source.id,
-      raw: source,
-    };
-  }
-  state.screen = "reports";
-  persistUiState();
-  render();
-}
-
-function renderDocumentResourceRoutes(session) {
-  const counts = session.counts || {};
-  const pending = session.review_queue?.pending_count || 0;
-  const hasReport = Boolean(session.report);
-  const hasSources = Number(counts.source_refs || 0) > 0;
-  return `
-    <div class="document-routes">
-      <button class="document-route" type="button" data-document-action="open-memory" ${!pending ? "disabled" : ""}>
-        <span>Memory review</span>
-        ${pill(pending ? "needs_review" : "ready", pending ? `${pending} pending` : "clear")}
-      </button>
-      <button class="document-route" type="button" data-document-action="open-reports" ${!hasReport ? "disabled" : ""}>
-        <span>Report</span>
-        ${pill(hasReport ? "ready" : "partial", hasReport ? "available" : "not generated")}
-      </button>
-      <button class="document-route" type="button" data-document-action="open-source-refs" ${!hasSources ? "disabled" : ""}>
-        <span>Source refs</span>
-        ${pill(hasSources ? "ready" : "partial", `${counts.source_refs || 0} refs`)}
-      </button>
-    </div>`;
-}
-
-function renderMemory() {
-  setScreenHead("Memory Review", "owner-governed memory");
-  const queue = state.memoryQueue;
-  const pending = queue?.candidates || [];
-  const reviewRows = state.memoryReviews.slice(-12).reverse().map((review) => ({
-    candidate_id: review.candidate_id,
-    decision: review.decision,
-    status: review.status,
-    memory_status: review["ever" + "os_status"],
-  }));
-  el.actions.innerHTML = `
-    <button class="ghost-btn" id="refresh-memory" type="button">Refresh</button>
-    <button class="ghost-btn" id="export-memory" type="button">Export Memory</button>
-    <button class="ghost-btn" id="export-memory-candidate" type="button" ${state.selectedEntity?.type !== "memory" ? "disabled" : ""}>Export Candidate</button>
-    <button class="ghost-btn" id="batch-reject-memory" type="button" ${!pending.length ? "disabled" : ""}>Reject Pending</button>`;
-  el.body.innerHTML = `
-    ${renderCommercialTrialFlow("memory")}
-    ${renderMemoryReviewCommandCenter(queue, pending)}
-    <div class="grid two">
-      <section class="panel pad">
-        <h2 class="panel-title">Pending queue</h2>
-        ${renderMemoryQueueSummary(queue, pending)}
-        ${renderMemoryQueueEvidenceSummary(queue, pending)}
-        ${renderMemoryReviewResult()}
-        ${renderProductError("memory-batch")}
-        ${pending.length ? pending.map(renderMemoryCandidate).join("") : `<div class="empty-state">No pending candidates. Recent reviewed items stay visible on the right.</div>`}
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Review history</h2>
-        ${renderTable(["candidate_id", "decision", "status", "memory_status"], reviewRows)}
-      </section>
-    </div>
-    <div class="grid two top-gap">
-      <section class="panel pad">
-        <h2 class="panel-title">All candidates</h2>
-        ${renderTable(["id", "status", "candidate_type", "confidence"], state.memoryCandidates.slice(-10).reverse().map((item) => ({ ...item, id: shortId(item.id) })))}
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Safety boundary</h2>
-        ${renderMemorySafetyPanel()}
-      </section>
-    </div>
-    ${state.selectedEntity?.type === "memory" ? renderSelectedEntityPanel() : ""}`;
-  bindEntityActions();
-  document.getElementById("refresh-memory")?.addEventListener("click", refreshScreenData);
-  document.getElementById("export-memory")?.addEventListener("click", exportMemoryData);
-  document.getElementById("export-memory-candidate")?.addEventListener("click", exportSelectedMemoryCandidate);
-  document.getElementById("batch-reject-memory")?.addEventListener("click", async () => {
-    const candidateIds = pending.map((candidate) => candidate.id);
-    const result = await runAction("memory-batch", () =>
-      api.post("/document/parse/memory-review-batch", {
-        candidate_ids: candidateIds,
-        decision: "reject",
-        reviewer_ref: "owner",
-        note: "Rejected from bairui console batch action.",
-      }),
-    );
-    state.memoryReviewResult = result?.document_memory_review_batch || null;
-    await loadMemory();
-    render();
-  });
-  el.body.querySelectorAll("[data-review]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const result = await runAction(`review-${button.dataset.candidate}`, () =>
-        api.post("/document/parse/review-memory-candidate", {
-          candidate_id: button.dataset.candidate,
-          decision: button.dataset.review,
-          reviewer_ref: "owner",
-        }),
-      );
-      state.memoryReviewResult = result?.document_memory_review || null;
-      await loadMemory();
-      state.selectedEntity = findResourceEntity("document_memory_candidate", button.dataset.candidate) || state.selectedEntity;
-      persistUiState();
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-memory-source]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const candidate = state.memoryCandidates.find((item) => item.id === button.dataset.memorySource) || pending.find((item) => item.id === button.dataset.memorySource);
-      if (!candidate) return;
-      state.selectedEntity = { type: "memory", title: candidate.candidate_type, status: candidate.status, ref: candidate.id, raw: candidate };
-      persistUiState();
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-memory-reports]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      state.selectedIngestId = button.dataset.memoryReports || state.selectedIngestId;
-      state.screen = "reports";
-      persistUiState();
-      await refreshScreenData();
-    });
-  });
-  el.body.querySelectorAll("[data-memory-export]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const candidate = state.memoryCandidates.find((item) => item.id === button.dataset.memoryExport) || pending.find((item) => item.id === button.dataset.memoryExport);
-      if (!candidate) return;
-      state.selectedEntity = { type: "memory", title: candidate.candidate_type, status: candidate.status, ref: candidate.id, raw: candidate };
-      persistUiState();
-      exportSelectedMemoryCandidate();
-      render();
-    });
-  });
-  bindCommercialTrialFlow();
-}
-
-function renderMemoryReviewCommandCenter(queue, pending) {
-  const selected = state.selectedEntity?.type === "memory" ? state.selectedEntity.raw || {} : null;
-  const selectedReviewed = selected ? memoryReviewsForCandidate(selected.id).length : 0;
-  return `
-    <section class="panel pad memory-command-center">
-      <div class="conversation-head">
-        <div>
-          <p class="eyebrow">Review command center</p>
-          <h2 class="panel-title">${escapeHtml(selected?.candidate_type || "Memory candidate queue")}</h2>
-          <p class="muted compact-copy">Review candidates one by one, export evidence, and keep long-term memory writes behind explicit owner approval.</p>
-        </div>
-        ${pill(pending.length ? "needs_review" : "ready", pending.length ? `${pending.length} pending` : "queue clear")}
-      </div>
-      ${renderCountStrip({
-        pending: pending.length,
-        reviewed: queue?.reviewed_count || state.memoryReviews.length,
-        candidates: state.memoryCandidates.length,
-        selected_reviews: selectedReviewed,
-      })}
-      <div class="memory-command-grid">
-        <div><span>Selected candidate</span><strong>${escapeHtml(shortId(selected?.id || ""))}</strong><p>${escapeHtml(selected?.text || "Open a candidate to inspect source and export evidence.")}</p></div>
-        <div><span>Next action</span><strong>${escapeHtml(pending.length ? "approve-or-reject" : "refresh-or-ingest")}</strong><p>Approve or reject explicitly; batch action remains reject-only.</p></div>
-        <div><span>Write gate</span><strong>owner reviewed</strong><p>will_write_long_term_memory=false until an approval action succeeds.</p></div>
-        <div><span>Export scope</span><strong>candidate + reviews</strong><p>Exports omit secrets and do not perform memory writes.</p></div>
-      </div>
-    </section>`;
-}
-
-function exportMemoryData() {
-  const pending = state.memoryQueue?.candidates || [];
-  const pendingIds = new Set(pending.map((item) => item.id));
-  const reviewedIds = new Set((state.memoryReviews || []).map((item) => item.candidate_id));
-  const reviewedCandidates = (state.memoryCandidates || []).filter((item) => reviewedIds.has(item.id));
-  const relatedSourceRefs = state.sourceRefs.filter((item) => {
-    const raw = JSON.stringify(item || {});
-    return state.selectedIngestId && raw.includes(state.selectedIngestId);
-  });
-  exportConsoleData("memory-review", {
-    handoff_type: "memory_review_queue_evidence",
-    selected_ingest_id: state.selectedIngestId || "",
-    pending_queue: state.memoryQueue || null,
-    pending_candidates: pending,
-    reviewed_candidates: reviewedCandidates,
-    all_candidates: state.memoryCandidates || [],
-    reviews: state.memoryReviews || [],
-    source_refs: relatedSourceRefs,
-    selected_entity: state.selectedEntity?.type === "memory" ? state.selectedEntity : null,
-    safety_acceptance: {
-      long_term_memory_auto_write: false,
-      batch_approve_available: false,
-      batch_reject_only: true,
-      external_send_performed: false,
-      pending_count: pendingIds.size,
-      reviewed_count: reviewedCandidates.length,
-      customer_public_brand: "bairui",
-    },
-    operator_next_steps: [
-      "Review pending candidates one by one before any long-term memory write.",
-      "Use batch reject only for clearly unwanted pending candidates.",
-      "Export individual candidates when customer support needs item-level source evidence.",
-    ],
-    note: "Memory review queue is exported for trial evidence. This export does not approve, reject, or write long-term memory.",
-  });
-}
-
-function exportSelectedMemoryCandidate() {
-  const entity = state.selectedEntity?.type === "memory" ? state.selectedEntity : null;
-  if (!entity) return;
-  const candidate = entity.raw || {};
-  exportConsoleData("memory-candidate", {
-    candidate,
-    reviews: memoryReviewsForCandidate(candidate.id),
-    related_reports_hint: candidate.ingest_id || "",
-    handoff: {
-      includes_secrets: false,
-      external_send_performed: false,
-      long_term_memory_auto_write: false,
-      requires_owner_review: true,
-      evidence_basis: "candidate metadata, source trace, and review records",
-    },
-  });
-}
-
-function memoryReviewsForCandidate(candidateId) {
-  if (!candidateId) return [];
-  return (state.memoryReviews || []).filter((review) => String(review.candidate_id || "") === String(candidateId));
-}
-
-function renderMemoryReviewResult() {
-  const result = state.memoryReviewResult;
-  if (!result) return "";
-  const review = result.review || {};
-  const note = result.obsidian_note || {};
-  const longTermWrite =
-    review.status === "approved" && review["ever" + "os_status"] === "completed"
-      ? "long_term_memory_written"
-      : "will_write_long_term_memory=false";
-  return `
-    <div class="memory-review-result">
-      <div class="conversation-head">
-        <div>
-          <h3 class="sub-title">Last review result</h3>
-          <p class="muted compact-copy">${escapeHtml(result.detail || "Review action completed.")}</p>
-        </div>
-        ${pill(result.status || review.status || "completed")}
-      </div>
-      <div class="agent-meta">
-        <span class="chip">${escapeHtml(review.decision || result.decision || "")}</span>
-        <span class="chip">${escapeHtml(review.status || result.status || "")}</span>
-        <span class="chip">${escapeHtml(longTermWrite)}</span>
-        ${review["ever" + "os_status"] ? `<span class="chip">memory ${escapeHtml(review["ever" + "os_status"])}</span>` : ""}
-        ${note.path ? `<span class="chip mono">${escapeHtml(shortId(note.path))}</span>` : ""}
-      </div>
-    </div>`;
-}
-
-function renderMemoryQueueSummary(queue, pending) {
-  const counts = {
-    pending: pending.length,
-    reviewed: queue?.reviewed_count || 0,
-    total_candidates: (queue?.reviewed_count || 0) + pending.length,
-  };
-  return `
-    <div class="memory-queue-summary">
-      ${renderCountStrip(counts)}
-      <div class="agent-meta">
-        ${pill(pending.length ? "needs_review" : "ready", pending.length ? "owner review required" : "queue clear")}
-        <span class="chip">single approve/reject</span>
-        <span class="chip">batch reject only</span>
-        <span class="chip">source trace visible</span>
-      </div>
-    </div>`;
-}
-
-function renderMemoryQueueEvidenceSummary(queue, pending) {
-  const reviewed = queue?.reviewed_count || state.memoryReviews.length || 0;
-  return `
-    <div class="memory-queue-evidence">
-      <div><span>Queue export</span><strong>${escapeHtml(String(pending.length))} pending / ${escapeHtml(String(reviewed))} reviewed</strong><p>Exports pending candidates, review history, selected ingest id, source refs, and no-write safety state.</p></div>
-      <div><span>Bulk boundary</span><strong>batch reject only</strong><p>There is no batch approve path. Owner approval stays item-level so memory writes cannot be hidden.</p></div>
-      <div><span>Trial evidence</span><strong>source trace visible</strong><p>Use Export Memory for queue-level handoff and Export Candidate for item-level support evidence.</p></div>
-    </div>`;
-}
-
-function renderMemorySafetyPanel() {
-  return `
-    <div class="memory-safety-grid">
-      <div>
-        <span>Approval gate</span>
-        <strong>Explicit owner action</strong>
-        <p>Approve or reject calls the real review API. No candidate is silently written into long-term memory.</p>
-      </div>
-      <div>
-        <span>Batch action</span>
-        <strong>Reject only</strong>
-        <p>The bulk button only rejects pending candidates. It does not approve or write memory in bulk.</p>
-      </div>
-      <div>
-        <span>Write status</span>
-        <strong>will_write_long_term_memory=false</strong>
-        <p>The result card shows when a review did not perform a long-term memory write.</p>
-      </div>
-      <div>
-        <span>Source</span>
-        <strong>Ingest trace</strong>
-        <p>Each candidate keeps ingest id, source path, confidence, and report navigation visible.</p>
-      </div>
-    </div>`;
-}
-
-function renderMemoryCandidate(candidate) {
-  const source = [candidate.ingest_id ? `ingest ${shortId(candidate.ingest_id)}` : "", candidate.source_path || "", candidate.reason || ""].filter(Boolean);
-  return `
-    <article class="review-card">
-      <div class="step-title">
-        <span>${escapeHtml(candidate.candidate_type || "memory candidate")}</span>
-        ${pill(candidate.status || "pending_review")}
-      </div>
-      <p>${escapeHtml(candidate.text || "")}</p>
-      <div class="memory-source-strip">
-        <div>
-          <span>Candidate</span>
-          <strong class="mono">${escapeHtml(shortId(candidate.id))}</strong>
-        </div>
-        <div>
-          <span>Confidence</span>
-          <strong>${escapeHtml(candidate.confidence ?? "")}</strong>
-        </div>
-        <div>
-          <span>Source trace</span>
-          <strong>${escapeHtml(source.join(" | ") || "source pending")}</strong>
-        </div>
-      </div>
-      ${renderProductError(`review-${candidate.id}`)}
-      <div class="action-row">
-        <button class="primary-btn" type="button" data-review="approve" data-candidate="${escapeHtml(candidate.id)}">Approve</button>
-        <button class="ghost-btn" type="button" data-review="reject" data-candidate="${escapeHtml(candidate.id)}">Reject</button>
-        <button class="ghost-btn" type="button" data-memory-source="${escapeHtml(candidate.id)}">View Source</button>
-        <button class="ghost-btn" type="button" data-memory-reports="${escapeHtml(candidate.ingest_id || "")}">Open Reports</button>
-        <button class="ghost-btn" type="button" data-memory-export="${escapeHtml(candidate.id)}">Export Candidate</button>
-      </div>
-    </article>`;
-}
-
-function renderGraph() {
-  setScreenHead("Knowledge Graph", "linked relationships");
-  const nodes = buildGraphNodes();
-  el.body.innerHTML = `
-    <div class="graph-layout">
-      <section class="panel graph-stage">
-        ${nodes.map((node, index) => renderGraphNode(node, index, nodes.length)).join("") || `<div class="empty-state">No graph-ready nodes yet. Run document ingest and report generation first.</div>`}
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Graph sources</h2>
-        ${renderCountStrip({ reports: state.reports.length, source_refs: state.sourceRefs.length, candidates: state.memoryCandidates.length, jobs: state.jobs.length })}
-        <p class="muted">This is a contract-bound partial graph. Dedicated backlink APIs can replace this composed view later.</p>
-      </section>
-    </div>`;
-  el.body.querySelectorAll("[data-entity]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.selectedEntity = nodes[Number(button.dataset.entity)];
-      state.screen = "entity";
-      persistUiState();
-      render();
-    });
-  });
-}
-
-function buildGraphNodes() {
-  return [
-    ...state.reports.map((item) => ({ type: "report", title: item.title, status: item.status, ref: item.path, raw: item })),
-    ...state.sourceRefs.map((item) => ({ type: "source", title: item.title, status: item.confidence, ref: item.source_ref, raw: item })),
-    ...state.memoryCandidates.map((item) => ({ type: "memory", title: item.candidate_type, status: item.status, ref: item.source_path, raw: item })),
-    ...state.jobs.map((item) => ({ type: "job", title: item.title, status: item.status, ref: item.id, raw: item })),
-  ].slice(0, 24);
-}
-
-function renderGraphNode(node, index, total) {
-  const radius = 32 + (index % 5) * 8;
-  const angle = (index / Math.max(total, 1)) * Math.PI * 2;
-  const x = 50 + Math.cos(angle) * radius;
-  const y = 50 + Math.sin(angle) * radius * 0.6;
-  return `
-    <button class="graph-node" style="left:${x}%; top:${y}%;" type="button" data-entity="${index}">
-      <span>${escapeHtml(node.type)}</span>
-      <strong>${escapeHtml(shortId(node.title))}</strong>
-    </button>`;
-}
-
-function renderEntity() {
-  setScreenHead("Entity Detail", "object card");
-  const entity = state.selectedEntity;
-  el.body.innerHTML = entity
-    ? renderEntityCard(entity)
-    : `<section class="panel pad"><h2 class="panel-title">Entity card</h2><div class="empty-state">Select a job, report, graph node, channel target, or avatar to inspect details.</div></section>`;
-  bindEntityActions();
-}
-
-function renderEntityCard(entity, heading = "Entity card") {
-  const raw = entity.raw || {};
-  const fields = entityFields(entity);
-  const overview = entityOverview(entity);
-  return `
-    <section class="panel pad entity-card selected-entity-panel">
-      <div class="entity-card-head">
-        <div>
-          <p class="eyebrow">${escapeHtml(heading)}</p>
-          <h2>${escapeHtml(entity.title || raw.title || entity.type)}</h2>
-          <div class="agent-meta">
-            ${pill(entity.status || raw.status || "created")}
-            <span class="chip">${escapeHtml(entity.type)}</span>
-            <span class="chip mono">${escapeHtml(shortId(entity.ref || raw.id || raw.path))}</span>
-          </div>
-        </div>
-        <div class="entity-mark">${escapeHtml(entityIcon(entity.type))}</div>
-      </div>
-      ${renderEntityProductSummary(entity)}
-      ${renderEntityOverview(overview)}
-      <div class="entity-field-grid">
-        ${fields.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "-")}</strong></div>`).join("")}
-      </div>
-      ${renderEntitySourceChain(entity)}
-      ${renderEntitySafety(entity)}
-      ${renderEntityAuditEvidence(entity)}
-      ${renderEntityBody(entity)}
-      ${renderEntityActions(entity)}
-    </section>`;
-}
-
-function entityFields(entity) {
-  const raw = entity.raw || {};
-  if (entity.type === "job") return [["Route", raw.route], ["Status", raw.status], ["Job ID", raw.id], ["Created", raw.created_at]];
-  if (entity.type === "report") return [["Status", raw.status], ["Source", raw.source_type || raw.source?.source_type || "document"], ["Reference", raw.source_ref || raw.source?.source_ref || raw.ingest_id], ["Path", raw.path]];
-  if (entity.type === "memory") return [["Candidate", raw.candidate_type], ["Confidence", raw.confidence], ["Source", raw.source_path || raw.source?.source_ref], ["Created", raw.created_at]];
-  if (entity.type === "channel") return [["Target", raw.target_id], ["Channel", raw.channel_type], ["Media", raw.media_kind], ["Review", raw.review_status || raw.status], ["Source", raw.source?.source_ref]];
-  if (entity.type === "source") return [["Provider", raw.provider], ["Source type", raw.source_type], ["Source ref", raw.source_ref || raw.id], ["Confidence", raw.confidence], ["Title", raw.title]];
-  if (entity.type === "audit") return [["Action", raw.action], ["Resource", raw.resource_type], ["Reference", raw.resource_ref], ["Risk", raw.risk_level], ["Created", raw.created_at]];
-  if (entity.type === "code") return [["Kind", raw.kind || raw.type], ["Name", raw.name || raw.relative_path], ["Path", raw.path || raw.relative_path], ["Language", raw.language], ["Repo", raw.repo_name || raw.repo_id], ["Scan", raw.scan_id], ["Symbols", raw.symbol_count]];
-  if (entity.type === "avatar") return [["State", raw.state || raw.status], ["Motion", raw.motion], ["Lip sync", raw.lip_sync === true ? "true" : "false"], ["External action", "false"]];
-  return [["Status", entity.status || raw.status], ["Reference", entity.ref || raw.id], ["Type", entity.type], ["Created", raw.created_at]];
-}
-
-function entityProductSummary(entity) {
-  const raw = entity.raw || {};
-  const status = raw.review_status || raw.status || entity.status || "";
-  const map = {
-    job: {
-      purpose: "Task created from a command, demo flow, or agent promotion.",
-      next: "Open Events to inspect the source action, then continue execution from Command or Dashboard.",
-      safety: "Local task record only; no external action.",
-      route: "Dashboard",
-    },
-    report: {
-      purpose: "Deliverable draft with a source reference or local report path.",
-      next: raw.path ? "Inspect the path or open Reports to review the deliverable." : "Open Reports and check source references.",
-      safety: "Report output is local and traceable.",
-      route: "Reports",
-    },
-    memory: {
-      purpose: "Candidate memory extracted from documents or agent output.",
-      next: status === "pending_review" ? "Approve or reject explicitly before any long-term memory write." : "Review the recorded owner decision and source chain.",
-      safety: status === "approved" ? "Owner approved; durable write status remains visible." : "No automatic long-term memory write.",
-      route: "Memory Review",
-    },
-    channel: {
-      purpose: "Outbound communication draft queued for owner review.",
-      next: status === "pending_review" ? "Approve or reject the draft in Channels." : "Inspect the review record and audit trail.",
-      safety: raw.will_send === true ? "External send would require explicit sender support." : "will_send=false; no external dispatch.",
-      route: "Channels",
-    },
-    source: {
-      purpose: "Evidence source linked to a report, document artifact, or graph node.",
-      next: "Open Reports to inspect where this source is used.",
-      safety: "Read-only reference.",
-      route: "Reports",
-    },
-    code: {
-      purpose: "CodeGraph source-structure object.",
-      next: "Open CodeGraph for query, scan, or impact analysis.",
-      safety: "Source indexing only; no memory write.",
-      route: "CodeGraph",
-    },
-    audit: {
-      purpose: "Audit evidence for a product action.",
-      next: "Open Events to inspect surrounding timeline and safety flags.",
-      safety: eventNeedsApproval(raw) ? "Approval-relevant evidence." : "Read-only audit record.",
-      route: "Events",
-    },
-    avatar: {
-      purpose: "Avatar state object for browser-side presentation.",
-      next: "Open Avatar to validate assets or update state.",
-      safety: "Visual state only; no voice clone or external action.",
-      route: "Avatar",
-    },
-  };
-  return map[entity.type] || {
-    purpose: "Traceable product object.",
-    next: "Use the available actions and source chain to continue.",
-    safety: "No unsafe action is implied by viewing this object.",
-    route: "Entity",
-  };
-}
-
-function renderEntityProductSummary(entity) {
-  const summary = entityProductSummary(entity);
-  return `
-    <div class="entity-product-summary">
-      <div>
-        <span>Purpose</span>
-        <strong>${escapeHtml(summary.purpose)}</strong>
-      </div>
-      <div>
-        <span>Next action</span>
-        <strong>${escapeHtml(summary.next)}</strong>
-      </div>
-      <div>
-        <span>Safety</span>
-        <strong>${escapeHtml(summary.safety)}</strong>
-      </div>
-      <div>
-        <span>Workbench</span>
-        <strong>${escapeHtml(summary.route)}</strong>
-      </div>
-    </div>`;
-}
-
-function entityOverview(entity) {
-  return {
-    class: entityClass(entity),
-    stage: entityLifecycleStage(entity),
-    owner_gate: entityOwnerGate(entity),
-    trace: entityTraceLabel(entity),
-  };
-}
-
-function renderEntityOverview(overview) {
-  return `
-    <div class="entity-overview-grid">
-      <div><span>Object class</span><strong>${escapeHtml(overview.class)}</strong></div>
-      <div><span>Lifecycle</span><strong>${escapeHtml(overview.stage)}</strong></div>
-      <div><span>Owner gate</span><strong>${escapeHtml(overview.owner_gate)}</strong></div>
-      <div><span>Trace</span><strong>${escapeHtml(overview.trace)}</strong></div>
-    </div>`;
-}
-
-function entityClass(entity) {
-  const labels = {
-    job: "task object",
-    report: "deliverable object",
-    memory: "review candidate",
-    channel: "approval draft",
-    source: "evidence source",
-    code: "source structure",
-    audit: "audit evidence",
-    avatar: "state object",
-  };
-  return labels[entity.type] || "runtime object";
-}
-
-function entityLifecycleStage(entity) {
-  const raw = entity.raw || {};
-  if (entity.type === "memory") return raw.status === "approved" ? "approved" : raw.status === "rejected" ? "rejected" : "review pending";
-  if (entity.type === "channel") return raw.review_status || raw.status || "approval pending";
-  if (entity.type === "report") return raw.status || "draft";
-  if (entity.type === "code") return raw.scan_id ? "indexed" : "source selected";
-  if (entity.type === "audit") return eventStatus(raw).label;
-  if (entity.type === "avatar") return raw.state || raw.status || "state visible";
-  return raw.status || entity.status || "recorded";
-}
-
-function entityOwnerGate(entity) {
-  const raw = entity.raw || {};
-  if (entity.type === "channel") return raw.will_send === true ? "unsafe external send" : "will_send=false";
-  if (entity.type === "memory") return raw.status === "approved" ? "owner approved" : "owner review required";
-  if (entity.type === "code") return "no memory write";
-  if (entity.type === "avatar") return "visual state only";
-  if (entity.type === "audit") return eventNeedsApproval(raw) ? "review evidence" : "audit recorded";
-  return "traceable local action";
-}
-
-function entityTraceLabel(entity) {
-  const raw = entity.raw || {};
-  if (entityAuditMatches(entity).length) return `${entityAuditMatches(entity).length} audit links`;
-  if (raw.source || raw.source_ref || raw.ingest_id || raw.promotion_id) return "source chain visible";
-  if (entity.ref || raw.id || raw.path) return "local reference";
-  return "trace pending";
-}
-
-function renderEntitySourceChain(entity) {
-  const raw = entity.raw || {};
-  const source = raw.source || {};
-  if (!source.source_ref && !raw.source_ref && !raw.ingest_id && !raw.promotion_id && !raw.resource_ref && !raw.repo_id && !raw.scan_id) return "";
-  const rows = [
-    ["Source type", source.source_type || raw.source_type || "local_record"],
-    ["Source ref", source.source_ref || raw.source_ref || raw.ingest_id || raw.resource_ref || ""],
-    ["Session", source.session_id || ""],
-    ["Agent", source.agent_id || ""],
-    ["Role", source.role || ""],
-    ["Target", source.target || ""],
-    ["Promotion", raw.promotion_id || ""],
-    ["Repo", raw.repo_name || raw.repo_id || ""],
-    ["Scan", raw.scan_id || ""],
-  ].filter(([, value]) => value !== "");
-  return `
-    <div class="source-chain">
-      <div class="source-chain-title">
-        <span>Source chain</span>
-        ${pill(source.status || raw.promotion_status || "traceable")}
-      </div>
-      <div class="source-chain-grid">
-        ${rows.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(shortId(String(value)))}</strong></div>`).join("")}
-      </div>
-    </div>`;
-}
-
-function renderEntitySafety(entity) {
-  const raw = entity.raw || {};
-  const reviewState = raw.review_status || raw.status || entity.status || "";
-  const needsReview = entity.type === "memory" || entity.type === "channel" || ["pending_review", "approval_required", "needs_review"].includes(reviewState);
-  const willExternal = raw.will_execute_external_action === true || raw.will_send === true;
-  if (!needsReview && !willExternal && !raw.promotion_id) return "";
-  const safety = {
-    review: needsReview ? "owner review required" : "review not required",
-    external: willExternal ? "external action possible" : "will_execute_external_action=false",
-    duplicate: raw.promotion_duplicate ? "reused existing resource" : raw.promotion_id ? "created once" : "",
-  };
-  return `
-    <div class="safety-strip">
-      ${Object.entries(safety)
-        .filter(([, value]) => value)
-        .map(([key, value]) => `<span class="chip ${key === "external" && willExternal ? "danger-chip" : ""}">${escapeHtml(value)}</span>`)
-        .join("")}
-    </div>`;
-}
-
-function renderEntityAuditEvidence(entity) {
-  const matches = entityAuditMatches(entity).slice(-4).reverse();
-  if (!matches.length) return "";
-  return `
-    <div class="entity-audit-evidence">
-      <div class="source-chain-title">
-        <span>Audit evidence</span>
-        ${pill("ready", `${matches.length} linked`)}
-      </div>
-      <div class="entity-audit-list">
-        ${matches
-          .map(
-            (event) => `
-              <div>
-                ${pill(eventStatus(event).status, eventStatus(event).label)}
-                <strong>${escapeHtml(event.action || "audit.event")}</strong>
-                <span>${escapeHtml(shortId(event.resource_ref || event.id))}</span>
-              </div>`,
-          )
-          .join("")}
-      </div>
-    </div>`;
-}
-
-function entityAuditMatches(entity) {
-  const raw = entity.raw || {};
-  const refs = new Set(
-    [entity.ref, raw.id, raw.path, raw.source_ref, raw.ingest_id, raw.resource_ref, raw.repo_id, raw.scan_id, raw.promotion_id]
-      .filter(Boolean)
-      .map((value) => String(value)),
-  );
-  return (state.audit || []).filter((event) => {
-    if (String(event.resource_type || "") === entity.type && refs.has(String(event.resource_ref || ""))) return true;
-    const payload = event.payload || {};
-    return [payload.id, payload.path, payload.source_ref, payload.ingest_id, payload.repo_id, payload.scan_id, payload.promotion_id].some((value) => refs.has(String(value || "")));
-  });
-}
-
-function renderEntityBody(entity) {
-  const raw = entity.raw || {};
-  const body =
-    entity.type === "job"
-      ? raw.input
-      : entity.type === "memory"
-        ? raw.text
-        : entity.type === "channel"
-          ? raw.message_preview || raw.reason
-          : entity.type === "report"
-            ? raw.path
-            : entity.type === "source"
-              ? raw.excerpt || raw.title || raw.source_ref
-              : entity.type === "audit"
-                ? JSON.stringify(raw.payload || {}, null, 2)
-                : entity.type === "code"
-                  ? "CodeGraph reads source structure only. It does not write long-term memory."
-                  : entity.type === "avatar"
-                    ? raw.text || raw.motion || "Avatar state is visible only and cannot trigger external actions."
-                    : JSON.stringify(raw, null, 2);
-  if (!body) return "";
-  return `<div class="entity-body"><span>${escapeHtml(entity.type === "report" ? "Location" : "Content")}</span><p>${escapeHtml(body)}</p></div>`;
-}
-
-function renderEntityActions(entity) {
-  const raw = entity.raw || {};
-  if (entity.type === "memory" && raw.status === "pending_review") {
-    return `
-      <div class="entity-actions">
-        <button class="primary-btn" type="button" data-entity-action="memory-approve" data-entity-id="${escapeHtml(raw.id)}">Approve Memory</button>
-        <button class="ghost-btn" type="button" data-entity-action="memory-reject" data-entity-id="${escapeHtml(raw.id)}">Reject Memory</button>
-      </div>`;
-  }
-  if (entity.type === "channel" && (raw.review_status || raw.status) === "pending_review") {
-    return `
-      <div class="entity-actions">
-        <button class="primary-btn" type="button" data-entity-action="channel-approve" data-entity-id="${escapeHtml(raw.id)}">Approve Draft</button>
-        <button class="ghost-btn" type="button" data-entity-action="channel-reject" data-entity-id="${escapeHtml(raw.id)}">Reject Draft</button>
-      </div>`;
-  }
-  if (entity.type === "report" && raw.path) {
-    return `<div class="entity-actions"><button class="ghost-btn" type="button" data-entity-action="inspect-path" data-entity-id="${escapeHtml(raw.path)}">Inspect Path</button><button class="ghost-btn" type="button" data-entity-action="open-reports">Open Reports</button></div>`;
-  }
-  if (entity.type === "job") {
-    return `<div class="entity-actions"><button class="ghost-btn" type="button" data-entity-action="open-events" data-entity-id="${escapeHtml(raw.id)}">View Events</button></div>`;
-  }
-  if (entity.type === "source") {
-    return `<div class="entity-actions"><button class="ghost-btn" type="button" data-entity-action="open-reports">Open Reports</button></div>`;
-  }
-  if (entity.type === "code") {
-    return `<div class="entity-actions"><button class="ghost-btn" type="button" data-entity-action="open-codegraph">Open CodeGraph</button></div>`;
-  }
-  if (entity.type === "audit") {
-    return `<div class="entity-actions"><button class="ghost-btn" type="button" data-entity-action="open-events">Open Events</button></div>`;
-  }
-  return "";
-}
-
-function bindEntityActions(root = el.body) {
-  root.querySelectorAll("[data-entity-action]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      await runEntityAction(button.dataset.entityAction, button.dataset.entityId);
-    });
-  });
-}
-
-async function runEntityAction(action, id) {
-  if (action === "memory-approve" || action === "memory-reject") {
-    const decision = action === "memory-approve" ? "approve" : "reject";
-    await runAction(`entity-${action}`, () =>
-      api.post("/document/parse/review-memory-candidate", {
-        candidate_id: id,
-        decision,
-        reviewer_ref: "owner",
-        note: `Entity card ${decision}.`,
-      }),
-    );
-    await loadMemory();
-    state.selectedEntity = findResourceEntity("document_memory_candidate", id) || state.selectedEntity;
-    persistUiState();
-    render();
-    return;
-  }
-  if (action === "channel-approve" || action === "channel-reject") {
-    const decision = action === "channel-approve" ? "approve" : "reject";
-    await runAction(`entity-${action}`, () =>
-      api.post("/channels/approvals/review", {
-        request_id: id,
-        decision,
-        reviewer_ref: "owner",
-        note: "Reviewed from entity card. External send remains disabled in current backend.",
-      }),
-    );
-    await loadChannels();
-    state.selectedEntity = findResourceEntity("channel_approval_request", id) || state.selectedEntity;
-    persistUiState();
-    render();
-    return;
-  }
-  if (action === "open-events") {
-    state.screen = "events";
-    persistUiState();
-    await refreshScreenData();
-    return;
-  }
-  if (action === "open-reports") {
-    state.screen = "reports";
-    persistUiState();
-    await refreshScreenData();
-    return;
-  }
-  if (action === "open-codegraph") {
-    state.screen = "codegraph";
-    persistUiState();
-    await refreshScreenData();
-    return;
-  }
-  if (action === "inspect-path") {
-    state.selectedEntity = { type: "report", title: "Report path", status: "source_ready", ref: id, raw: { path: id } };
-    persistUiState();
-    render();
-  }
-}
-
-function entityIcon(type) {
-  return ({ job: "T", report: "R", memory: "M", channel: "C", source: "S", code: "CG", audit: "A", avatar: "AV" }[type] || "E");
-}
-
-function renderSelectedEntityPanel() {
-  const entity = state.selectedEntity;
-  if (!entity) return "";
-  return `<div class="top-gap">${renderEntityCard(entity, "Selected resource")}</div>`;
-}
-
-function renderReports() {
-  setScreenHead("Reports", "deliverables and evidence");
-  el.actions.innerHTML = `<button class="primary-btn" id="write-report" type="button">Write Manual Report</button><button class="ghost-btn" id="export-reports" type="button">Export Reports</button><button class="ghost-btn" id="refresh-reports" type="button">Refresh</button>`;
-  const selectedReport = state.selectedEntity?.type === "report" ? state.selectedEntity.raw || {} : null;
-  el.body.innerHTML = `
-    ${renderCommercialTrialFlow("reports")}
-    ${renderReportDeliveryOverview()}
-    ${renderReportWriteResult()}
-    ${renderProductError("write-report")}
-    <div class="grid two">
-      <section class="panel pad">
-        <h2 class="panel-title">Reports</h2>
-        ${
-          state.reports
-            .slice()
-            .reverse()
-            .map(
-              (item) => `
-                <button class="object-card button-card report-card" type="button" data-report-open="${escapeHtml(item.id || item.path || "")}">
-                  ${renderObjectCardInner(item, ["title", "status", "path", "source_ref_count"])}
-                </button>`,
-            )
-            .join("") || `<div class="empty-state">No reports yet. Generate one from Documents or Command.</div>`
-        }
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Source references</h2>
-        ${
-          state.sourceRefs
-            .slice(-14)
-            .reverse()
-            .map(
-              (item) => `
-                <button class="object-card button-card source-card" type="button" data-source-open="${escapeHtml(item.source_ref || item.id || "")}">
-                  ${renderObjectCardInner(item, ["source_type", "provider", "title", "confidence"])}
-                </button>`,
-            )
-            .join("") || `<div class="empty-state">No source references yet. Generate source refs from Documents.</div>`
-        }
-      </section>
-    </div>
-    <div class="top-gap">
-      ${selectedReport ? renderReportDetailPanel(selectedReport) : state.selectedEntity?.type === "report" ? renderSelectedEntityPanel() : ""}
-      ${selectedReport ? renderRelatedSourceRefs(selectedReport) : ""}
-    </div>
-    `;
-  bindEntityActions();
-  document.getElementById("refresh-reports")?.addEventListener("click", refreshScreenData);
-  document.getElementById("export-reports")?.addEventListener("click", exportReportsData);
-  document.getElementById("write-report")?.addEventListener("click", async () => {
-    const title = prompt("Report title", "bairui Operator Note");
-    const body = prompt("Report body", "Operator note from bairui console.");
-    if (!body) return;
-    const result = await runAction("write-report", () => api.post("/ob" + "sidian/reports", { title, body }), loadReports);
-    state.reportWriteResult = result?.report || null;
-    if (state.reportWriteResult) {
-      state.selectedEntity = {
-        type: "report",
-        title: state.reportWriteResult.title,
-        status: state.reportWriteResult.status || "draft",
-        ref: state.reportWriteResult.id || state.reportWriteResult.path,
-        raw: state.reportWriteResult,
-      };
-    }
-    render();
-  });
-  el.body.querySelectorAll("[data-report-open]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const report = state.reports.find((item) => String(item.id || item.path) === String(button.dataset.reportOpen));
-      if (!report) return;
-      state.selectedEntity = { type: "report", title: report.title, status: report.status, ref: report.id || report.path, raw: report };
-      persistUiState();
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-source-open]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const source = state.sourceRefs.find((item) => String(item.source_ref || item.id) === String(button.dataset.sourceOpen));
-      if (!source) return;
-      state.selectedEntity = { type: "source", title: source.title, status: source.confidence, ref: source.source_ref || source.id, raw: source };
-      state.screen = "entity";
-      persistUiState();
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-report-open-sources]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const report = state.reports.find((item) => String(item.id || item.path) === String(button.dataset.reportOpenSources));
-      const source = report ? relatedSourcesForReport(report)[0] : null;
-      if (!source) return;
-      state.selectedEntity = { type: "source", title: source.title, status: source.confidence, ref: source.source_ref || source.id, raw: source };
-      state.screen = "entity";
-      persistUiState();
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-report-export]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const report = state.reports.find((item) => String(item.id || item.path) === String(button.dataset.reportExport)) || selectedReport;
-      if (!report) return;
-      exportSelectedReportDelivery(report);
-    });
-  });
-  bindCommercialTrialFlow();
-}
-
-function exportReportsData() {
-  exportConsoleData("reports", {
-    reports: state.reports || [],
-    source_refs: state.sourceRefs || [],
-    selected_report: state.selectedEntity?.type === "report" ? state.selectedEntity.raw || state.selectedEntity : null,
-    selected_source: state.selectedEntity?.type === "source" ? state.selectedEntity.raw || state.selectedEntity : null,
-    note: "Reports are exported with source references for audit and handoff. Local file contents are not embedded by this frontend export.",
-  });
-}
-
-function renderReportWriteResult() {
-  const result = state.reportWriteResult;
-  if (!result) return "";
-  return `
-    <section class="report-write-result">
-      <div>
-        ${pill(result.status || "draft")}
-        <span class="chip mono">${escapeHtml(shortId(result.id || result.path || ""))}</span>
-      </div>
-      <p>${escapeHtml(result.path || "Manual report was written to local report storage.")}</p>
-    </section>`;
-}
-
-function renderReportDeliveryOverview() {
-  const draftCount = state.reports.filter((item) => item.status === "draft").length;
-  const ingestReportCount = state.reports.filter((item) => item.ingest_id || item.artifact_count !== undefined).length;
-  const sourcedCount = state.reports.filter((item) => item.source_ref || item.ingest_id).length;
-  return `
-    <section class="panel pad report-overview">
-      <div class="conversation-head">
-        <div>
-          <h2 class="panel-title">Delivery overview</h2>
-          <p class="muted compact-copy">Reports are local deliverables. Source references and paths remain visible for audit and handoff.</p>
-        </div>
-        ${pill(state.reports.length ? "ready" : "partial", `${state.reports.length} reports`)}
-      </div>
-      ${renderCountStrip({ drafts: draftCount, ingest_reports: ingestReportCount, sourced: sourcedCount, source_refs: state.sourceRefs.length })}
-    </section>`;
-}
-
-function renderReportDetailPanel(report) {
-  const related = relatedSourcesForReport(report);
-  const path = report.path || "";
-  const sourceRef = report.source_ref || report.ingest_id || report.source?.source_ref || "";
-  return `
-    <section class="panel pad report-detail-panel">
-      <div class="conversation-head">
-        <div>
-          <p class="eyebrow">Report detail</p>
-          <h2 class="panel-title">${escapeHtml(report.title || "Report")}</h2>
-          <p class="muted compact-copy">${escapeHtml(path || "No local path recorded.")}</p>
-        </div>
-        ${pill(report.status || "draft")}
-      </div>
-      <div class="report-detail-grid">
-        <div><span>Report id</span><strong>${escapeHtml(shortId(report.id || ""))}</strong></div>
-        <div><span>Source ref</span><strong>${escapeHtml(shortId(sourceRef || ""))}</strong></div>
-        <div><span>Related refs</span><strong>${escapeHtml(String(related.length))}</strong></div>
-        <div><span>Path</span><strong>${escapeHtml(path || "-")}</strong></div>
-      </div>
-      <div class="report-actions">
-        <button class="ghost-btn mini" type="button" data-entity-action="inspect-path" data-entity-id="${escapeHtml(path)}" ${!path ? "disabled" : ""}>Inspect Path</button>
-        <button class="ghost-btn mini" type="button" data-report-open-sources="${escapeHtml(report.id || report.path || "")}" ${!related.length ? "disabled" : ""}>Show Sources</button>
-        <button class="ghost-btn mini" type="button" data-report-export="${escapeHtml(report.id || report.path || "")}">Export Delivery</button>
-      </div>
-      ${renderEntitySourceChain({ type: "report", raw: report })}
-      ${renderReportDeliveryEvidence(report)}
-    </section>`;
-}
-
-function renderRelatedSourceRefs(report) {
-  const related = relatedSourcesForReport(report);
-  return `
-    <section class="panel pad top-gap">
-      <div class="conversation-head">
-        <div>
-          <h2 class="panel-title">Related source refs</h2>
-          <p class="muted compact-copy">References linked by ingest id or report source ref.</p>
-        </div>
-        ${pill(related.length ? "ready" : "partial", `${related.length} refs`)}
-      </div>
-      ${
-        related.length
-          ? related
-              .slice(0, 8)
-              .map(
-                (item) => `
-                  <button class="object-card button-card source-card" type="button" data-source-open="${escapeHtml(item.source_ref || item.id || "")}">
-                    ${renderObjectCardInner(item, ["source_type", "provider", "title", "confidence"])}
-                  </button>`,
-              )
-              .join("")
-          : `<div class="empty-state">No related source refs found. Generate source refs from Documents to strengthen evidence.</div>`
-      }
-    </section>`;
-}
-
-function relatedSourcesForReport(report) {
-  const ingestId = report.ingest_id || report.source_ref || "";
-  return state.sourceRefs.filter((item) => {
-    const metadata = item.metadata || {};
-    return (
-      (ingestId && metadata.ingest_id === ingestId) ||
-      (report.source_ref && item.source_ref === report.source_ref) ||
-      (report.id && metadata.report_id === report.id)
-    );
-  });
-}
-
-function renderReportDeliveryEvidence(report) {
-  const related = relatedSourcesForReport(report);
-  const audit = reportAuditEvidence(report);
-  return `
-    <div class="report-delivery-evidence">
-      <div><span>handoff payload</span><strong>report + sources + audit</strong><p>Export keeps local file contents out and records trace metadata only.</p></div>
-      <div><span>source coverage</span><strong>${escapeHtml(String(related.length))}</strong><p>Related source refs are linked by ingest id, source ref, or report id.</p></div>
-      <div><span>audit evidence</span><strong>${escapeHtml(String(audit.length))}</strong><p>Linked audit events prove when the deliverable was created or reviewed.</p></div>
-    </div>`;
-}
-
-function reportAuditEvidence(report) {
-  return entityAuditMatches({
-    type: "report",
-    title: report.title || "Report",
-    status: report.status || "draft",
-    ref: report.id || report.path || report.source_ref || "",
-    raw: report,
-  });
-}
-
-function exportSelectedReportDelivery(report) {
-  exportConsoleData("report-delivery", {
-    report,
-    related_source_refs: relatedSourcesForReport(report),
-    audit_evidence: reportAuditEvidence(report),
-    handoff: {
-      includes_local_file_contents: false,
-      includes_secrets: false,
-      external_send_performed: false,
-      long_term_memory_auto_write: false,
-      evidence_basis: "report metadata, source refs, and linked audit events",
-    },
-  });
-}
-
-function renderIntel() {
-  setScreenHead("Intelligence Radar", "signals to action");
-  const search = state.runtimeStatus.search?.search?.status || "missing_config";
-  const index = state.runtimeStatus.index?.index?.status || "missing_config";
-  const intel = state.runtimeStatus.intel?.intelligence?.status || "missing_config";
-  el.body.innerHTML = `
-    <div class="grid two">
-      <section class="panel system-core-stage"><div class="system-core"></div><div class="core-label"><strong>radar partial</strong><span>${escapeHtml(`intelligence ${intel} - search ${search} - index ${index}`)}</span></div></section>
-      <section class="panel pad">
-        <h2 class="panel-title">Signal actions</h2>
-        <div class="pipeline-grid">
-          ${stageCard("Intelligence", intel)}
-          ${stageCard("Search", search)}
-          ${stageCard("Index", index)}
-        </div>
-        <div class="empty-state top-gap">Trend signals can become jobs, reports, or channel approval drafts after dedicated signal endpoints are expanded.</div>
-      </section>
-    </div>`;
-}
-
-function renderChannels() {
-  setScreenHead("Channels", "approval-controlled outbound plans");
-  el.actions.innerHTML = `<button class="ghost-btn" id="refresh-channels" type="button">Refresh</button><button class="ghost-btn" id="export-channel-queue" type="button">Export Queue</button><button class="ghost-btn" id="export-channel-approval" type="button" ${state.selectedEntity?.type !== "channel" ? "disabled" : ""}>Export Approval</button>`;
-  const firstTarget = state.channelTargets[0]?.id || "";
-  const pendingApprovals = state.channelApprovals.filter((item) => (item.review_status || "pending_review") === "pending_review");
-  const reviewedApprovals = state.channelApprovals.length - pendingApprovals.length;
-  el.body.innerHTML = `
-    ${renderCommercialTrialFlow("channels")}
-    ${renderChannelApprovalCommandCenter(pendingApprovals, reviewedApprovals)}
-    <section class="panel pad channel-safety-overview">
-      <div class="conversation-head">
-        <div>
-          <h2 class="panel-title">Outbound safety</h2>
-          <p class="muted compact-copy">Channels create local owner-review records only. Current backend never dispatches an external message.</p>
-        </div>
-        ${pill("approval_required", "will_send=false")}
-      </div>
-      ${renderCountStrip({
-        targets: state.channelTargets.length,
-        diagnostics: state.channelDiagnostics.length,
-        pending_review: pendingApprovals.length,
-        reviewed: reviewedApprovals,
-      })}
-      ${renderChannelSafetyMatrix()}
-      ${renderChannelMediaBoundary()}
-    </section>
-    <div class="channels-layout">
-      <section class="panel pad">
-        <h2 class="panel-title">Status</h2>
-        ${pill(state.channels?.channels?.status || "missing_config")}
-        ${renderWarnings(state.channels?.channels?.blockers || [], state.channels?.channels?.warnings || [])}
-        <h3 class="sub-title">Targets</h3>
-        ${state.channelTargets.map((target) => renderObjectCard(target, ["id", "label", "channel_type", "status"])).join("") || `<div class="empty-state">No targets configured.</div>`}
-        <h3 class="sub-title">Diagnostics</h3>
-        ${state.channelDiagnostics.map(renderChannelDiagnostic).join("") || `<div class="empty-state">No diagnostics loaded.</div>`}
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Plan outbound action</h2>
-        <div class="safety-strip">
-          <span class="chip">requires owner review</span>
-          <span class="chip">records approval request</span>
-          <span class="chip">will_send=false</span>
-        </div>
-        <label class="form-label">Target</label>
-        <select class="field" id="channel-target">${state.channelTargets.map((target) => `<option value="${escapeHtml(target.id)}">${escapeHtml(target.label || target.id)}</option>`).join("")}</select>
-        <label class="form-label">Media</label>
-        <select class="field" id="channel-media"><option>text</option><option>image</option><option>video</option><option>file</option></select>
-        <label class="form-label">Attachment path</label>
-        <input class="field" id="channel-attachment" placeholder="Required for image, video, or file media" />
-        <label class="form-label">Message</label>
-        <textarea class="textarea" id="channel-text" rows="5" placeholder="Draft message for owner approval"></textarea>
-        <button class="primary-btn top-gap" id="plan-channel" type="button" ${!firstTarget ? "disabled" : ""}>Create Approval Plan</button>
-        ${renderChannelPlanResult()}
-        ${renderProductError("channel")}
-        ${renderProductError("channel-review")}
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Approval queue</h2>
-        ${renderChannelReviewResult()}
-        ${pendingApprovals.map(renderChannelApproval).join("") || `<div class="empty-state">No pending approvals. Planning an action records a review item; it does not send externally.</div>`}
-        <h3 class="sub-title">Review records</h3>
-        ${renderChannelReviewRecords()}
-      </section>
-    </div>
-    ${state.selectedEntity?.type === "channel" ? renderSelectedEntityPanel() : ""}`;
-  bindEntityActions();
-  document.getElementById("refresh-channels")?.addEventListener("click", refreshScreenData);
-  document.getElementById("export-channel-queue")?.addEventListener("click", exportChannelQueueEvidence);
-  document.getElementById("export-channel-approval")?.addEventListener("click", exportSelectedChannelApproval);
-  document.getElementById("plan-channel")?.addEventListener("click", async () => {
-    const result = await runAction("channel", () =>
-      api.post("/channels/send", {
-        target_id: document.getElementById("channel-target").value,
-        media_kind: document.getElementById("channel-media").value,
-        text: document.getElementById("channel-text").value,
-        attachment_path: document.getElementById("channel-attachment").value,
-        owner_confirmation: true,
-      }),
-    );
-    if (result?.channel_send_plan?.approval_request_id) {
-      state.channelPlanResult = result.channel_send_plan;
-      document.getElementById("channel-text").value = "";
-      await loadChannels();
-      openChannelApprovalEntity(result.channel_send_plan.approval_request_id);
-      persistUiState();
-      render();
-    }
-  });
-  el.body.querySelectorAll("[data-channel-review]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      await runAction("channel-review", () =>
-        api.post("/channels/approvals/review", {
-          request_id: button.dataset.request,
-          decision: button.dataset.channelReview,
-          reviewer_ref: "owner",
-          note: "Reviewed from bairui console. External send remains disabled in current backend.",
-        }),
-      ).then((result) => {
-        state.channelReviewResult = result?.channel_approval_review || null;
-      });
-      await loadChannels();
-      openChannelApprovalEntity(button.dataset.request);
-      persistUiState();
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-channel-open]").forEach((button) => {
-    button.addEventListener("click", () => {
-      openChannelApprovalEntity(button.dataset.channelOpen);
-      persistUiState();
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-channel-export]").forEach((button) => {
-    button.addEventListener("click", () => {
-      openChannelApprovalEntity(button.dataset.channelExport);
-      persistUiState();
-      exportSelectedChannelApproval();
-      render();
-    });
-  });
-  bindCommercialTrialFlow();
-}
-
-function renderChannelApprovalCommandCenter(pendingApprovals, reviewedApprovals) {
-  const selected = state.selectedEntity?.type === "channel" ? state.selectedEntity.raw || {} : null;
-  const selectedReview = selected ? channelReviewForApproval(selected.id) : null;
-  return `
-    <section class="panel pad channel-command-center">
-      <div class="conversation-head">
-        <div>
-          <p class="eyebrow">Approval command center</p>
-          <h2 class="panel-title">${escapeHtml(selected?.message_preview || selected?.media_kind || "Channel approval queue")}</h2>
-          <p class="muted compact-copy">Plan outbound drafts, record owner decisions, export evidence, and keep dispatch disabled in this product stage.</p>
-        </div>
-        ${pill(pendingApprovals.length ? "needs_review" : "ready", pendingApprovals.length ? `${pendingApprovals.length} pending` : "queue clear")}
-      </div>
-      ${renderCountStrip({
-        targets: state.channelTargets.length,
-        diagnostics: state.channelDiagnostics.length,
-        pending_review: pendingApprovals.length,
-        reviewed: reviewedApprovals,
-        selected_review: selectedReview ? 1 : 0,
-      })}
-      <div class="channel-command-grid">
-        <div><span>Selected approval</span><strong>${escapeHtml(shortId(selected?.id || ""))}</strong><p>${escapeHtml(selected?.reason || selected?.message_preview || "Open a draft to inspect and export approval evidence.")}</p></div>
-        <div><span>Next action</span><strong>${escapeHtml(pendingApprovals.length ? "approve-or-reject" : "plan-draft")}</strong><p>Owner decisions are recorded as review evidence; reviewed drafts cannot be reviewed again.</p></div>
-        <div><span>Dispatch gate</span><strong>will_send=false</strong><p>No planning or review action sends a message to external channels.</p></div>
-        <div><span>Export scope</span><strong>draft + review</strong><p>Approval exports omit secrets and include audit-safe no-send evidence.</p></div>
-      </div>
-    </section>`;
-}
-
-function renderChannelSafetyMatrix() {
-  return `
-    <div class="channel-safety-grid">
-      <div><span>Plan</span><strong>approval_required</strong><p>Planning creates a local approval request and audit event.</p></div>
-      <div><span>Dispatch</span><strong>will_send=false</strong><p>The backend never sends the message during planning or review.</p></div>
-      <div><span>Review</span><strong>owner decision</strong><p>Approve and reject only record review state for this product stage.</p></div>
-      <div><span>Duplicate</span><strong>blocked</strong><p>A reviewed approval cannot be reviewed again.</p></div>
-    </div>`;
-}
-
-function renderChannelMediaBoundary() {
-  const supported = new Set();
-  state.channelDiagnostics.forEach((item) => (item.supports || []).forEach((kind) => supported.add(kind)));
-  const supportedKinds = [...supported];
-  const missingAttachments = state.channelApprovals.filter((item) => item.media_kind && item.media_kind !== "text" && !item.attachment_path).length;
-  return `
-    <div class="channel-media-boundary">
-      <div><span>Media support</span><strong>${escapeHtml(supportedKinds.join(", ") || "text, image, video, file")}</strong><p>Targets declare supported media; unsupported kinds are blocked before any approval record can imply dispatch.</p></div>
-      <div><span>Attachment rule</span><strong>${escapeHtml(String(missingAttachments))} missing</strong><p>Image, video, and file drafts require a local attachment path; exports include metadata only.</p></div>
-      <div><span>Queue evidence</span><strong>${escapeHtml(String(state.channelApprovals.length))} drafts</strong><p>Export Queue captures pending, reviewed, target diagnostics, and no-send safety state for trial handoff.</p></div>
-    </div>`;
-}
-
-function renderChannelPlanResult() {
-  const result = state.channelPlanResult;
-  if (!result) return "";
-  return `
-    <div class="channel-result-card">
-      <div class="agent-meta">
-        ${pill(result.status || "approval_required")}
-        <span class="chip">will_send=${escapeHtml(String(result.will_send === true))}</span>
-        <span class="chip mono">${escapeHtml(shortId(result.approval_request_id || ""))}</span>
-      </div>
-      <p>${escapeHtml(result.reason || "Approval plan recorded without external dispatch.")}</p>
-    </div>`;
-}
-
-function renderChannelReviewResult() {
-  const result = state.channelReviewResult;
-  if (!result) return "";
-  return `
-    <div class="channel-result-card">
-      <div class="agent-meta">
-        ${pill(result.status || "reviewed")}
-        <span class="chip">${escapeHtml(result.decision || "")}</span>
-        <span class="chip">will_send=${escapeHtml(String(result.will_send === true))}</span>
-        <span class="chip mono">${escapeHtml(shortId(result.review_id || result.request_id || ""))}</span>
-      </div>
-      <p>${escapeHtml(result.reason || "Review recorded without external dispatch.")}</p>
-    </div>`;
-}
-
-function openChannelApprovalEntity(requestId) {
-  const approval = state.channelApprovals.find((item) => String(item.id) === String(requestId));
-  if (!approval) return;
-  state.selectedEntity = { type: "channel", title: approval.media_kind, status: approval.review_status || approval.status, ref: approval.id, raw: { ...approval, will_send: false } };
-}
-
-function channelReviewForApproval(requestId) {
-  if (!requestId) return null;
-  return state.channelApprovalReviews.find((item) => String(item.request_id || "") === String(requestId)) || null;
-}
-
-function exportSelectedChannelApproval() {
-  const entity = state.selectedEntity?.type === "channel" ? state.selectedEntity : null;
-  if (!entity) return;
-  const approval = entity.raw || {};
-  exportConsoleData("channel-approval", {
-    approval,
-    review: channelReviewForApproval(approval.id),
-    diagnostics: state.channelDiagnostics.filter((item) => !approval.target_id || String(item.id || "") === String(approval.target_id)),
-    handoff: {
-      includes_secrets: false,
-      external_send_performed: false,
-      will_send: false,
-      requires_owner_review: true,
-      evidence_basis: "approval draft, review record, target diagnostics, and no-send safety state",
-    },
-  });
-}
-
-function exportChannelQueueEvidence() {
-  const reviewsByRequest = new Map(state.channelApprovalReviews.map((item) => [String(item.request_id || ""), item]));
-  const pending = state.channelApprovals.filter((item) => (item.review_status || "pending_review") === "pending_review");
-  const reviewed = state.channelApprovals.filter((item) => reviewsByRequest.has(String(item.id)));
-  exportConsoleData("channel-approval-queue", {
-    handoff_type: "channel_approval_queue_evidence",
-    generated_from_screen: "channels",
-    targets: state.channelTargets,
-    diagnostics: state.channelDiagnostics,
-    pending_approvals: pending,
-    reviewed_approvals: reviewed,
-    reviews: state.channelApprovalReviews,
-    selected_approval: state.selectedEntity?.type === "channel" ? state.selectedEntity.raw || state.selectedEntity : null,
-    media_policy: {
-      supported_media_kinds: ["text", "image", "video", "file"],
-      attachment_required_for: ["image", "video", "file"],
-      includes_attachment_contents: false,
-    },
-    safety_acceptance: {
-      external_send_performed: false,
-      will_send: false,
-      requires_owner_review: true,
-      approval_bypass_allowed: false,
-      customer_public_brand: "bairui",
-    },
-    operator_next_steps: [
-      "Review every pending approval before using customer-facing channel dispatch in a later product stage.",
-      "Reject drafts with missing attachments or unsupported media.",
-      "Use Settings to configure channel targets; secret values never echo in this export.",
-    ],
-  });
-}
-
-function renderChannelApproval(item) {
-  const reviewed = item.review_status === "reviewed";
-  return `
-    <article class="review-card">
-      <div class="step-title"><span>${escapeHtml(item.media_kind || "approval")}</span>${pill(item.review_status || "pending_review")}</div>
-      <p>${escapeHtml(item.message_preview || item.reason || "")}</p>
-      <div class="agent-meta">
-        <span class="chip mono">${escapeHtml(shortId(item.id))}</span>
-        <span class="chip">${escapeHtml(item.channel_type || "")}</span>
-        <span class="chip">will_send false</span>
-      </div>
-      <div class="action-row">
-        <button class="ghost-btn" type="button" data-channel-open="${escapeHtml(item.id)}">View Draft</button>
-        <button class="ghost-btn" type="button" data-channel-export="${escapeHtml(item.id)}">Export Approval</button>
-        <button class="ghost-btn" type="button" data-channel-review="approve" data-request="${escapeHtml(item.id)}" ${reviewed ? "disabled" : ""}>Approve Record</button>
-        <button class="ghost-btn" type="button" data-channel-review="reject" data-request="${escapeHtml(item.id)}" ${reviewed ? "disabled" : ""}>Reject</button>
-      </div>
-    </article>`;
-}
-
-function renderChannelDiagnostic(item) {
-  return `
-    <article class="mini-card">
-      <div class="step-title"><span>${escapeHtml(item.label || item.id || "target")}</span>${pill(item.status || "missing_config")}</div>
-      <div class="agent-meta">
-        <span class="chip">${escapeHtml(item.channel_type || "")}</span>
-        <span class="chip">${item.requires_owner_confirmation ? "owner review" : "review warning"}</span>
-        <span class="chip">${escapeHtml((item.supports || []).join(", ") || "no media")}</span>
-      </div>
-      ${renderWarnings(item.blockers || [], item.warnings || [])}
-    </article>`;
-}
-
-function renderChannelReviewRecords() {
-  const reviewsByRequest = new Map(state.channelApprovalReviews.map((item) => [String(item.request_id || ""), item]));
-  const rows = state.channelApprovals
-    .filter((item) => reviewsByRequest.has(String(item.id)))
-    .map((item) => ({ approval: item, review: reviewsByRequest.get(String(item.id)) }))
-    .slice(0, 8);
-  if (!rows.length) return `<div class="empty-state">No review records yet. Approved and rejected drafts stay local and never send externally.</div>`;
-  return rows
-    .map(
-      ({ approval, review }) => `
-        <button class="object-card button-card" type="button" data-channel-open="${escapeHtml(approval.id)}">
-          <div class="object-card-top">
-            <span class="object-kind">${escapeHtml(review.decision || "reviewed")}</span>
-            ${pill(review.status || "reviewed")}
-          </div>
-          <strong>${escapeHtml(approval.message_preview || approval.reason || approval.media_kind || "channel draft")}</strong>
-          <div class="agent-meta">
-            <span class="chip mono">${escapeHtml(shortId(approval.id))}</span>
-            <span class="chip">${escapeHtml(review.reviewer_ref || "owner")}</span>
-            <span class="chip">will_send false</span>
-          </div>
-        </button>`,
-    )
-    .join("");
-}
-
-function renderAvatar() {
-  setScreenHead("Avatar", "character state layer");
-  const currentState = state.avatarStatus?.avatar_state?.state || state.avatarStatus?.avatar?.status || "idle";
-  const states = ["idle", "thinking", "speaking", "approval_required", "error", "done", "hidden"];
-  const manifest = state.avatarManifest?.avatar_manifest || {};
-  const engine = manifest.engine || state.avatarStatus?.avatar || {};
-  const model = manifest.model || {};
-  const runtime = manifest.runtime || {};
-  el.actions.innerHTML = states
-    .map((item) => `<button class="ghost-btn" type="button" data-avatar-state="${escapeHtml(item)}">${escapeHtml(item)}</button>`)
-    .join("");
-  el.body.innerHTML = `
-    <section class="panel pad avatar-boundary-panel">
-      <div class="conversation-head">
-        <div>
-          <h2 class="panel-title">Avatar runtime boundary</h2>
-          <p class="muted compact-copy">Avatar is a browser-side Live2D state layer. Backend records state and validates local assets; it does not generate voices, clone identity, or bypass approvals.</p>
-        </div>
-        ${pill(engine.status || "missing_config")}
-      </div>
-      ${renderAvatarBoundaryMatrix(engine, runtime)}
-    </section>
-    <div class="grid two">
-      <section class="panel system-core-stage">
-        <div class="avatar-core avatar-preview"></div>
-        <div class="core-label">
-          <strong>${escapeHtml(currentState)}</strong>
-          <span>${escapeHtml(engine.package || engine.status || "runtime pending")}</span>
-        </div>
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">State controls</h2>
-        <p class="muted compact-copy">Avatar state changes are local product events. They do not clone voices, render backend video, or bypass approval flows.</p>
-        <label class="form-label">Speech text</label>
-        <textarea class="textarea" id="avatar-text" rows="4" placeholder="Text for speaking or approval_required state"></textarea>
-        <label class="form-label">Audio URL</label>
-        <input class="field" id="avatar-audio-url" placeholder="/tts/sample.wav" />
-        <div class="action-row top-gap">
-          ${states.map((item) => `<button class="ghost-btn" type="button" data-avatar-state="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("")}
-        </div>
-        ${renderAvatarActionResult()}
-        <h3 class="sub-title">Validate model</h3>
-        <input class="field" id="avatar-model-path" placeholder="avatar/bairui.model3.json" />
-        <button class="ghost-btn top-gap" id="avatar-validate" type="button">Validate Model</button>
-        ${renderAvatarValidationResult()}
-        ${renderProductError("avatar")}
-        ${renderProductError("avatar-validate")}
-      </section>
-    </div>`;
-  [...el.actions.querySelectorAll("[data-avatar-state]"), ...el.body.querySelectorAll("[data-avatar-state]")].forEach((button) => {
-    button.addEventListener("click", async () => {
-      const next = button.dataset.avatarState;
-      const result = await runAction("avatar", () =>
-        api.post("/avatar/state", {
-          state: next,
-          text: document.getElementById("avatar-text")?.value || (next === "thinking" ? "Working" : ""),
-          audio_url: document.getElementById("avatar-audio-url")?.value || "",
-          lip_sync: next === "speaking",
-        }),
-      );
-      state.avatarStatus = result?.avatar_state ? { avatar_state: result.avatar_state, avatar: { status: result.avatar_state.state } } : state.avatarStatus;
-      state.avatarActionResult = result?.avatar_state || null;
-      render();
-    });
-  });
-  document.getElementById("avatar-validate")?.addEventListener("click", async () => {
-    const modelPath = document.getElementById("avatar-model-path")?.value || "";
-    const result = await runAction("avatar-validate", () => api.post("/avatar/validate", { model_path: modelPath }));
-    state.avatarValidation = result?.avatar_validation || result;
-    render();
-  });
-}
-
-function renderAvatarBoundaryMatrix(engine, runtime) {
-  return `
-    <div class="avatar-boundary-grid">
-      <div><span>Renderer</span><strong>${escapeHtml(engine.browser_runtime || "browser")}</strong><p>Live2D rendering belongs in the frontend runtime.</p></div>
-      <div><span>Backend</span><strong>state + validation</strong><p>Backend accepts state events and validates local model manifests.</p></div>
-      <div><span>Lip sync</span><strong>${escapeHtml(runtime?.audio_lipsync?.driver || "web_audio_amplitude")}</strong><p>Speaking state can request lip_sync, but audio generation is separate.</p></div>
-      <div><span>Approval</span><strong>cannot bypass review</strong><p>approval_required is a visible state, not permission to perform external actions.</p></div>
-    </div>`;
-}
-
-function renderAvatarActionResult() {
-  const result = state.avatarActionResult;
-  if (!result) return "";
-  return `
-    <div class="avatar-result-card">
-      <div class="agent-meta">
-        ${pill(result.status || "accepted")}
-        <span class="chip">${escapeHtml(result.state || "")}</span>
-        <span class="chip">lip_sync=${escapeHtml(String(result.lip_sync === true))}</span>
-        <span class="chip">external_action=false</span>
-      </div>
-      <p>${escapeHtml(result.text || result.motion || "Avatar state accepted and audited locally.")}</p>
-    </div>`;
-}
-
-function renderAvatarValidationResult() {
-  const validation = state.avatarValidation;
-  if (!validation) return "";
-  return `
-    <div class="avatar-validation-card">
-      <div class="agent-meta">
-        ${pill(validation.status || "checked")}
-        <span class="chip">${escapeHtml(validation.model_format || "")}</span>
-        <span class="chip">${escapeHtml((validation.missing_files || []).length)} missing</span>
-      </div>
-      <p>${escapeHtml(validation.model_path || "Model path checked.")}</p>
-      ${validation.missing_files?.length ? `<p class="error-text">${escapeHtml(validation.missing_files.join(" | "))}</p>` : ""}
-    </div>`;
-}
-
-function renderSettings() {
-  setScreenHead("Settings", "runtime status");
-  el.actions.innerHTML = `
-    <button class="primary-btn" id="settings-refresh" type="button">Refresh Checks</button>
-    <button class="ghost-btn" id="settings-copy-checklist" type="button">Copy Checklist</button>
-    <button class="ghost-btn" id="settings-open-activation" type="button">Open Activation</button>
-    <button class="ghost-btn" id="settings-open-events" type="button">Open Events</button>`;
-  const readiness = state.readiness?.runtime_readiness || {};
-  el.body.innerHTML = `
-    <section class="panel pad runtime-health-overview">
-      <div class="conversation-head">
-        <div>
-          <h2 class="panel-title">System readiness</h2>
-          <p class="muted compact-copy">Settings is the operator view for /health, /ready, /runtime/readiness, runtime adapters, license, platform heartbeat, and safe repair actions.</p>
-        </div>
-        ${pill(readiness.status || state.ready?.status || "partial")}
-      </div>
-      ${renderSettingsGateGrid()}
-      ${renderSettingsAdminSession()}
-      ${renderSettingsNextActions(readiness)}
-    </section>
-    ${renderSettingsActivationProfile()}
-    <div class="grid two">
-      <section class="panel pad">
-        <h2 class="panel-title">Runtime readiness</h2>
-        <p class="muted compact-copy">${escapeHtml(readiness.summary || "Runtime readiness has not been loaded yet.")}</p>
-        ${renderSettingsReadinessList(readiness)}
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Configuration boundary</h2>
-        ${renderSettingsConfigBoundary()}
-      </section>
-    </div>
-    ${renderSettingsSecurityAcceptance()}
-    <section class="panel pad top-gap">
-      <div class="conversation-head">
-        <div>
-          <h2 class="panel-title">Configuration center</h2>
-          <p class="muted compact-copy">Self-service configuration for model API, scoped data paths, channel targets, Avatar assets, CodeGraph, and database. Secret fields can be saved but never echo.</p>
-        </div>
-        ${pill(state.configStatus?.config_status?.status || "partial")}
-      </div>
-      ${renderSettingsConfigForm()}
-      ${renderProductError("config-apply")}
-      ${renderProductError("owner-token-local")}
-      ${renderSettingsSelfServiceClosure()}
-      ${renderSettingsDeliveryCheckEntry()}
-      ${renderSettingsConfigCenter()}
-      ${renderSettingsConfigChecklist()}
-      ${renderSettingsConfigActionGuide()}
-      ${state.toast ? `<div class="settings-copy-result">${escapeHtml(state.toast)}</div>` : ""}
-      ${renderProductError("settings-copy-checklist")}
-    </section>
-    <section class="panel pad top-gap">
-      <div class="conversation-head">
-        <div>
-          <h2 class="panel-title">Data persistence operations</h2>
-          <p class="muted compact-copy">PostgreSQL migration, backup readiness, and restore guardrails are visible here. Database URLs and passwords never echo; destructive restore stays a CLI maintenance-window plan.</p>
-        </div>
-        ${pill(state.backupStatus?.backup?.status || state.ready?.database?.status || "missing_config")}
-      </div>
-      ${renderSettingsDataOperations()}
-      ${renderProductError("database-migrate")}
-      ${renderProductError("backup-plan")}
-    </section>
-    <section class="panel pad top-gap">
-      <div class="conversation-head">
-        <div>
-          <h2 class="panel-title">Runtime adapter matrix</h2>
-          <p class="muted compact-copy">Each row is backed by a real status endpoint or readiness item. Optional runtimes may stay partial without blocking local demo flow.</p>
-        </div>
-        ${pill(readiness.status || "partial")}
-      </div>
-      ${renderSettingsRuntimeMatrix()}
-      ${renderProductError("config-status")}
-      ${renderProductError("settings-refresh")}
-      ${renderProductError("memory-status")}
-      ${renderProductError("voice-status")}
-      ${renderProductError("document-status")}
-      ${renderProductError("intel-status")}
-      ${renderProductError("simulation-status")}
-      ${renderProductError("search-status")}
-      ${renderProductError("index-status")}
-      ${renderProductError("codegraph-status")}
-    </section>`;
-  document.getElementById("settings-refresh")?.addEventListener("click", async () => {
-    await runAction("settings-refresh", refresh);
-  });
-  document.getElementById("settings-copy-checklist")?.addEventListener("click", async () => {
-    const checklist = state.configStatus?.config_status?.checklist?.markdown || "";
-    const copied = await copyText(checklist);
-    if (copied) {
-      state.toast = "Checklist copied.";
-      state.errors["settings-copy-checklist"] = "";
-      state.errorDetails["settings-copy-checklist"] = null;
-    } else {
-      state.errors["settings-copy-checklist"] = "Unable to copy checklist.";
-    }
-    render();
-  });
-  document.getElementById("settings-save-config")?.addEventListener("click", saveSettingsConfig);
-  document.getElementById("settings-save-owner-token-local")?.addEventListener("click", saveOwnerTokenLocal);
-  document.getElementById("settings-run-migration")?.addEventListener("click", runSettingsDatabaseMigration);
-  document.getElementById("settings-load-backup-plan")?.addEventListener("click", loadSettingsBackupPlan);
-  document.getElementById("settings-delivery-open-events")?.addEventListener("click", async () => {
-    state.screen = "events";
-    persistUiState();
-    await refreshScreenData();
-  });
-  document.getElementById("settings-open-activation")?.addEventListener("click", async () => {
-    state.screen = "activation";
-    persistUiState();
-    await refreshScreenData();
-  });
-  document.getElementById("settings-open-events")?.addEventListener("click", async () => {
-    state.screen = "events";
-    persistUiState();
-    await refreshScreenData();
-  });
-}
-
-async function saveOwnerTokenLocal() {
-  const ok = setOwnerToken(document.getElementById("settings-owner-token-local")?.value || "");
-  if (ok) {
-    state.toast = getOwnerToken() ? "Owner token saved locally for this browser." : "Owner token cleared from this browser.";
-    state.errors["owner-token-local"] = "";
-    state.errorDetails["owner-token-local"] = null;
-    await refreshScreenData();
-  } else {
-    state.errors["owner-token-local"] = "Unable to save owner token locally.";
-    render();
-  }
-}
-
-function renderSettingsConfigForm() {
-  const modelKeyState = settingsConfigSecretState("model_gateway", "api_key");
-  const databaseState = settingsConfigSecretState("database", "database_url");
-  const ownerTokenState = settingsConfigSecretState("owner_gate", "owner_token");
-  return `
-    <section class="settings-config-form">
-      <div class="settings-form-status-strip">
-        <div><span>Loaded safely</span><strong>${escapeHtml(settingsConfigPrefillSummary())}</strong></div>
-        <div><span>Secret fields</span><strong>status only, never echoed</strong></div>
-        <div><span>Confirmation</span><strong>${escapeHtml(state.configApplyResult?.confirmation_phrase || "only for high-risk changes")}</strong></div>
-      </div>
-      <div class="form-grid two-cols">
-        <label>
-          <span class="form-label">Model base URL</span>
-          <input class="field" id="settings-model-base-url" value="${escapeHtml(settingsConfigFieldValue("model_base_url"))}" placeholder="https://models.example.com/v1" />
-        </label>
-        <label>
-          <span class="form-label">Model name</span>
-          <input class="field" id="settings-model-name" value="${escapeHtml(settingsConfigFieldValue("model_name"))}" placeholder="bairui-demo-model" />
-        </label>
-      </div>
-      <label>
-        <span class="form-label">Model API key</span>
-        <input class="field" id="settings-model-api-key" type="password" autocomplete="new-password" placeholder="${escapeHtml(modelKeyState === "configured" ? "Configured; enter a new key only to rotate" : "Save new key; existing key is never shown")}" />
-      </label>
-      <div class="form-grid two-cols">
-        <label>
-          <span class="form-label">Owner token for this browser</span>
-          <input class="field" id="settings-owner-token-local" type="password" autocomplete="current-password" placeholder="Stored locally; sent as X-Bairui-Owner-Token" />
-        </label>
-        <label>
-          <span class="form-label">New owner token for server</span>
-          <input class="field" id="settings-owner-token-new" type="password" autocomplete="new-password" placeholder="${escapeHtml(ownerTokenState === "configured" ? "Configured; enter a new token only to rotate" : "Optional; save new token, never echo")}" />
-        </label>
-      </div>
-      <div class="form-grid two-cols">
-        <label>
-          <span class="form-label">Document output directory</span>
-          <input class="field" id="settings-document-output-dir" value="${escapeHtml(settingsConfigFieldValue("document_output_dir"))}" placeholder="data\\documents or C:\\Users\\you\\bairui\\documents" />
-        </label>
-        <label>
-          <span class="form-label">Memory vault directory</span>
-          <input class="field" id="settings-memory-vault-dir" value="${escapeHtml(settingsConfigFieldValue("memory_vault_dir"))}" placeholder="obsidian-vault or C:\\Users\\you\\bairui\\memory-vault" />
-        </label>
-      </div>
-      <div class="form-grid two-cols">
-        <label>
-          <span class="form-label">Avatar assets directory</span>
-          <input class="field" id="settings-avatar-assets-dir" value="${escapeHtml(settingsConfigFieldValue("avatar_assets_dir"))}" placeholder="data\\avatars or C:\\Users\\you\\bairui\\avatars" />
-        </label>
-        <label>
-          <span class="form-label">Avatar default model</span>
-          <input class="field" id="settings-avatar-default-model" value="${escapeHtml(settingsConfigFieldValue("avatar_default_model"))}" placeholder="bairui.model3.json" />
-        </label>
-      </div>
-      <div class="form-grid two-cols">
-        <label>
-          <span class="form-label">CodeGraph root</span>
-          <input class="field" id="settings-codegraph-root" value="${escapeHtml(settingsConfigFieldValue("codegraph_root"))}" placeholder="data\\codegraph or C:\\Users\\you\\bairui\\codegraph" />
-        </label>
-        <label>
-          <span class="form-label">PostgreSQL URL</span>
-          <input class="field" id="settings-database-url" type="password" autocomplete="new-password" placeholder="${escapeHtml(databaseState === "configured" ? "Configured; enter a new URL only to rotate" : "Optional; save new URL, never echo")}" />
-        </label>
-      </div>
-      <label>
-        <span class="form-label">Channel targets JSON</span>
-        <textarea class="textarea" id="settings-channel-targets-json" rows="4" placeholder='[{"id":"owner","label":"Owner","channel_type":"personal_chat"}]'>${escapeHtml(settingsConfigFieldValue("channel_targets_json"))}</textarea>
-      </label>
-      <label>
-        <span class="form-label">Dangerous change confirmation</span>
-        <input class="field" id="settings-danger-confirmation" placeholder="Type APPLY BAIRUI CONFIG for owner token, PostgreSQL, memory, channel, or CodeGraph changes" />
-      </label>
-      <label class="settings-create-dirs">
-        <input id="settings-create-dirs" type="checkbox" checked />
-        <span>Create missing local directories when possible</span>
-      </label>
-      <div class="action-row top-gap">
-        <button class="ghost-btn" id="settings-save-owner-token-local" type="button">Save Owner Token Locally</button>
-        <button class="primary-btn" id="settings-save-config" type="button">Save Configuration</button>
-        <span class="muted compact-copy">Saving updates local server config and refreshes diagnostics. Paths must stay inside the bairui workspace, configured data/log/vault roots, or ~/bairui / ~/.bairui. Owner token values never echo and are not included in exports.</span>
-      </div>
-      ${renderSettingsConfigApplyResult()}
-    </section>`;
-}
-
-function renderSettingsActivationProfile() {
-  const mode = selectedActivationMode();
-  const required = settingsActivationRequiredFields(mode.id);
-  const restartFields = settingsActivationRestartFields(mode.id);
-  const readyCount = required.filter((field) => settingsActivationFieldReady(field)).length;
-  return `
-    <section class="panel pad settings-activation-profile top-gap">
-      <div class="conversation-head">
-        <div>
-          <span class="section-label">激活方式配置画像</span>
-          <h2 class="panel-title">${escapeHtml(mode.title)}</h2>
-          <p class="muted compact-copy">${escapeHtml(mode.detail)} 这里把第一步选择转换成客户可执行的配置清单。</p>
-        </div>
-        ${pill(readyCount === required.length ? "ready" : "partial", `${readyCount}/${required.length} ready`)}
-      </div>
-      <div class="settings-activation-grid">
-        <div>
-          <span>必填配置</span>
-          <strong>${escapeHtml(required.join(", "))}</strong>
-          <p>${escapeHtml(settingsActivationModeInstruction(mode.id))}</p>
-        </div>
-        <div>
-          <span>重启字段</span>
-          <strong>${escapeHtml(restartFields.join(", ") || "none")}</strong>
-          <p>修改 owner token、PostgreSQL、长期记忆、渠道目标或 CodeGraph 后，需要按保存结果提示重启或复查。</p>
-        </div>
-        <div>
-          <span>验证路径</span>
-          <strong>Save -> Refresh -> Activation</strong>
-          <p>保存后先刷新 Settings，再回到 Activation 检查缺失配置、审批边界和 readiness 是否闭合。</p>
-        </div>
-      </div>
-      <div class="settings-activation-field-grid">
-        ${required.map((field) => renderSettingsActivationField(field)).join("")}
-      </div>
-    </section>`;
-}
-
-function settingsActivationRequiredFields(modeId) {
-  const common = ["model_base_url", "model_name", "model_api_key", "document_output_dir"];
-  if (modeId === "local_trial") return [...common, "memory_vault_dir", "avatar_assets_dir"];
-  if (modeId === "local_production") return [...common, "memory_vault_dir", "avatar_assets_dir", "codegraph_root"];
-  return [...common, "database_url", "owner_token", "memory_vault_dir", "channel_targets_json", "avatar_assets_dir", "codegraph_root"];
-}
-
-function settingsActivationRestartFields(modeId) {
-  const fields = ["memory_vault_dir"];
-  if (modeId !== "local_trial") fields.push("codegraph_root");
-  if (modeId === "server_production") fields.push("database_url", "owner_token", "channel_targets_json");
-  return fields;
-}
-
-function settingsActivationModeInstruction(modeId) {
-  if (modeId === "local_trial") return "试用模式先跑通最小模型、文档、记忆审核和 Avatar；真实外发渠道保持审批关闭。";
-  if (modeId === "local_production") return "本地生产模式重点确认本机路径、模型网关、长期记忆和代码索引目录都在受控范围内。";
-  return "服务器生产模式必须补齐数据库、管理员令牌、数据目录、渠道审批和运行时健康检查，适合客户试点交付。";
-}
-
-function settingsActivationFieldReady(field) {
-  if (field === "model_api_key") return settingsConfigSecretState("model_gateway", "api_key") === "configured";
-  if (field === "database_url") return settingsConfigSecretState("database", "database_url") === "configured";
-  if (field === "owner_token") return settingsConfigSecretState("owner_gate", "owner_token") === "configured" || Boolean(getOwnerToken());
-  if (field === "channel_targets_json") {
-    const item = configStatusItem("channel_targets");
-    return ["ready", "configured", "partial"].includes(String(item?.status || ""));
-  }
-  return Boolean(settingsConfigFieldValue(field));
-}
-
-function renderSettingsActivationField(field) {
-  const ready = settingsActivationFieldReady(field);
-  const labels = {
-    model_base_url: "模型网关地址",
-    model_name: "模型名称",
-    model_api_key: "模型密钥",
-    document_output_dir: "文档输出目录",
-    memory_vault_dir: "长期记忆目录",
-    avatar_assets_dir: "Avatar 资源目录",
-    codegraph_root: "CodeGraph 根目录",
-    database_url: "PostgreSQL URL",
-    owner_token: "管理员令牌",
-    channel_targets_json: "渠道目标 JSON",
-  };
-  return `
-    <div class="${ready ? "ready" : "missing"}">
-      <span>${escapeHtml(field)}</span>
-      <strong>${escapeHtml(labels[field] || field)}</strong>
-      ${pill(ready ? "ready" : "missing_config", ready ? "已配置" : "待填写")}
-    </div>`;
-}
-
-function renderSettingsSecurityAcceptance() {
-  const items = settingsSecurityAcceptanceItems();
-  const passed = items.filter((item) => item.status === "ready").length;
-  return `
-    <section class="panel pad settings-security-acceptance top-gap">
-      <div class="conversation-head">
-        <div>
-          <span class="section-label">security acceptance</span>
-          <h2 class="panel-title">Security boundary checklist</h2>
-          <p class="muted compact-copy">Commercial trial controls are shown as verifiable product evidence: owner identity, scoped paths, write-only secrets, explicit confirmation, approval gates, and redacted support exports.</p>
-        </div>
-        ${pill(passed === items.length ? "ready" : "partial", `${passed}/${items.length} controls`)}
-      </div>
-      <div class="settings-security-grid">
-        ${items
-          .map(
-            (item) => `
-              <div class="${escapeHtml(item.status)}">
-                <span>${escapeHtml(item.id)}</span>
-                <strong>${escapeHtml(item.title)}</strong>
-                ${pill(item.status, item.status === "ready" ? "verified" : "needs check")}
-                <p>${escapeHtml(item.evidence)}</p>
-              </div>`,
-          )
-          .join("")}
-      </div>
-    </section>`;
-}
-
-function settingsSecurityAcceptanceItems() {
-  const ownerConfigured = settingsConfigSecretState("owner_gate", "owner_token") === "configured" || Boolean(getOwnerToken());
-  const config = state.configStatus?.config_status || {};
-  const checklist = config.checklist || {};
-  const readiness = state.readiness?.runtime_readiness || {};
-  const channelTargets = configStatusItem("channel_targets");
-  return [
-    {
-      id: "owner_identity",
-      title: "Owner-gated writes",
-      status: ownerConfigured ? "ready" : "partial",
-      evidence: ownerConfigured ? "Owner token is configured or stored locally for this browser; token value is never returned." : "Save an owner token locally or configure the server owner token before trial writes.",
-    },
-    {
-      id: "secret_write_only",
-      title: "Secrets never echo",
-      status: "ready",
-      evidence: "Model key, PostgreSQL URL, and owner token fields use configured/missing states and are redacted from exports.",
-    },
-    {
-      id: "path_scope",
-      title: "Scoped local paths",
-      status: checklist.path_scope_policy || config.path_scope_policy ? "ready" : "partial",
-      evidence: checklist.path_scope_policy || config.path_scope_policy || "Path policy loads from /config/status and restricts writable roots.",
-    },
-    {
-      id: "danger_confirmation",
-      title: "Dangerous change confirmation",
-      status: "ready",
-      evidence: `High-risk fields require ${state.configApplyResult?.confirmation_phrase || "APPLY BAIRUI CONFIG"} before save.`,
-    },
-    {
-      id: "approval_gates",
-      title: "Approvals cannot be bypassed",
-      status: channelTargets?.status && !["missing_config", "failed"].includes(channelTargets.status) ? "ready" : "partial",
-      evidence: "Memory review and channel drafts remain explicit owner decisions; channel planning keeps will_send=false.",
-    },
-    {
-      id: "redacted_observability",
-      title: "Redacted support exports",
-      status: readiness.status ? "ready" : "partial",
-      evidence: "Events exports diagnostics, metrics, audit, and error logs through customer-safe redaction.",
-    },
-  ];
-}
-
-function renderSettingsConfigApplyResult() {
-  const result = state.configApplyResult;
-  if (!result) return "";
-  const next = result.status === "confirmation_required"
-    ? "Review dangerous_fields, type APPLY BAIRUI CONFIG, then re-enter any secret values before saving."
-    : result.restart_required
-      ? "Restart the bairui server after saving, then refresh Settings to verify the new runtime state."
-      : "Refresh diagnostics, then continue Activation or run the mapped workbench action.";
-  return `
-    <div class="settings-apply-result">
-      <div class="agent-meta">
-        ${pill(result.status || "saved")}
-        <span class="chip">restart_required=${escapeHtml(String(result.restart_required === true))}</span>
-        <span class="chip">secret_echo=false</span>
-      </div>
-      ${result.dangerous_fields?.length ? `<p class="muted compact-copy">dangerous_fields=${escapeHtml(result.dangerous_fields.join(", "))}</p>` : ""}
-      ${result.confirmation_phrase ? `<p class="muted compact-copy">confirmation_phrase=${escapeHtml(result.confirmation_phrase)}</p>` : ""}
-      ${result.path_scope_policy ? `<p class="muted compact-copy">path_scope=${escapeHtml(result.path_scope_policy)}</p>` : ""}
-      <p>${escapeHtml(result.path || result.secret_policy || "Configuration saved.")}</p>
-      <p class="muted compact-copy">next_step=${escapeHtml(next)}</p>
-      ${renderSettingsConfigApplyVerification()}
-    </div>`;
-}
-
-function renderSettingsConfigApplyVerification() {
-  const verification = state.configApplyVerification;
-  if (!verification) return "";
-  const blockers = verification.blockers || [];
-  return `
-    <div class="settings-apply-verification">
-      <div><span>Auto verification</span><strong>${escapeHtml(verification.status || "partial")}</strong><p>${escapeHtml(verification.summary || "Verification data refreshed after save.")}</p></div>
-      <div><span>/config/status</span><strong>${escapeHtml(verification.config_status || "partial")}</strong><p>${escapeHtml(verification.config_missing_required || "missing_required not loaded")}</p></div>
-      <div><span>/ready</span><strong>${escapeHtml(verification.ready_status || "partial")}</strong><p>${escapeHtml(verification.ready_database || "database status pending")}</p></div>
-      <div><span>/runtime/readiness</span><strong>${escapeHtml(verification.runtime_status || "partial")}</strong><p>${escapeHtml(blockers.length ? blockers.slice(0, 3).join(" | ") : "no required blockers reported")}</p></div>
-    </div>`;
-}
-
-async function verifySettingsConfigApply() {
-  const [configStatus, ready, readiness] = await Promise.all([
-    safe(() => api.get("/config/status"), state.configStatus, "config-status"),
-    safe(() => api.get("/ready"), state.ready, "ready"),
-    safe(() => api.get("/runtime/readiness"), state.readiness, "runtime-readiness"),
-  ]);
-  state.configStatus = configStatus;
-  state.ready = ready;
-  state.readiness = readiness;
-  const config = configStatus?.config_status || {};
-  const runtime = readiness?.runtime_readiness || {};
-  const blockers = runtime.blockers || [];
-  state.configApplyVerification = {
-    status: blockers.length ? "blocked" : runtime.status || ready?.status || config.status || "partial",
-    summary: blockers.length ? `${blockers.length} runtime blockers remain after save.` : "Save completed and runtime diagnostics were refreshed automatically.",
-    config_status: config.status || "partial",
-    config_missing_required: (config.checklist?.missing_required || []).join(", ") || "none",
-    ready_status: ready?.status || "partial",
-    ready_database: ready?.database?.status || ready?.database || "unknown",
-    runtime_status: runtime.status || "partial",
-    blockers,
-  };
-}
-
-function renderSettingsSelfServiceClosure() {
-  const result = state.configApplyResult || {};
-  const config = state.configStatus?.config_status || {};
-  const checklist = config.checklist || {};
-  const applied = result.applied || {};
-  const appliedEntries = Object.entries(applied);
-  const status = result.status || "not_saved";
-  const restart = result.restart_required === true;
-  const missingRequired = checklist.missing_required || [];
-  const optionalMissing = checklist.optional_missing || [];
-  const commands = checklist.commands || [];
-  const nextActions = settingsSelfServiceNextActions(result, config);
-  return `
-    <section class="settings-self-service-closure top-gap">
-      <div class="conversation-head">
-        <div>
-          <h3 class="panel-title">Self-service apply closure</h3>
-          <p class="muted compact-copy">This is the customer-facing save loop: fill fields, save without secret echo, review restart state, then run the exact verification steps.</p>
-        </div>
-        ${pill(restart ? "blocked" : status === "saved" ? "ready" : "partial", restart ? "restart required" : status)}
-      </div>
-      <div class="settings-closure-grid">
-        <div><span>Applied fields</span><strong>${escapeHtml(appliedEntries.length ? appliedEntries.map(([key]) => key).join(", ") : "none yet")}</strong><p>${escapeHtml(appliedEntries.length ? "Secret values show configured only; non-secret paths and names remain visible." : "Save configuration to generate an applied-field summary.")}</p></div>
-        <div><span>Restart</span><strong>${escapeHtml(restart ? "required" : "not required")}</strong><p>${escapeHtml(restart ? "Restart the bairui server, then refresh Settings and Activation." : "Refresh checks after saving to verify runtime state.")}</p></div>
-        <div><span>Required blockers</span><strong>${escapeHtml(missingRequired.join(", ") || "none")}</strong><p>${escapeHtml(optionalMissing.length ? `${optionalMissing.length} optional gaps remain.` : "Optional gaps are either complete or not loaded yet.")}</p></div>
-        <div><span>Verification commands</span><strong>${escapeHtml(commands.slice(0, 2).join(" | ") || "load checklist")}</strong><p>Use Copy Checklist for the full operator command list.</p></div>
-      </div>
-      <div class="settings-closure-next">
-        ${nextActions.map((item) => `<div><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.detail)}</p></div>`).join("")}
-      </div>
-    </section>`;
-}
-
-function settingsSelfServiceNextActions(result = {}, config = {}) {
-  if (result.status === "confirmation_required") {
-    return [
-      { label: "1", title: "Type confirmation", detail: "Type APPLY BAIRUI CONFIG, then re-enter any secret values before saving again." },
-      { label: "2", title: "Review risk fields", detail: `High-risk fields: ${(result.dangerous_fields || []).join(", ") || "unknown"}.` },
-      { label: "3", title: "No partial save", detail: "The backend did not save the high-risk change before confirmation." },
-    ];
-  }
-  if (result.restart_required) {
-    return [
-      { label: "1", title: "Restart server", detail: "Restart the bairui process so environment-backed settings are reloaded." },
-      { label: "2", title: "Refresh checks", detail: "Open Settings and run Refresh Checks, then verify /config/status and /runtime/readiness." },
-      { label: "3", title: "Return to Activation", detail: "Activation should move the configured layer out of missing_config after restart." },
-    ];
-  }
-  if (result.status === "saved") {
-    return [
-      { label: "1", title: "Refresh checks", detail: "Verify saved fields through safe status values, not by reading secrets back." },
-      { label: "2", title: "Open Activation", detail: "Use Activation to inspect the full startup sequence and remaining blockers." },
-      { label: "3", title: "Export diagnostics", detail: "Use Events to export a redacted diagnostic bundle if a customer issue remains." },
-    ];
-  }
-  return [
-    { label: "1", title: "Fill required fields", detail: "Model API, data paths, memory vault, Avatar assets, CodeGraph root, and channel targets can be entered here." },
-    { label: "2", title: "Save safely", detail: "Secrets are write-only; configured/missing state is returned instead of the value." },
-    { label: "3", title: "Verify status", detail: config.status ? `Current config status is ${config.status}.` : "Refresh Settings to load /config/status before customer trial." },
-  ];
-}
-
-function renderSettingsDeliveryCheckEntry() {
-  const config = state.configStatus?.config_status || {};
-  const readiness = state.readiness?.runtime_readiness || {};
-  const backup = state.backupStatus?.backup || {};
-  const ownerConfigured = settingsConfigSecretState("owner_gate", "owner_token") === "configured" || Boolean(getOwnerToken());
-  const localReady = Boolean(config.status && readiness.status && ownerConfigured);
-  const items = [
-    {
-      label: "preflight",
-      status: "operator",
-      command: ".\\scripts\\check-server-prereqs.ps1 -Mode local",
-      evidence: "artifacts/server-prereq-check.json",
-      detail: "Run before deployment to verify assets, runtime tools, writable paths, ports, and domain DNS when used.",
-    },
-    {
-      label: "local acceptance",
-      status: localReady ? "ready" : "partial",
-      command: ".\\scripts\\product-acceptance.ps1 -OutputPath artifacts\\product-acceptance.json",
-      evidence: "artifacts/product-acceptance.json",
-      detail: "Proves Command, Documents, Memory Review, Reports, Channels, CodeGraph, Settings, and owner gate on this machine.",
-    },
-    {
-      label: "server proof",
-      status: "target_server",
-      command: ".\\scripts\\verify-server-deployment.ps1 -BaseUrl https://bairui.example.com -RequireReady -RequirePostgreSQL",
-      evidence: "artifacts/server-deployment-verification.json",
-      detail: "Run after the target server is reachable; it verifies /health, /ready, runtime readiness, console, owner gate, config, and PostgreSQL visibility.",
-    },
-    {
-      label: "database proof",
-      status: backup.status || "target_database",
-      command: ".\\scripts\\verify-postgres-production.ps1 -RequireDatabase -RunMigration",
-      evidence: "artifacts/postgres-production-verification.json",
-      detail: "Proves migration, schema coverage, backup plan, restore guardrail, Settings database visibility, and secret redaction.",
-    },
-    {
-      label: "final gate",
-      status: "blocked_until_evidence",
-      command: ".\\scripts\\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence",
-      evidence: "artifacts/commercial-go-no-go.json",
-      detail: "The final decision stays blocked until real server and PostgreSQL evidence are present and passed.",
-    },
-    {
-      label: "handoff bundle",
-      status: "export",
-      command: ".\\scripts\\export-commercial-handoff-bundle.ps1 -IncludeDocs",
-      evidence: "artifacts/commercial-handoff-bundle/manifest.json",
-      detail: "Exports operator-safe reports and documentation snapshots; secrets, .env, logs, dumps, and customer files are excluded.",
-    },
-  ];
-  return `
-    <section class="settings-delivery-check top-gap">
-      <div class="conversation-head">
-        <div>
-          <h3 class="panel-title">Delivery check entry</h3>
-          <p class="muted compact-copy">Run this sequence when a customer receives the trial package. Open the handoff guide first, then use these evidence commands as the delivery checklist.</p>
-        </div>
-        ${pill(localReady ? "partial" : "blocked", localReady ? "local ready" : "configure first")}
-      </div>
-      <div class="action-row">
-        <a class="ghost-btn" href="/docs/29-commercial-trial-handoff-pack.md" target="_blank" rel="noreferrer">Open Handoff Guide</a>
-        <a class="ghost-btn" href="/docs/27-commercial-trial-delivery-quickstart.md" target="_blank" rel="noreferrer">Open Quickstart</a>
-        <button class="ghost-btn" type="button" id="settings-delivery-open-events">Open Events</button>
-      </div>
-      <div class="settings-delivery-grid">
-        ${items
-          .map(
-            (item, index) => `
-              <div>
-                <span>${index + 1}. ${escapeHtml(item.label)}</span>
-                <strong>${escapeHtml(item.evidence)}</strong>
-                ${pill(item.status)}
-                <p>${escapeHtml(item.detail)}</p>
-                <code>${escapeHtml(item.command)}</code>
-              </div>`,
-          )
-          .join("")}
-      </div>
-    </section>`;
-}
-
-function renderSettingsConfigActionGuide() {
-  const result = state.configApplyResult;
-  const readiness = state.readiness?.runtime_readiness || {};
-  const restartRequired = result?.restart_required === true;
-  const status = result?.status || "not_saved";
-  const headline = restartRequired ? "Restart required" : status === "saved" ? "Refresh diagnostics" : "Await configuration save";
-  const detail = restartRequired
-    ? "Configuration changed a restart-required field. Restart the bairui server, then refresh Settings to verify running state."
-    : "Safe fields update immediately. Refresh checks to confirm readiness, backup state, and any follow-up blockers.";
-  return `
-    <section class="settings-action-guide top-gap">
-      <div class="conversation-head">
-        <div>
-          <h3 class="panel-title">Save outcome guide</h3>
-          <p class="muted compact-copy">This keeps operator actions explicit after config changes so trial customers do not guess about restart or next steps.</p>
-        </div>
-        ${pill(restartRequired ? "blocked" : "ready", headline)}
-      </div>
-      <div class="settings-action-guide-grid">
-        <div><span>Saved state</span><strong>${escapeHtml(status)}</strong><p>${escapeHtml(result?.path || result?.secret_policy || "No configuration save has been run yet.")}</p></div>
-        <div><span>Runtime action</span><strong>${escapeHtml(restartRequired ? "restart" : "refresh")}</strong><p>${escapeHtml(detail)}</p></div>
-        <div><span>Readiness</span><strong>${escapeHtml(readiness.status || "partial")}</strong><p>${escapeHtml((readiness.blockers || []).length ? `${readiness.blockers.length} blockers remain` : "No new blockers from the current diagnostics.")}</p></div>
-      </div>
-    </section>`;
-}
-
-function settingsConfigStatusFields(itemId) {
-  return configStatusItem(itemId)?.fields || {};
-}
-
-function settingsConfigFieldValue(field) {
-  const draft = state.settingsConfigDraft || {};
-  if (Object.prototype.hasOwnProperty.call(draft, field)) return draft[field];
-  const map = {
-    model_base_url: ["model_gateway", "base_url"],
-    model_name: ["model_gateway", "model"],
-    document_output_dir: ["document_output_dir", "path"],
-    memory_vault_dir: ["memory_vault", "path"],
-    avatar_assets_dir: ["avatar_assets", "path"],
-    avatar_default_model: ["avatar_assets", "default_model"],
-    codegraph_root: ["codegraph_root", "path"],
-  };
-  const [itemId, key] = map[field] || [];
-  if (!itemId) return "";
-  const value = settingsConfigStatusFields(itemId)?.[key] || "";
-  return value && value !== "missing_config" ? String(value) : "";
-}
-
-function settingsConfigSecretState(itemId, key) {
-  return String(settingsConfigStatusFields(itemId)?.[key] || "missing_config");
-}
-
-function settingsConfigPrefillSummary() {
-  const fields = ["model_base_url", "model_name", "document_output_dir", "memory_vault_dir", "avatar_assets_dir", "avatar_default_model", "codegraph_root"];
-  const count = fields.filter((field) => settingsConfigFieldValue(field)).length;
-  return `${count} non-secret fields from /config/status`;
-}
-
-function settingsSafeDraft(values) {
-  const safeFields = new Set([
-    "model_base_url",
-    "model_name",
-    "document_output_dir",
-    "memory_vault_dir",
-    "channel_targets_json",
-    "avatar_assets_dir",
-    "avatar_default_model",
-    "codegraph_root",
-  ]);
-  return Object.fromEntries(
-    Object.entries(values)
-      .filter(([field, value]) => safeFields.has(field) && String(value || "").trim() !== "")
-      .map(([field, value]) => [field, String(value || "").trim()]),
-  );
-}
-
-async function saveSettingsConfig() {
-  const values = {
-    model_base_url: document.getElementById("settings-model-base-url")?.value || "",
-    model_api_key: document.getElementById("settings-model-api-key")?.value || "",
-    model_name: document.getElementById("settings-model-name")?.value || "",
-    owner_token: document.getElementById("settings-owner-token-new")?.value || "",
-    document_output_dir: document.getElementById("settings-document-output-dir")?.value || "",
-    memory_vault_dir: document.getElementById("settings-memory-vault-dir")?.value || "",
-    channel_targets_json: document.getElementById("settings-channel-targets-json")?.value || "",
-    avatar_assets_dir: document.getElementById("settings-avatar-assets-dir")?.value || "",
-    avatar_default_model: document.getElementById("settings-avatar-default-model")?.value || "",
-    codegraph_root: document.getElementById("settings-codegraph-root")?.value || "",
-    database_url: document.getElementById("settings-database-url")?.value || "",
-  };
-  state.settingsConfigDraft = settingsSafeDraft(values);
-  const payload = {
-    create_dirs: document.getElementById("settings-create-dirs")?.checked !== false,
-    danger_confirmation: document.getElementById("settings-danger-confirmation")?.value || "",
-    values: Object.fromEntries(Object.entries(values).filter(([, value]) => String(value || "").trim() !== "")),
-  };
-  setBusy("config-apply", true);
-  state.errors["config-apply"] = "";
-  state.errorDetails["config-apply"] = null;
-  state.configApplyVerification = null;
-  render();
-  try {
-    const result = await api.post("/config/apply", payload);
-    state.configApplyResult = result?.config_apply || null;
-    state.configStatus = result?.config_status ? { config_status: result.config_status } : state.configStatus;
-    state.settingsConfigDraft = {};
-    await verifySettingsConfigApply();
-    await refreshScreenData();
-  } catch (error) {
-    state.configApplyResult = error?.payload?.config_apply || null;
-    state.configStatus = error?.payload?.config_status ? { config_status: error.payload.config_status } : state.configStatus;
-    const detail = productErrorGuide(error, "config-apply");
-    state.errors["config-apply"] = detail.summary;
-    state.errorDetails["config-apply"] = detail;
-    render();
-  } finally {
-    setBusy("config-apply", false);
-    render();
-  }
-}
-
-function renderSettingsConfigCenter() {
-  const config = state.configStatus?.config_status || {};
-  const items = config.items || [];
-  if (!items.length) {
-    return `<div class="empty-state top-gap">Configuration diagnostics are not loaded yet. Refresh Settings to call /config/status.</div>`;
-  }
-  return `
-    <div class="settings-config-center">
-      ${items
-        .map(
-          (item) => `
-            <div class="settings-config-card">
-              <div class="agent-meta">
-                ${pill(item.status || "missing_config")}
-                <span class="chip">${escapeHtml(item.id || "config")}</span>
-              </div>
-              <strong>${escapeHtml(item.label || item.id)}</strong>
-              <p>${escapeHtml(item.detail || "")}</p>
-              ${renderSettingsConfigFields(item.fields || {})}
-            </div>`,
-        )
-        .join("")}
-    </div>
-    <div class="settings-secret-policy">
-      ${pill("ready", "no secret echo")}
-      <span>${escapeHtml(config.secret_policy || "Secrets are never returned to the frontend.")}</span>
-    </div>`;
-}
-
-function renderSettingsConfigChecklist() {
-  const checklist = state.configStatus?.config_status?.checklist || null;
-  if (!checklist) {
-    return `<div class="empty-state top-gap">Deployment checklist is not loaded yet. Refresh Settings to generate it.</div>`;
-  }
-  return `
-    <section class="settings-checklist top-gap">
-      <div class="conversation-head">
-        <div>
-          <h3 class="panel-title">Deployment checklist</h3>
-          <p class="muted compact-copy">A copyable operator checklist generated from the same safe config diagnostics. It shows required blockers, optional gaps, example env values, and verification commands.</p>
-        </div>
-        ${pill(checklist.status || "ready")}
-      </div>
-      <div class="settings-checklist-grid">
-        <div>
-          <span>Required blockers</span>
-          <strong>${escapeHtml((checklist.missing_required || []).join(", ") || "none")}</strong>
-        </div>
-        <div>
-          <span>Optional gaps</span>
-          <strong>${escapeHtml((checklist.optional_missing || []).join(", ") || "none")}</strong>
-        </div>
-        <div>
-          <span>Verification</span>
-          <strong>${escapeHtml(String((checklist.commands || []).length))} commands</strong>
-        </div>
-      </div>
-      <div class="settings-checklist-text">
-        <pre class="mono">${escapeHtml(checklist.markdown || "")}</pre>
-      </div>
-    </section>`;
-}
-
-function renderSettingsConfigFields(fields) {
-  const entries = Object.entries(fields || {});
-  if (!entries.length) return "";
-  return `
-    <div class="settings-config-fields">
-      ${entries
-        .map(([key, value]) => `<div><span>${escapeHtml(key)}</span><strong>${escapeHtml(value)}</strong></div>`)
-        .join("")}
-    </div>`;
-}
-
-function renderSettingsDataOperations() {
-  const database = state.ready?.database || {};
-  const backup = state.backupStatus?.backup || {};
-  const plan = state.backupPlan?.backup_plan || null;
-  const migration = state.databaseMigrationResult?.database || null;
-  return `
-    <div class="settings-data-ops-grid">
-      <div>
-        <span>Database</span>
-        ${pill(database.status || "missing_config")}
-        <strong>${escapeHtml(database.detail || "HERMES_DATABASE_URL is empty")}</strong>
-        <p>Structured production state is prepared for PostgreSQL; JSONL remains the local beta fallback until migration is verified.</p>
-      </div>
-      <div>
-        <span>Backup</span>
-        ${pill(backup.status || "missing_config")}
-        <strong>${escapeHtml(backup.detail || "Backup status has not been loaded.")}</strong>
-        <p>${escapeHtml(backup.backup_dir || "Backup artifacts are stored under data/backups/postgres.")}</p>
-      </div>
-      <div>
-        <span>Restore guard</span>
-        ${pill("approval_required")}
-        <strong>typed confirmation required</strong>
-        <p>Restore is destructive and remains a guarded CLI plan for maintenance windows.</p>
-      </div>
-      <div>
-        <span>Last migration</span>
-        ${pill(migration?.status || "not_run")}
-        <strong>${escapeHtml(migration?.detail || "Migration has not been run from this console session.")}</strong>
-        <p>Run only after PostgreSQL URL is configured and owner access is available.</p>
-      </div>
-    </div>
-    <div class="action-row top-gap">
-      <button class="primary-btn" id="settings-run-migration" type="button">Run Migration</button>
-      <button class="ghost-btn" id="settings-load-backup-plan" type="button">Load Backup Plan</button>
-      <span class="muted compact-copy">Migration creates/updates schema. Backup plan prints a command that uses $HERMES_DATABASE_URL without exposing the database URL.</span>
-    </div>
-    ${plan ? renderSettingsBackupPlan(plan) : `<div class="empty-state top-gap">Backup plan is not loaded yet. Load it before accepting real customer data.</div>`}`;
-}
-
-function renderSettingsBackupPlan(plan) {
-  return `
-    <div class="settings-backup-plan">
-      <div class="agent-meta">
-        ${pill(plan.status || "missing_config")}
-        <span class="chip">secret_echo=false</span>
-        <span class="chip">format=${escapeHtml(plan.format || "custom")}</span>
-      </div>
-      <div class="settings-data-ops-grid compact">
-        <div><span>Database ref</span><strong>${escapeHtml([plan.database?.host, plan.database?.database].filter(Boolean).join("/") || "not configured")}</strong></div>
-        <div><span>Backup dir</span><strong>${escapeHtml(plan.backup_dir || "")}</strong></div>
-        <div><span>Output path</span><strong>${escapeHtml(plan.output_path || "")}</strong></div>
-      </div>
-      <pre class="mono">${escapeHtml(plan.command || "")}</pre>
-      <p class="muted compact-copy">${escapeHtml(plan.secret_policy || "database URL is never printed")} ${escapeHtml(plan.next_step || "")}</p>
-    </div>`;
-}
-
-async function runSettingsDatabaseMigration() {
-  const result = await runAction("database-migrate", () => api.post("/admin/migrate", {}), loadRuntimeStatus);
-  state.databaseMigrationResult = result || state.databaseMigrationResult;
-  await refresh();
-}
-
-async function loadSettingsBackupPlan() {
-  const result = await runAction("backup-plan", () => api.get("/backup/plan"), loadRuntimeStatus);
-  state.backupPlan = result || state.backupPlan;
-  render();
-}
-
-function renderSettingsGateGrid() {
-  const license = state.license?.license || {};
-  const heartbeat = state.platform?.heartbeat || {};
-  const admin = state.adminSession?.admin_session || {};
-  const gates = [
-    { label: "HTTP health", status: state.health?.status || "missing_config", detail: "GET /health" },
-    { label: "Deploy readiness", status: state.ready?.status || "partial", detail: "GET /ready" },
-    { label: "Local admin", status: admin.status || "missing_config", detail: admin.authenticated ? "owner browser authenticated" : "owner token gate" },
-    { label: "License", status: license.status || state.ready?.license || "missing_config", detail: "license status only; secrets never echo" },
-    { label: "Platform heartbeat", status: heartbeat.status || state.ready?.platform || "missing_config", detail: "server identity and platform link check" },
-  ];
-  return `
-    <div class="settings-gate-grid">
-      ${gates
-        .map(
-          (gate) => `
-            <div>
-              <span>${escapeHtml(gate.label)}</span>
-              <strong>${pill(gate.status)}</strong>
-              <p>${escapeHtml(gate.detail)}</p>
-            </div>`,
-        )
-        .join("")}
-    </div>`;
-}
-
-function renderSettingsAdminSession() {
-  const admin = state.adminSession?.admin_session || {};
-  return `
-    <div class="settings-admin-session">
-      <div>
-        ${pill(admin.status || "missing_config")}
-        <strong>Local admin identity</strong>
-        <p>${escapeHtml(admin.next_step || "Set BAIRUI_OWNER_TOKEN and save the owner token locally before customer trial operation.")}</p>
-      </div>
-      <div>
-        <span>identity</span>
-        <strong>${escapeHtml(admin.identity || "local_owner")}</strong>
-        <p>${escapeHtml(admin.auth_method || "owner_token_header")}</p>
-      </div>
-      <div>
-        <span>write API gate</span>
-        <strong>${escapeHtml(admin.write_api_protected ? "protected" : "not configured")}</strong>
-        <p>${escapeHtml(admin.secret_policy || "owner token value is never returned")}</p>
-      </div>
-    </div>`;
-}
-
-function renderSettingsReadinessList(readiness) {
-  const blockers = readiness.blockers || [];
-  const warnings = readiness.warnings || [];
-  if (!blockers.length && !warnings.length) {
-    return `<div class="empty-state top-gap">No readiness blockers. Continue with Command, Documents, Reports, and approval checks.</div>`;
-  }
-  return `
-    <div class="settings-readiness-list top-gap">
-      ${blockers.map((item) => `<div class="warning-row">${pill("blocked")}<span>${escapeHtml(customerSafeRuntimeText(item))}</span></div>`).join("")}
-      ${warnings.map((item) => `<div class="warning-row">${pill("partial", "warning")}<span>${escapeHtml(customerSafeRuntimeText(item))}</span></div>`).join("")}
-    </div>`;
-}
-
-function renderSettingsRuntimeMatrix() {
-  const readinessItems = state.readiness?.runtime_readiness?.items || [];
-  const directItems = [
-    runtimeRow("memory_substrate", state.runtimeStatus.memory?.memory?.status, state.runtimeStatus.memory?.memory?.detail, true),
-    runtimeRow("voice_asr", state.runtimeStatus.voice?.voice_asr?.status, state.runtimeStatus.voice?.voice_asr?.detail, false),
-    runtimeRow("document_parser", state.runtimeStatus.document?.document_parse?.status, state.runtimeStatus.document?.document_parse?.detail, false),
-    runtimeRow("intelligence_radar", state.runtimeStatus.intel?.intelligence?.status, state.runtimeStatus.intel?.intelligence?.detail, false),
-    runtimeRow("simulation_lab", state.runtimeStatus.simulation?.simulation?.status, state.runtimeStatus.simulation?.simulation?.detail, false),
-    runtimeRow("web_search", state.runtimeStatus.search?.search?.status, state.runtimeStatus.search?.search?.detail, false),
-    runtimeRow("local_index", state.runtimeStatus.index?.index?.status, state.runtimeStatus.index?.index?.detail, false),
-    runtimeRow("avatar_state_layer", state.avatarStatus?.avatar?.status, state.avatarStatus?.avatar?.detail, false),
-    runtimeRow("code_structure", state.runtimeStatus.codegraph?.codegraph?.status, state.runtimeStatus.codegraph?.codegraph?.detail, false),
-  ];
-  const rows = readinessItems.length
-    ? readinessItems.map((item) => runtimeRow(item.name, item.status, item.display_detail || item.detail, item.required_for_usable, item.display_name))
-    : directItems;
-  return `
-    <div class="settings-runtime-matrix">
-      ${rows
-        .map(
-          (item) => `
-            <div>
-              <div class="agent-meta">
-                ${pill(item.status || "missing_config")}
-                <span class="chip">${item.required ? "required" : "optional"}</span>
-              </div>
-              <strong>${escapeHtml(item.displayName || runtimeDisplayName(item.name))}</strong>
-              <p>${escapeHtml(customerSafeRuntimeText(item.detail || "Status endpoint connected."))}</p>
-            </div>`,
-        )
-        .join("")}
-    </div>`;
-}
-
-function renderSettingsConfigBoundary() {
-  const model = capabilityByName("model_gateway");
-  const database = capabilityByName("postgresql");
-  const memoryVault = capabilityByName("obsidian_vault");
-  const audit = capabilityByName("audit_api");
-  const rows = [
-    { label: "Model gateway", status: model?.status || "missing_config", detail: "OpenAI-compatible endpoint configured by environment variables." },
-    { label: "Data store", status: database?.status || "partial", detail: "JSONL remains the local product store; database status is reported for migration readiness." },
-    { label: "Long-term memory", status: memoryVault?.status || "missing_config", detail: "Memory candidates require owner approval before any durable write." },
-    { label: "Audit trail", status: audit?.status || "ready", detail: "Every approval, state change, and generated resource must be traceable." },
-    { label: "External actions", status: "approval_required", detail: "Channel planning and review keep will_send=false until a future approved sender exists." },
-  ];
-  return `
-    <div class="settings-boundary-list">
-      ${rows
-        .map(
-          (row) => `
-            <div>
-              <span>${escapeHtml(row.label)}</span>
-              ${pill(row.status)}
-              <p>${escapeHtml(row.detail)}</p>
-            </div>`,
-        )
-        .join("")}
-    </div>`;
-}
-
-function renderSettingsNextActions(readiness) {
-  const blockers = readiness.blockers || [];
-  const warnings = readiness.warnings || [];
-  const action = blockers.length
-    ? "Fix required runtime configuration before calling the product usable."
-    : warnings.length
-      ? "Optional adapters are incomplete; core demo can continue while gaps stay visible."
-      : "Run the demo flow, then inspect Events for audit evidence.";
-  return `
-    <div class="settings-next-actions">
-      <div><span>Next diagnostic action</span><strong>${escapeHtml(action)}</strong></div>
-      <div><span>Safety invariant</span><strong>no external send, no automatic long-term memory write, no dangerous operation without review</strong></div>
-    </div>`;
-}
-
-function runtimeRow(name, status, detail, required = false, displayName = "") {
-  return { name, status: status || "missing_config", detail: detail || "", required: Boolean(required), displayName };
-}
-
-function capabilityByName(name) {
-  return (state.capabilities || []).find((item) => item.name === name);
-}
-
-function runtimeDisplayName(name = "") {
-  const map = {
-    everos_memory: "Memory substrate",
-    memory_substrate: "Memory substrate",
-    funasr_voice_asr: "Voice ASR",
-    voice_asr: "Voice ASR",
-    mineru_document_parse: "Document parser",
-    document_parser: "Document parser",
-    trendradar_intelligence: "Intelligence radar",
-    intelligence_radar: "Intelligence radar",
-    mirofish_simulation: "Simulation lab",
-    simulation_lab: "Simulation lab",
-    searxng_metasearch: "Web search",
-    searxng_search: "Web search",
-    web_search: "Web search",
-    sonic_local_index: "Local index",
-    local_index: "Local index",
-    bairui_avatar_runtime: "Avatar state layer",
-    avatar_state_layer: "Avatar state layer",
-    bairui_codegraph: "Code structure",
-    code_structure: "Code structure",
-    bairui_agents: "Multi-agent core",
-  };
-  return map[name] || String(name || "Runtime").replaceAll("_", " ");
-}
-
-function customerSafeRuntimeText(text = "") {
-  const oldRuntimeName = (...parts) => new RegExp(parts.join(""), "gi");
+const MEMORY_GRAPH_STORAGE_KEY = "bairui-memory-graph-enabled";
+const MEMORY_GRAPH_ENABLED = localStorage.getItem(MEMORY_GRAPH_STORAGE_KEY) !== "false";
+
+const themeSwitcher = document.getElementById("theme-switcher");
+const resetViewBtn = document.getElementById("reset-view-btn");
+const physicsControl = document.getElementById("physics-control");
+const physicsToggle = document.getElementById("physics-toggle");
+const gravitySlider = document.getElementById("gravity-slider");
+const repulsionSlider = document.getElementById("repulsion-slider");
+const nodeSizeSlider = document.getElementById("node-size-slider");
+const gravityValue = document.getElementById("gravity-value");
+const repulsionValue = document.getElementById("repulsion-value");
+const nodeSizeValue = document.getElementById("node-size-value");
+const brandNameEl = document.getElementById("agent-brand-name");
+const graphEl = document.getElementById("graph");
+const focusBlockEl = document.getElementById("focus-block");
+const focusStackEl = document.getElementById("focus-stack");
+const focusDepthEl = document.getElementById("focus-depth");
+
+const IGNORED_VERSION_KEY = "bairui_ignored_update_version";
+const SUPPRESS_UPDATES_KEY = "bairui_suppress_update_notifications";
+
+let agentName = DEFAULT_AGENT_NAME;
+let currentUiZoom = DEFAULT_UI_ZOOM;
+let chat = null;
+// 由 initSettings() 内部赋值，供 chat.js 的斜杠命令打开设置面板
+let openSettingsRef = null;
+
+function addMsg(...args) { return chat?.addMsg(...args); }
+function openChat(...args) { return chat?.openChat(...args); }
+function updateLastbairuiMsg(...args) { return chat?.updateLastbairuiMsg(...args); }
+function isTyping() { return chat?.isTyping() || false; }
+
+function defaultInputPlaceholder() {
+  return `向 ${agentName} 发消息…`;
+}
+
+function sanitizePublicBrandText(root = document.body) {
   const replacements = [
-    [oldRuntimeName("Ever", "OS"), "memory substrate"],
-    [oldRuntimeName("Fun", "ASR"), "voice ASR"],
-    [oldRuntimeName("Miner", "U"), "document parser"],
-    [oldRuntimeName("Trend", "Radar"), "intelligence radar"],
-    [oldRuntimeName("Miro", "Fish"), "simulation lab"],
-    [oldRuntimeName("Sear", "XNG"), "web search"],
-    [oldRuntimeName("Sonic"), "local index"],
-    [oldRuntimeName("Obsid", "ian"), "memory vault"],
-    [oldRuntimeName("Her", "mes"), "bairui"],
-    [oldRuntimeName("Bai", "Long", "ma"), "bairui"],
-    [oldRuntimeName("白", "龙", "马"), "bairui"],
-    [oldRuntimeName("小", "白", "龙"), "bairui"],
+    [/bairui/gi, "bairui"],
+    [/bairui/g, "bairui"],
+    [/\u5c0f\u767d\u9f99/g, "bairui"],
+    [/\u767d\u9f99\u9a6c/g, "bairui"],
+    [/bairui/gi, "bairui"],
+    [/微信 ClawBot（个人微信）/g, "渠道授权（实验）"],
+    [/连接微信/g, "连接渠道"],
+    [/微信二维码/g, "渠道二维码"],
+    [/用微信扫描/g, "用授权客户端扫描"],
   ];
-  return replacements.reduce((value, [pattern, replacement]) => value.replace(pattern, replacement), String(text || ""));
-}
-
-function renderCodeGraph() {
-  setScreenHead("CodeGraph", "source structure index");
-  el.actions.innerHTML = `<button class="ghost-btn" id="refresh-codegraph" type="button">Refresh</button>`;
-  const selectedRepo = selectedCodegraphRepo();
-  const overview = state.codegraphOverview || {};
-  const scan = overview.scan || {};
-  const files = overview.files || overview.top_files || [];
-  const symbols = overview.symbols || overview.top_symbols || [];
-  const imports = overview.imports || [];
-  const counts = overview.counts || {};
-  el.body.innerHTML = `
-    <section class="panel pad codegraph-boundary">
-      <div class="conversation-head">
-        <div>
-          <h2 class="panel-title">Source boundary</h2>
-          <p class="muted compact-copy">${escapeHtml(state.codegraph?.codegraph?.memory_boundary || "CodeGraph indexes source structure only; it does not write long-term memory.")}</p>
-        </div>
-        ${pill(state.codegraph?.codegraph?.status || "missing_config")}
-      </div>
-      ${renderCountStrip({ repos: state.codegraphRepos.length, files: counts.files ?? files.length, symbols: counts.symbols ?? symbols.length, imports: counts.imports ?? imports.length })}
-      ${renderCodeGraphBoundaryMatrix()}
-    </section>
-    <div class="channels-layout">
-      <section class="panel pad">
-        <h2 class="panel-title">Repositories</h2>
-        <label class="form-label">Active repository</label>
-        <select class="field" id="codegraph-repo-select">
-          ${
-            state.codegraphRepos.length
-              ? state.codegraphRepos.map((repo) => `<option value="${escapeHtml(repo.id)}" ${repo.id === selectedRepo?.id ? "selected" : ""}>${escapeHtml(repo.name || repo.root_path || repo.id)}</option>`).join("")
-              : `<option value="">No repository</option>`
-          }
-        </select>
-        <h3 class="sub-title">Repos</h3>
-        ${
-          state.codegraphRepos
-            .map((repo) => `<button class="object-card button-card" type="button" data-codegraph-repo="${escapeHtml(repo.id)}">${renderObjectCardInner(repo, ["name", "status", "root_path"])}</button>`)
-            .join("") || `<div class="empty-state">No source repository registered yet.</div>`
-        }
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Register and scan</h2>
-        <label class="form-label">Repository path</label>
-        <input class="field" id="codegraph-path" placeholder="C:\\path\\to\\repo" />
-        <label class="form-label">Name</label>
-        <input class="field" id="codegraph-name" placeholder="bairui-source" />
-        <div class="action-row top-gap">
-          <button class="primary-btn" id="codegraph-register" type="button">Register</button>
-          <button class="ghost-btn" id="codegraph-scan" type="button" ${!selectedRepo ? "disabled" : ""}>Scan Selected</button>
-        </div>
-        ${renderCodeGraphActionResult()}
-        <h3 class="sub-title">Latest scan</h3>
-        ${renderCodeGraphOverview(scan, files, symbols, imports)}
-        <h3 class="sub-title">Query</h3>
-        <input class="field" id="codegraph-query-text" placeholder="function, class, route, file" />
-        <button class="ghost-btn top-gap" id="codegraph-query" type="button">Search</button>
-        ${renderProductError("codegraph-register")}
-        ${renderProductError("codegraph-scan")}
-        ${renderProductError("codegraph-query")}
-        ${renderProductError("codegraph-impact")}
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Results</h2>
-        ${state.codegraphQuery ? renderCodeGraphResults(state.codegraphQuery.results || []) : `<div class="empty-state">Search results appear here after scanning.</div>`}
-        <h3 class="sub-title">Impact</h3>
-        <input class="field" id="codegraph-impact-path" placeholder="src/service/server.py" />
-        <button class="ghost-btn top-gap" id="codegraph-impact" type="button">Analyze Impact</button>
-        ${state.codegraphImpact ? renderCodeGraphImpact(state.codegraphImpact) : ""}
-      </section>
-    </div>
-    ${state.selectedEntity?.type === "code" ? renderSelectedEntityPanel() : ""}`;
-  document.getElementById("refresh-codegraph")?.addEventListener("click", refreshScreenData);
-  document.getElementById("codegraph-repo-select")?.addEventListener("change", async (event) => {
-    state.selectedCodegraphRepoId = event.target.value;
-    persistUiState();
-    await loadCodeGraph();
-    render();
-  });
-  el.body.querySelectorAll("[data-codegraph-repo]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      state.selectedCodegraphRepoId = button.dataset.codegraphRepo;
-      persistUiState();
-      await loadCodeGraph();
-      render();
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach((node) => {
+    let text = node.nodeValue || "";
+    replacements.forEach(([pattern, value]) => {
+      text = text.replace(pattern, value);
     });
+    node.nodeValue = text;
   });
-  document.getElementById("codegraph-register")?.addEventListener("click", async () => {
-    const result = await runAction("codegraph-register", () =>
-      api.post("/codegraph/repos/register", {
-        path: document.getElementById("codegraph-path").value,
-        name: document.getElementById("codegraph-name").value,
-      }),
-    );
-    if (result?.codegraph_repo?.id) state.selectedCodegraphRepoId = result.codegraph_repo.id;
-    persistUiState();
-    state.codegraphActionResult = codegraphActionSummary(result, "/codegraph/repos/register");
-    await loadCodeGraph();
-    render();
-  });
-  document.getElementById("codegraph-scan")?.addEventListener("click", async () => {
-    const repo = selectedCodegraphRepo();
-    const result = await runAction("codegraph-scan", () => api.post("/codegraph/repos/scan", { repo_id: repo?.id || "" }));
-    state.codegraphActionResult = codegraphActionSummary(result, "/codegraph/repos/scan");
-    await loadCodeGraph();
-    render();
-  });
-  document.getElementById("codegraph-query")?.addEventListener("click", async () => {
-    const repo = selectedCodegraphRepo();
-    const result = await runAction("codegraph-query", () =>
-      api.post("/codegraph/query", {
-        query: document.getElementById("codegraph-query-text").value,
-        repo_id: repo?.id || "",
-        limit: 20,
-      }),
-    );
-    state.codegraphQuery = result?.codegraph_query || state.codegraphQuery;
-    state.codegraphActionResult = codegraphActionSummary(result, "/codegraph/query");
-    persistUiState();
-    render();
-  });
-  document.getElementById("codegraph-impact")?.addEventListener("click", async () => {
-    const repo = selectedCodegraphRepo();
-    const result = await runAction("codegraph-impact", () =>
-      api.post("/codegraph/impact", {
-        path: document.getElementById("codegraph-impact-path").value,
-        repo_id: repo?.id || "",
-      }),
-    );
-    state.codegraphImpact = result?.codegraph_impact || state.codegraphImpact;
-    state.codegraphActionResult = codegraphActionSummary(result, "/codegraph/impact");
-    persistUiState();
-    render();
-  });
-  bindCodeGraphCards();
-}
-
-function renderCodeGraphBoundaryMatrix() {
-  return `
-    <div class="codegraph-boundary-grid">
-      <div><span>Read scope</span><strong>source structure only</strong><p>Scans files, symbols, and imports from registered repositories.</p></div>
-      <div><span>Memory</span><strong>no auto promotion</strong><p>CodeGraph does not write long-term memory or Obsidian notes.</p></div>
-      <div><span>Actions</span><strong>register / scan / query / impact</strong><p>All buttons call explicit backend contracts and return visible status.</p></div>
-      <div><span>Use in Command</span><strong>cite result manually</strong><p>Agent workflows can reference findings, but code facts stay separate.</p></div>
-    </div>`;
-}
-
-function renderCodeGraphActionResult() {
-  const result = state.codegraphActionResult;
-  if (!result) return "";
-  return `
-    <div class="codegraph-action-result">
-      <div class="agent-meta">
-        ${pill(result.status || "completed")}
-        <span class="chip mono">${escapeHtml(result.path || "")}</span>
-        <span class="chip">memory_write=false</span>
-      </div>
-      <p>${escapeHtml(result.detail || "CodeGraph action completed.")}</p>
-    </div>`;
-}
-
-function codegraphActionSummary(result, path) {
-  if (!result) return null;
-  const payload = result.codegraph_repo || result.codegraph_scan || result.codegraph_query || result.codegraph_impact || {};
-  return {
-    path,
-    status: payload.status || "completed",
-    detail: payload.detail || payload.name || payload.root_path || "CodeGraph action completed without long-term memory writes.",
-  };
-}
-
-function selectedCodegraphRepo() {
-  return state.codegraphRepos.find((repo) => repo.id === state.selectedCodegraphRepoId) || state.codegraphRepos[state.codegraphRepos.length - 1] || null;
-}
-
-function renderCodeGraphOverview(scan, files, symbols, imports) {
-  if (!scan?.id) return `<div class="empty-state">No scan recorded for the selected repository. Register a repo, then scan it before querying.</div>`;
-  return `
-    <div class="source-chain">
-      <div class="source-chain-title">
-        <span>Scan ${escapeHtml(shortId(scan.id))}</span>
-        ${pill(scan.status || "completed")}
-      </div>
-      <div class="source-chain-grid">
-        <div><span>Files</span><strong>${escapeHtml(scan.file_count ?? files.length)}</strong></div>
-        <div><span>Symbols</span><strong>${escapeHtml(scan.symbol_count ?? symbols.length)}</strong></div>
-        <div><span>Imports</span><strong>${escapeHtml(scan.import_count ?? imports.length)}</strong></div>
-      </div>
-    </div>
-    <div class="audit-card-list top-gap">
-      ${files
-        .slice(0, 3)
-        .map(
-          (item, index) => `
-            <button class="object-card button-card" type="button" data-codegraph-overview-file="${index}">
-              ${renderObjectCardInner(item, ["relative_path", "language", "symbol_count", "import_count"])}
-            </button>`,
-        )
-        .join("")}
-    </div>`;
-}
-
-function renderCodeGraphResults(results) {
-  if (!results.length) return `<div class="empty-state">No matching files or symbols.</div>`;
-  return `
-    <div class="audit-card-list">
-      ${results
-        .map(
-          (item, index) => `
-            <button class="object-card button-card" type="button" data-codegraph-result="${index}">
-              ${renderObjectCardInner(item, ["type", "name", "kind", "path"])}
-            </button>`,
-        )
-        .join("")}
-    </div>`;
-}
-
-function renderCodeGraphImpact(impact) {
-  const files = impact.files || [];
-  const symbols = impact.symbols || [];
-  return `
-    <div class="top-gap">
-      ${renderCountStrip({ files: files.length, symbols: symbols.length, imported_by: impact.imported_by?.length || 0 })}
-      <div class="audit-card-list top-gap">
-        ${files
-          .slice(0, 5)
-          .map(
-            (item, index) => `
-              <button class="object-card button-card" type="button" data-codegraph-impact-file="${index}">
-                ${renderObjectCardInner(item, ["relative_path", "language", "symbol_count", "import_count"])}
-              </button>`,
-          )
-          .join("")}
-        ${symbols
-          .slice(0, 5)
-          .map(
-            (item, index) => `
-              <button class="object-card button-card" type="button" data-codegraph-impact-symbol="${index}">
-                ${renderObjectCardInner(item, ["name", "kind", "path", "line"])}
-              </button>`,
-          )
-          .join("")}
-      </div>
-    </div>`;
-}
-
-function bindCodeGraphCards() {
-  el.body.querySelectorAll("[data-codegraph-overview-file]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const overviewFiles = state.codegraphOverview?.files || state.codegraphOverview?.top_files || [];
-      const item = overviewFiles[Number(button.dataset.codegraphOverviewFile)];
-      if (!item) return;
-      state.selectedEntity = codeEntity({ type: "file", ...item });
-      persistUiState();
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-codegraph-result]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const item = state.codegraphQuery?.results?.[Number(button.dataset.codegraphResult)];
-      if (!item) return;
-      state.selectedEntity = codeEntity(item);
-      persistUiState();
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-codegraph-impact-file]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const item = state.codegraphImpact?.files?.[Number(button.dataset.codegraphImpactFile)];
-      if (!item) return;
-      state.selectedEntity = codeEntity({ type: "file", ...item });
-      persistUiState();
-      render();
-    });
-  });
-  el.body.querySelectorAll("[data-codegraph-impact-symbol]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const item = state.codegraphImpact?.symbols?.[Number(button.dataset.codegraphImpactSymbol)];
-      if (!item) return;
-      state.selectedEntity = codeEntity({ type: "symbol", ...item });
-      persistUiState();
-      render();
+  document.querySelectorAll("[placeholder],[title],[aria-label],img[alt]").forEach((el) => {
+    ["placeholder", "title", "aria-label", "alt"].forEach((attr) => {
+      if (!el.hasAttribute(attr)) return;
+      let text = el.getAttribute(attr) || "";
+      replacements.forEach(([pattern, value]) => {
+        text = text.replace(pattern, value);
+      });
+      el.setAttribute(attr, text);
     });
   });
 }
 
-function codeEntity(item) {
-  const repo = selectedCodegraphRepo();
-  const scan = state.codegraphOverview?.scan || {};
-  return {
-    type: "code",
-    title: item.name || item.relative_path || item.path || "Code entity",
-    status: "source_ready",
-    ref: item.id || item.file_id || item.path || item.relative_path || item.name,
-    raw: { ...item, repo_id: item.repo_id || repo?.id || "", repo_name: repo?.name || "", scan_id: item.scan_id || scan.id || "" },
-  };
-}
-
-function renderEvents() {
-  setScreenHead("Events", "audit timeline");
-  el.actions.innerHTML = `
-    <button class="primary-btn" id="refresh-events" type="button">Refresh Audit</button>
-    <button class="ghost-btn" id="load-metrics" type="button">Load Metrics</button>
-    <button class="ghost-btn" id="load-errors" type="button">Load Errors</button>
-    <button class="ghost-btn" id="export-diagnostics" type="button">Export Diagnostics</button>
-    <button class="ghost-btn" id="export-handoff-pack" type="button">Export Handoff Pack</button>
-    <button class="ghost-btn" id="export-events" type="button">Export Events</button>
-    <button class="ghost-btn" id="events-open-settings" type="button">Open Settings</button>
-    <button class="ghost-btn" id="events-open-command" type="button">Open Command</button>`;
-  const rows = filteredAuditTimeline();
-  el.body.innerHTML = `
-    ${renderCommercialTrialFlow("events")}
-    <section class="panel pad event-command-center">
-      <div class="conversation-head">
-        <div>
-          <h2 class="panel-title">Audit command center</h2>
-          <p class="muted compact-copy">Events combines SSE live messages with /audit records so every generated resource, approval, blocked send, memory review, and runtime action remains traceable.</p>
-        </div>
-        ${pill(state.events.length ? "ready" : "partial", state.events.length ? "live" : "audit fallback")}
-      </div>
-      ${renderEventSummary()}
-      ${renderMetricsSummary()}
-      ${renderErrorLogSummary()}
-      ${renderEventSafetyBoundary()}
-      ${renderHandoffPackSummary()}
-      ${renderProductError("metrics")}
-      ${renderProductError("errors")}
-      ${renderProductError("diagnostics-export")}
-      ${renderProductError("handoff-export")}
-    </section>
-    <div class="event-layout">
-      <section class="panel pad">
-        <div class="conversation-head">
-          <h2 class="panel-title">Timeline</h2>
-          ${pill(state.auditFilter || "all")}
-        </div>
-        ${renderEventFilters()}
-        ${renderEventTimeline(rows)}
-      </section>
-      <section class="panel pad">
-        <h2 class="panel-title">Selected evidence</h2>
-        ${renderEventEvidence()}
-        <h3 class="sub-title">Live stream</h3>
-        ${renderLiveEventList()}
-      </section>
-    </div>
-    ${state.selectedEntity?.type === "audit" ? renderSelectedEntityPanel() : ""}`;
-  document.getElementById("refresh-events")?.addEventListener("click", async () => {
-    state.audit = await safe(() => api.get("/audit").then((data) => data.audit || []), state.audit, "audit");
-    render();
-  });
-  document.getElementById("export-events")?.addEventListener("click", exportEventsData);
-  document.getElementById("load-metrics")?.addEventListener("click", loadMetrics);
-  document.getElementById("load-errors")?.addEventListener("click", loadErrorLogs);
-  document.getElementById("export-diagnostics")?.addEventListener("click", exportDiagnosticBundle);
-  document.getElementById("export-handoff-pack")?.addEventListener("click", exportTrialHandoffPack);
-  document.getElementById("events-open-settings")?.addEventListener("click", async () => {
-    state.screen = "settings";
-    persistUiState();
-    await refreshScreenData();
-  });
-  document.getElementById("events-open-command")?.addEventListener("click", async () => {
-    state.screen = "command";
-    persistUiState();
-    await refreshScreenData();
-  });
-  el.body.querySelectorAll("[data-audit-filter]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.auditFilter = button.dataset.auditFilter || "all";
-      persistUiState();
-      render();
+const brandSanitizer = new MutationObserver((mutations) => {
+  for (const mutation of mutations) {
+    mutation.addedNodes.forEach((node) => {
+      if (node.nodeType === Node.ELEMENT_NODE) sanitizePublicBrandText(node);
+      if (node.nodeType === Node.TEXT_NODE) sanitizePublicBrandText(node.parentElement || document.body);
     });
-  });
-  bindCommercialTrialFlow();
-  bindAuditCards();
+  }
+});
+brandSanitizer.observe(document.body, { childList: true, subtree: true });
+
+function clampZoomFactor(factor) {
+  return Math.min(MAX_UI_ZOOM, Math.max(MIN_UI_ZOOM, Number(factor) || DEFAULT_UI_ZOOM));
 }
 
-async function loadMetrics() {
-  const result = await runAction("metrics", () => api.get("/metrics"), async () => {});
-  state.metrics = result?.metrics || state.metrics;
-  render();
-}
-
-async function loadErrorLogs() {
-  const result = await runAction("errors", () => api.get("/errors"), async () => {});
-  state.errorLogs = result?.errors || state.errorLogs || [];
-  render();
-}
-
-async function exportDiagnosticBundle() {
-  const result = await runAction("diagnostics-export", () => api.get("/diagnostics/bundle"), async () => {});
-  if (!result?.diagnostic_bundle) return;
-  exportConsoleData("diagnostics", {
-    diagnostic_bundle: result.diagnostic_bundle,
-    note: "Redacted support bundle. Secrets are excluded; safety flags remain visible.",
-  });
-}
-
-async function exportTrialHandoffPack() {
-  const [diagnostics, metrics, backup] = await Promise.all([
-    safe(() => api.get("/diagnostics/bundle").then((data) => data.diagnostic_bundle), null, "handoff-diagnostics"),
-    safe(() => api.get("/metrics").then((data) => data.metrics), state.metrics, "handoff-metrics"),
-    safe(() => api.get("/backup/status").then((data) => data.backup), state.backupStatus?.backup || null, "handoff-backup"),
-  ]);
-  state.metrics = metrics || state.metrics;
-  state.backupStatus = backup ? { backup } : state.backupStatus;
-  exportConsoleData("trial-handoff", {
-    handoff_type: "commercial_trial_evidence",
-    generated_from_screen: "events",
-    diagnostic_bundle: diagnostics,
-    config_status: state.configStatus?.config_status || null,
-    backup_status: backup || null,
-    metrics: metrics || null,
-    errors: state.errorLogs || [],
-    reports: state.reports || [],
-    source_refs: state.sourceRefs || [],
-    memory_candidates: state.memoryCandidates || [],
-    memory_reviews: state.memoryReviews || [],
-    channel_approvals: state.channelApprovals || [],
-    channel_reviews: state.channelApprovalReviews || [],
-    audit: state.audit || [],
-    live_events: state.events || [],
-    selected_entity: state.selectedEntity || null,
-    safety_acceptance: {
-      secrets_included: false,
-      external_send_performed: false,
-      long_term_memory_auto_write: false,
-      restore_executed: false,
-      customer_public_brand: "bairui",
-    },
-    operator_next_steps: [
-      "Review blockers in diagnostic_bundle.support_next_steps.",
-      "Use Settings for config, migration, backup, and owner-token checks.",
-      "Use Reports, Memory Review, Channels, and Events for item-level evidence exports.",
-    ],
-  });
-  render();
-}
-
-function renderHandoffPackSummary() {
-  return `
-    <div class="handoff-pack-strip">
-      <div><span>Delivery checklist</span><strong>docs/29-commercial-trial-handoff-pack.md</strong><p>Operator index for first activation, Windows deployment, server/domain deployment, common errors, and Go/No-Go.</p></div>
-      <div><span>Handoff pack</span><strong>reports + memory + events + diagnostics</strong><p>One redacted JSON bundle for commercial trial acceptance and support escalation.</p></div>
-      <div><span>Secret policy</span><strong>secret_echo=false</strong><p>Uses the same customer-safe export sanitizer as reports, memory, channels, and diagnostics.</p></div>
-      <div><span>Safety flags</span><strong>no send / no auto memory write</strong><p>Exporting evidence never dispatches channels, writes memory, restores data, or changes runtime state.</p></div>
-    </div>`;
-}
-
-function renderMetricsSummary() {
-  const metrics = state.metrics;
-  if (!metrics) return `<div class="empty-state top-gap">Metrics not loaded yet. Use Load Metrics for error counts, risk levels, and blocked or denied activity.</div>`;
-  return `
-    <div class="event-safety-grid top-gap">
-      <div><span>Errors</span><strong>${escapeHtml(String(metrics.error_count || 0))}</strong><p>Redacted error log records.</p></div>
-      <div><span>High risk</span><strong>${escapeHtml(String(metrics.high_risk_count || 0))}</strong><p>High-risk audit and error evidence.</p></div>
-      <div><span>Blocked/denied</span><strong>${escapeHtml(String(metrics.blocked_or_denied_count || 0))}</strong><p>Missing config, denied, blocked, or failed paths.</p></div>
-      <div><span>Latest error</span><strong>${escapeHtml(metrics.latest_error_at || "none")}</strong><p>${escapeHtml(metrics.secret_policy || "No secret values included.")}</p></div>
-    </div>`;
-}
-
-function renderErrorLogSummary() {
-  const errors = state.errorLogs || [];
-  if (!errors.length) return `<div class="empty-state top-gap">Error logs not loaded yet. Use Load Errors to inspect recent redacted failures without exposing secrets.</div>`;
-  return `
-    <div class="error-log-summary top-gap">
-      <div class="conversation-head">
-        <div>
-          <h3 class="sub-title">Recent redacted errors</h3>
-          <p class="muted compact-copy">Shows server-side failures, denied actions, and blocked paths. Exported handoff packs include these records for support triage.</p>
-        </div>
-        ${pill("ready", `${errors.length} errors`)}
-      </div>
-      <div class="error-log-list">
-        ${errors
-          .slice(-5)
-          .reverse()
-          .map(
-            (item) => `
-              <div>
-                <span>${escapeHtml(item.created_at || item.timestamp || "unknown time")}</span>
-                <strong>${escapeHtml(item.path || item.action || item.error || "runtime error")}</strong>
-                <p>${escapeHtml(item.message || item.detail || item.status || "redacted error record")}</p>
-              </div>`,
-          )
-          .join("")}
-      </div>
-    </div>`;
-}
-
-function exportEventsData() {
-  exportConsoleData("events", {
-    audit_filter: state.auditFilter || "all",
-    audit: state.audit || [],
-    filtered_audit: filteredAuditTimeline(),
-    live_events: state.events || [],
-    errors: state.errorLogs || [],
-    selected_audit: state.selectedEntity?.type === "audit" ? state.selectedEntity.raw || state.selectedEntity : null,
-    note: "Event export combines durable audit records, recent redacted error logs, and this browser session's live SSE messages.",
-  });
-}
-
-function renderEventSummary() {
-  const counts = eventSummaryCounts();
-  return renderCountStrip({
-    audit: state.audit.length,
-    live: state.events.length,
-    approvals: counts.approvals,
-    resources: counts.resources,
-    blocked: counts.blocked,
-    high_risk: counts.highRisk,
-  });
-}
-
-function renderEventSafetyBoundary() {
-  return `
-    <div class="event-safety-grid">
-      <div><span>External send</span><strong>review only</strong><p>Channel events must keep will_send=false until a future approved sender exists.</p></div>
-      <div><span>Long-term memory</span><strong>owner approval</strong><p>Memory candidates and reviews stay visible before any durable memory write.</p></div>
-      <div><span>Resource chain</span><strong>audit linked</strong><p>Jobs, reports, channels, documents, code, and avatar state changes carry resource references.</p></div>
-      <div><span>Failure handling</span><strong>no fake success</strong><p>Blocked or missing_config events remain visible so the operator knows the next repair step.</p></div>
-    </div>`;
-}
-
-function renderEventFilters() {
-  const filters = [
-    ["all", "All"],
-    ["approval", "Approvals"],
-    ["resource", "Resources"],
-    ["memory", "Memory"],
-    ["channel", "Channels"],
-    ["system", "System"],
-    ["blocked", "Blocked"],
-  ];
-  return `
-    <div class="event-filter-row">
-      ${filters.map(([id, label]) => `<button class="ghost-btn mini ${state.auditFilter === id ? "active" : ""}" type="button" data-audit-filter="${id}">${escapeHtml(label)}</button>`).join("")}
-    </div>`;
-}
-
-function renderEventTimeline(rows) {
-  if (!rows.length) return `<div class="empty-state top-gap">No audit evidence for this filter yet. Run Demo Flow, create a command session, or review a channel draft.</div>`;
-  return `
-    <div class="event-timeline top-gap">
-      ${rows
-        .map(
-          (event) => `
-            <button class="event-row button-card" type="button" data-audit-open="${escapeHtml(event.id)}">
-              <span class="event-rail-dot"></span>
-              <div class="event-row-main">
-                <div class="agent-meta">
-                  ${pill(event.status, event.label)}
-                  <span class="chip">${escapeHtml(event.resource_type || "runtime")}</span>
-                  <span class="chip mono">${escapeHtml(shortId(event.resource_ref || event.id))}</span>
-                </div>
-                <strong>${escapeHtml(event.action || event.type || "audit.event")}</strong>
-                <p>${escapeHtml(event.detail)}</p>
-              </div>
-              <time>${escapeHtml(formatEventTime(event.created_at || event.ts))}</time>
-            </button>`,
-        )
-        .join("")}
-    </div>`;
-}
-
-function renderEventEvidence() {
-  const selected = state.selectedEntity?.type === "audit" ? state.selectedEntity.raw : latestAuditEvent();
-  if (!selected) return `<div class="empty-state">Select an event to inspect payload, resource reference, and safety flags.</div>`;
-  const payload = selected.payload || {};
-  const safety = {
-    will_send: payload.will_send === true ? "true" : "false",
-    will_write_long_term_memory: payload.will_write_long_term_memory === true ? "true" : "false",
-    approval_required: eventNeedsApproval(selected) ? "true" : "false",
-  };
-  return `
-    <div class="event-evidence-card">
-      <div class="agent-meta">
-        ${pill(eventStatus(selected).status, eventStatus(selected).label)}
-        <span class="chip">${escapeHtml(selected.resource_type || "runtime")}</span>
-        <span class="chip mono">${escapeHtml(shortId(selected.resource_ref || selected.id))}</span>
-      </div>
-      <h3>${escapeHtml(selected.action || "audit.event")}</h3>
-      ${renderObjectCardInner(safety, ["will_send", "will_write_long_term_memory", "approval_required"])}
-      <pre class="mono muted code-block top-gap">${escapeHtml(JSON.stringify(payload, null, 2))}</pre>
-    </div>`;
-}
-
-function renderLiveEventList() {
-  const live = state.events.slice(-8).reverse();
-  if (!live.length) return `<div class="empty-state compact">SSE stream has not received live messages in this browser session. /audit remains the durable source.</div>`;
-  return `
-    <div class="live-event-list">
-      ${live
-        .map(
-          (event) => `
-            <div>
-              ${pill(event.type || "event")}
-              <span>${escapeHtml(event.data?.action || event.type || "runtime event")}</span>
-            </div>`,
-        )
-        .join("")}
-    </div>`;
-}
-
-function filteredAuditTimeline() {
-  return state.audit
-    .slice()
-    .reverse()
-    .map(normalizeAuditEvent)
-    .filter((event) => eventMatchesFilter(event, state.auditFilter));
-}
-
-function normalizeAuditEvent(event) {
-  const status = eventStatus(event);
-  return {
-    ...event,
-    status: status.status,
-    label: status.label,
-    detail: eventDetail(event),
-  };
-}
-
-function eventSummaryCounts() {
-  return (state.audit || []).reduce(
-    (counts, event) => {
-      if (eventNeedsApproval(event)) counts.approvals += 1;
-      if (["job", "report", "memory", "channel", "document", "codegraph", "avatar"].includes(event.resource_type)) counts.resources += 1;
-      if (eventStatus(event).status === "blocked") counts.blocked += 1;
-      if (event.risk_level === "high") counts.highRisk += 1;
-      return counts;
-    },
-    { approvals: 0, resources: 0, blocked: 0, highRisk: 0 },
-  );
-}
-
-function eventStatus(event) {
-  const action = String(event?.action || "");
-  const payload = event?.payload || {};
-  if (action.includes("blocked") || payload.status === "blocked" || payload.status === "failed") return { status: "blocked", label: "blocked" };
-  if (eventNeedsApproval(event)) return { status: "approval_required", label: "review" };
-  if (action.includes("reviewed") || action.includes("created") || action.includes("finished") || action.includes("promoted")) return { status: "ready", label: "recorded" };
-  return { status: event?.risk_level === "high" ? "approval_required" : "partial", label: event?.risk_level || "trace" };
-}
-
-function eventNeedsApproval(event) {
-  const action = String(event?.action || "");
-  const payload = event?.payload || {};
-  return action.includes("approval") || action.includes("send_planned") || payload.will_send === false || payload.will_write_long_term_memory === false || event?.risk_level === "high";
-}
-
-function eventMatchesFilter(event, filter = "all") {
-  if (filter === "all") return true;
-  const action = String(event.action || "");
-  const resource = String(event.resource_type || "");
-  if (filter === "approval") return eventNeedsApproval(event);
-  if (filter === "resource") return ["job", "report", "memory", "channel", "document", "codegraph", "avatar"].includes(resource);
-  if (filter === "blocked") return event.status === "blocked";
-  if (filter === "system") return ["runtime", "database", "avatar"].includes(resource) || action.includes("system") || action.includes("database");
-  return resource.includes(filter) || action.includes(filter);
-}
-
-function eventDetail(event) {
-  const payload = event?.payload || {};
-  return firstNonEmpty(
-    payload.title,
-    payload.summary,
-    payload.reason,
-    payload.status,
-    payload.note,
-    event.resource_ref ? `${event.resource_type || "resource"} ${event.resource_ref}` : "",
-    "Audit evidence recorded.",
-  );
-}
-
-function formatEventTime(value) {
-  if (!value) return "time pending";
-  return String(value).replace("T", " ").replace("Z", "");
-}
-
-function latestAuditEvent() {
-  return state.audit[state.audit.length - 1] || null;
-}
-
-function renderRuntimeDiagnostics() {
-  const readiness = state.readiness?.runtime_readiness || {};
-  const items = readiness.items || [];
-  const blockers = items.filter((item) => ["blocked", "missing_config", "failed"].includes(item.status));
-  const warnings = items.filter((item) => ["partial", "needs_review", "approval_required"].includes(item.status));
-  if (!blockers.length && !warnings.length) return `<div class="empty-state compact">No runtime blockers detected.</div>`;
-  return `
-    <div class="diagnostic-stack">
-      ${blockers.slice(0, 4).map((item) => `<div class="warning-row">${pill(item.status || "blocked")}<span>${escapeHtml(item.name || item.id || item.detail || "runtime blocker")}</span></div>`).join("")}
-      ${warnings.slice(0, 3).map((item) => `<div class="warning-row">${pill(item.status || "partial", "warning")}<span>${escapeHtml(item.name || item.id || item.detail || "runtime warning")}</span></div>`).join("")}
-    </div>`;
-}
-
-function renderAuditCards(events) {
-  if (!events.length) return `<div class="empty-state">No audit events yet.</div>`;
-  return `
-    <div class="audit-card-list">
-      ${events
-        .map(
-          (event) => `
-            <button class="object-card button-card audit-card" type="button" data-audit-open="${escapeHtml(event.id)}">
-              <div><span>action</span><strong>${escapeHtml(event.action || "audit.event")}</strong></div>
-              <div><span>resource</span><strong>${escapeHtml(event.resource_type || "-")} / ${escapeHtml(shortId(event.resource_ref || ""))}</strong></div>
-              <div><span>risk</span><strong>${escapeHtml(event.risk_level || "low")}</strong></div>
-            </button>`,
-        )
-        .join("")}
-    </div>`;
-}
-
-function bindAuditCards(root = el.body) {
-  root.querySelectorAll("[data-audit-open]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const event = state.audit.find((item) => String(item.id) === String(button.dataset.auditOpen));
-      if (!event) return;
-      state.selectedEntity = { type: "audit", title: event.action, status: event.risk_level || "low", ref: event.id, raw: event };
-      persistUiState();
-      render();
-    });
-  });
-}
-
-function renderTable(columns, rows) {
-  if (!rows.length) return `<div class="empty-state">No records yet. The section is connected and waiting for data.</div>`;
-  return `
-    <div class="table-wrap">
-      <table class="table">
-        <thead><tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead>
-        <tbody>
-          ${rows
-            .map((row) => `<tr>${columns.map((column) => `<td>${escapeHtml(row[column] ?? "")}</td>`).join("")}</tr>`)
-            .join("")}
-        </tbody>
-      </table>
-    </div>`;
-}
-
-function renderDrawer() {
-  el.drawerContent.innerHTML = `
-    <section class="panel pad">
-      <h2 class="panel-title">Current screen</h2>
-      <p class="muted">${escapeHtml(state.screen)}</p>
-    </section>
-    <section class="panel pad">
-      <h2 class="panel-title">Safety</h2>
-      <p class="muted">Actions preserve bairui-only public branding, owner review, blocked states, and no external send success claims.</p>
-    </section>
-    <section class="panel pad">
-      <h2 class="panel-title">Selected</h2>
-      <p class="muted mono">${escapeHtml(state.selectedIngestId || state.selectedEntity?.title || "none")}</p>
-    </section>`;
-}
-
-function progressBar(value) {
-  const percent = Math.max(0, Math.min(100, Number(value) || 0));
-  return `<div class="progress"><span style="width:${percent}%"></span></div>`;
-}
-
-function stageCard(label, status) {
-  return `<div class="stage-card"><span>${escapeHtml(label)}</span>${pill(status || "pending")}</div>`;
-}
-
-function renderWarnings(blockers = [], warnings = []) {
-  if (!blockers.length && !warnings.length) return `<div class="empty-state compact">No blockers or warnings.</div>`;
-  return `<div class="grid">${blockers.map((item) => `<div class="warning-row">${pill("blocked")}<span>${escapeHtml(item)}</span></div>`).join("")}${warnings.map((item) => `<div class="warning-row">${pill("partial", "warning")}<span>${escapeHtml(item)}</span></div>`).join("")}</div>`;
-}
-
-function renderActionList(actions) {
-  if (!actions.length) return `<div class="empty-state compact">No immediate next action.</div>`;
-  return `<div class="step-list">${actions
-    .map(
-      (action) => `
-        <div class="step-item action-step">
-          <div class="step-title">
-            <span>${escapeHtml(action.label || action.command || action.id)}</span>
-            ${pill(action.command === "done" ? "ready" : "partial", action.command || "action")}
-          </div>
-          <button class="ghost-btn mini" type="button" data-document-command="${escapeHtml(action.command || "")}" ${!action.command ? "disabled" : ""}>
-            ${escapeHtml(action.command === "review-memory-candidate" ? "Open Review" : action.command === "done" ? "Open Reports" : "Run This Step")}
-          </button>
-        </div>`,
-    )
-    .join("")}</div>`;
-}
-
-function renderCountStrip(counts) {
-  const entries = Object.entries(counts || {});
-  if (!entries.length) return `<div class="empty-state compact">No counts available.</div>`;
-  return `<div class="count-strip">${entries.map(([key, value]) => `<div><strong>${escapeHtml(value)}</strong><span>${escapeHtml(key)}</span></div>`).join("")}</div>`;
-}
-
-function renderObjectCard(item, keys) {
-  return `<article class="object-card">${renderObjectCardInner(item, keys)}</article>`;
-}
-
-function renderObjectCardInner(item, keys) {
-  return keys.map((key) => `<div><span>${escapeHtml(key)}</span><strong>${escapeHtml(item?.[key] ?? "")}</strong></div>`).join("");
-}
-
-function render() {
-  if (state.screen !== "activation") disposeActivationThreeCore();
-  renderRail();
-  renderTopbar();
-  renderDrawer();
-  const renderer = {
-    activation: renderActivation,
-    dashboard: renderDashboard,
-    command: renderCommand,
-    documents: renderDocuments,
-    memory: renderMemory,
-    graph: renderGraph,
-    entity: renderEntity,
-    reports: renderReports,
-    intel: renderIntel,
-    channels: renderChannels,
-    avatar: renderAvatar,
-    codegraph: renderCodeGraph,
-    settings: renderSettings,
-    events: renderEvents,
-  }[state.screen];
-  renderer?.();
-}
-
-async function safe(fn, fallback, key = "") {
+function saveUiZoom(factor) {
   try {
-    return await fn();
-  } catch (error) {
-    console.warn(error);
-    if (key) state.errors[key] = error.message;
-    return fallback;
+    localStorage.setItem(UI_ZOOM_STORAGE_KEY, String(factor));
+  } catch {}
+}
+
+function loadSavedUiZoom() {
+  try {
+    const raw = Number(localStorage.getItem(UI_ZOOM_STORAGE_KEY));
+    if (Number.isFinite(raw)) return clampZoomFactor(raw);
+  } catch {}
+  return DEFAULT_UI_ZOOM;
+}
+
+function applyUiZoom(factor, { persist = true } = {}) {
+  const nextZoom = clampZoomFactor(factor);
+  currentUiZoom = nextZoom;
+
+  const bridge = window.bairui;
+  if (bridge?.isElectron && typeof bridge.setZoomFactor === "function") {
+    bridge.setZoomFactor(nextZoom);
+  } else {
+    document.documentElement.style.zoom = String(nextZoom);
   }
+
+  if (persist) saveUiZoom(nextZoom);
 }
 
-async function refresh() {
-  const [contract, health, ready, readiness, configStatus, capabilities, jobs, audit, avatarStatus, avatarManifest, platform, license] = await Promise.all([
-    safe(() => api.get("/frontend/contract").then((data) => data.frontend_contract), state.contract),
-    safe(() => api.get("/health"), state.health),
-    safe(() => api.get("/ready"), state.ready),
-    safe(() => api.get("/runtime/readiness"), state.readiness),
-    safe(() => api.get("/config/status"), state.configStatus),
-    safe(() => api.get("/capabilities").then((data) => data.capabilities || []), state.capabilities),
-    safe(() => api.get("/jobs").then((data) => data.jobs || []), state.jobs),
-    safe(() => api.get("/audit").then((data) => data.audit || []), state.audit),
-    safe(() => api.get("/avatar/status"), state.avatarStatus),
-    safe(() => api.get("/avatar/manifest"), state.avatarManifest),
-    safe(() => api.get("/platform/heartbeat"), state.platform),
-    safe(() => api.get("/license"), state.license),
-  ]);
-  Object.assign(state, { contract, health, ready, readiness, configStatus, capabilities, jobs, audit, avatarStatus, avatarManifest, platform, license });
-  await refreshScreenData();
-  render();
+function stepUiZoom(delta) {
+  const nextZoom = Math.round((currentUiZoom + delta) * 100) / 100;
+  applyUiZoom(nextZoom);
 }
 
-async function refreshScreenData() {
-  if (state.screen === "activation") {
-    await Promise.all([loadRuntimeStatus(), loadDocuments(), loadMemory(), loadReports(), loadChannels(), loadCodeGraph()]);
+function initUiZoom() {
+  const bridge = window.bairui;
+  const initialZoom = loadSavedUiZoom();
+
+  if (!bridge?.isElectron) {
+    applyUiZoom(initialZoom, { persist: false });
+  } else {
+    try {
+      const bridgeZoom = bridge.getZoomFactor?.();
+      if (typeof bridgeZoom === "number" && Number.isFinite(bridgeZoom)) {
+        currentUiZoom = clampZoomFactor(bridgeZoom);
+      }
+    } catch {}
+    applyUiZoom(initialZoom, { persist: false });
   }
-  if (["documents", "graph", "entity"].includes(state.screen)) await loadDocuments();
-  if (["memory", "graph", "entity"].includes(state.screen)) await loadMemory();
-  if (["reports", "graph", "entity"].includes(state.screen)) await loadReports();
-  if (["channels", "entity"].includes(state.screen)) await loadChannels();
-  if (["settings", "intel", "codegraph"].includes(state.screen)) await loadRuntimeStatus();
-  if (state.screen === "dashboard") await loadDashboard();
-  if (state.screen === "codegraph") await loadCodeGraph();
-  if (state.screen === "command") await loadAgents();
-  if (state.screen === "events") {
-    state.audit = await safe(() => api.get("/audit").then((data) => data.audit || []), state.audit, "audit");
-    hydrateSelectedEntity();
+
+  window.addEventListener("wheel", (event) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    stepUiZoom(event.deltaY < 0 ? UI_ZOOM_WHEEL_STEP : -UI_ZOOM_WHEEL_STEP);
+  }, { passive: false, capture: true });
+
+  window.addEventListener("keydown", (event) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+
+    const key = event.key;
+    if (key === "+" || key === "=" || key === "Add") {
+      event.preventDefault();
+      stepUiZoom(UI_ZOOM_STEP);
+      return;
+    }
+
+    if (key === "-" || key === "_" || key === "Subtract") {
+      event.preventDefault();
+      stepUiZoom(-UI_ZOOM_STEP);
+      return;
+    }
+
+    if (key === "0") {
+      event.preventDefault();
+      applyUiZoom(DEFAULT_UI_ZOOM);
+    }
+  });
+}
+
+function setAgentName(nextName) {
+  const normalized = "bairui";
+  agentName = normalized;
+  document.title = `${normalized} Console`;
+  if (brandNameEl) brandNameEl.textContent = `${normalized} Agent`;
+  if (graphEl) graphEl.setAttribute("aria-label", `${normalized} memory graph`);
+  const input = document.getElementById("msg-input");
+  if (input && !chat?.isComposerLocked?.() && document.activeElement === input) input.placeholder = defaultInputPlaceholder();
+  document.querySelectorAll(".msg-bairui .msg-label").forEach((el) => {
+    el.textContent = normalized;
+  });
+}
+
+async function loadAgentProfile() {
+  try {
+    const res = await fetch(`${API}/health`, { cache: "no-store", headers: ownerAuthHeaders() });
+    if (!res.ok) return setAgentName(DEFAULT_AGENT_NAME);
+    await res.json();
+    setAgentName(DEFAULT_AGENT_NAME);
+  } catch {}
+}
+
+const physicsSettings = {
+  gravity: 1,
+  repulsion: 1.35,
+  nodeSize: 1,
+};
+
+requestAnimationFrame(() => {
+  themeSwitcher.classList.add("visible");
+  resetViewBtn.classList.add("visible");
+  physicsControl.classList.add("visible");
+});
+
+function readCSSVar(name) {
+  return getComputedStyle(document.body).getPropertyValue(name).trim();
+}
+
+function readPhysicsSettings() {
+  try {
+    const raw = localStorage.getItem(PHYSICS_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      if (typeof parsed.gravity === "number") physicsSettings.gravity = parsed.gravity;
+      if (typeof parsed.repulsion === "number") physicsSettings.repulsion = parsed.repulsion;
+      if (typeof parsed.nodeSize === "number") physicsSettings.nodeSize = parsed.nodeSize;
+    }
+  } catch {}
+}
+
+function savePhysicsSettings() {
+  try {
+    localStorage.setItem(PHYSICS_STORAGE_KEY, JSON.stringify(physicsSettings));
+  } catch {}
+}
+
+function updatePhysicsReadout() {
+  gravitySlider.value = String(physicsSettings.gravity);
+  repulsionSlider.value = String(physicsSettings.repulsion);
+  nodeSizeSlider.value = String(physicsSettings.nodeSize);
+  gravityValue.textContent = `${physicsSettings.gravity.toFixed(2)}x`;
+  repulsionValue.textContent = `${physicsSettings.repulsion.toFixed(2)}x`;
+  nodeSizeValue.textContent = `${physicsSettings.nodeSize.toFixed(2)}x`;
+}
+
+let themeColors = {};
+function refreshThemeColors() {
+  themeColors = {
+    cool: readCSSVar("--cool"),
+    warm: readCSSVar("--warm"),
+    nodeLow: readCSSVar("--node-low"),
+    nodeHigh: readCSSVar("--node-high"),
+    dim: readCSSVar("--dim"),
+    ink2: readCSSVar("--ink2"),
+    linkStroke: readCSSVar("--link-stroke"),
+    bg0: readCSSVar("--bg0"),
+  };
+}
+
+function applyTheme(theme) {
+  document.body.dataset.theme = theme;
+  try { localStorage.setItem(THEME_KEY, theme); } catch {}
+  document.querySelectorAll(".theme-dot").forEach(el => {
+    el.classList.toggle("active", el.dataset.t === theme);
+  });
+  setTimeout(() => {
+    refreshThemeColors();
+    renderLegend();
+    if (MEMORY_GRAPH_ENABLED && nodeSel && !nodeSel.empty()) {
+      refreshNodeVisuals();
+      linkSel.attr("stroke", themeColors.linkStroke);
+    }
+  }, 20);
+}
+
+(function initTheme() {
+  let saved = "midnight";
+  try { saved = localStorage.getItem(THEME_KEY) || "midnight"; } catch {}
+  applyTheme(saved);
+})();
+
+themeSwitcher.querySelectorAll(".theme-dot").forEach(el => {
+  el.addEventListener("click", () => applyTheme(el.dataset.t));
+});
+
+physicsToggle.addEventListener("click", () => {
+  const nextOpen = !physicsControl.classList.contains("open");
+  physicsControl.classList.toggle("open", nextOpen);
+  physicsToggle.setAttribute("aria-expanded", String(nextOpen));
+});
+
+gravitySlider.addEventListener("input", () => {
+  physicsSettings.gravity = Number(gravitySlider.value);
+  applyPhysicsSettings();
+});
+
+repulsionSlider.addEventListener("input", () => {
+  physicsSettings.repulsion = Number(repulsionSlider.value);
+  applyPhysicsSettings();
+});
+
+nodeSizeSlider.addEventListener("input", () => {
+  physicsSettings.nodeSize = Number(nodeSizeSlider.value);
+  applyPhysicsSettings();
+});
+
+let W = window.innerWidth;
+let H = window.innerHeight;
+
+const svg = d3.select("#graph").attr("width", W).attr("height", H);
+const tip = d3.select("#tip");
+
+const defs = svg.append("defs");
+defs.html(`
+  <filter id="neb-glow" x="-70%" y="-70%" width="240%" height="240%">
+    <feGaussianBlur stdDeviation="3.2" result="blur"/>
+    <feMerge>
+      <feMergeNode in="blur"/>
+      <feMergeNode in="SourceGraphic"/>
+    </feMerge>
+  </filter>
+`);
+
+const world = svg.append("g");
+const gLink = world.append("g").attr("stroke-linecap", "round");
+const gNode = world.append("g");
+
+const zoom = d3.zoom()
+  .scaleExtent([0.1, 5])
+  .filter(event => event.type === "wheel")
+  .on("zoom", event => world.attr("transform", event.transform));
+
+svg.call(zoom);
+svg.on("wheel.zoom", null);
+svg.on("dblclick.zoom", null);
+
+svg.node().addEventListener("wheel", event => {
+  event.preventDefault();
+  const current = d3.zoomTransform(svg.node());
+  const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+  const nextScale = Math.max(0.1, Math.min(5, current.k * factor));
+  const k = nextScale / current.k;
+  const px = W / 2, py = H / 2;
+  const nextX = px - (px - current.x) * k;
+  const nextY = py - (py - current.y) * k;
+  svg.call(zoom.transform, d3.zoomIdentity.translate(nextX, nextY).scale(nextScale));
+}, { passive: false });
+
+function resetZoom() {
+  svg.transition().duration(420).call(
+    zoom.transform,
+    d3.zoomIdentity
+  );
+}
+
+const glowSet = new Map();
+const usePulseSet = new Map();
+let linkData = [];
+let nodeData = [];
+let linkSel = gLink.selectAll("line");
+let nodeSel = gNode.selectAll("circle");
+
+const nodeCountEl = document.getElementById("node-count");
+const linkCountEl = document.getElementById("link-count");
+const connStateEl = document.getElementById("conn-state");
+
+function updateStats() {
+  nodeCountEl.textContent = String(nodeData.length);
+  linkCountEl.textContent = String(linkData.length);
+}
+
+function setConnectionState(text, live = true) {
+  connStateEl.innerHTML = live
+    ? `<span class="live-dot"></span>${text}`
+    : text;
+  connStateEl.classList.toggle("live", live);
+}
+
+function isGlowing(nid) {
+  const expiry = glowSet.get(nid);
+  if (!expiry) return false;
+  if (Date.now() > expiry) { glowSet.delete(nid); return false; }
+  return true;
+}
+
+function highlightNodes(nids, duration = 2400) {
+  if (!MEMORY_GRAPH_ENABLED || !sim) return;
+  if (!nids || !nids.length) return;
+  const now = Date.now();
+  const expiry = now + duration;
+  nids.forEach(nid => {
+    const key = String(nid);
+    glowSet.set(key, expiry);
+    usePulseSet.set(key, { start: now, end: expiry });
+  });
+  refreshNodeVisuals();
+  sim.alpha(Math.max(sim.alpha(), 2)).restart();
+  setTimeout(() => {
+    nids.forEach(nid => {
+      const key = String(nid);
+      glowSet.delete(key);
+      usePulseSet.delete(key);
+    });
+    refreshNodeVisuals();
+  }, duration + 80);
+}
+
+function nodeUseProgress(nid) {
+  const key = String(nid);
+  const pulse = usePulseSet.get(key);
+  if (!pulse) return 0;
+  const now = Date.now();
+  if (now >= pulse.end) {
+    usePulseSet.delete(key);
+    return 0;
   }
-  render();
+  const total = Math.max(1, pulse.end - pulse.start);
+  return 1 - ((now - pulse.start) / total);
 }
 
-async function loadDashboard() {
-  const [readiness, capabilities, jobs, audit, reports, memoryCandidates, channelApprovals] = await Promise.all([
-    safe(() => api.get("/runtime/readiness"), state.readiness, "dashboard-readiness"),
-    safe(() => api.get("/capabilities").then((data) => data.capabilities || []), state.capabilities, "dashboard-capabilities"),
-    safe(() => api.get("/jobs").then((data) => data.jobs || []), state.jobs, "dashboard-jobs"),
-    safe(() => api.get("/audit").then((data) => data.audit || []), state.audit, "dashboard-audit"),
-    safe(() => api.get("/reports").then((data) => data.reports || []), state.reports, "dashboard-reports"),
-    safe(() => api.get("/document/memory-candidates").then((data) => data.document_memory_candidates || []), state.memoryCandidates, "dashboard-memory"),
-    safe(() => api.get("/channels/approvals").then((data) => data.channel_approvals || []), state.channelApprovals, "dashboard-channels"),
-  ]);
-  Object.assign(state, { readiness, capabilities, jobs, audit, reports, memoryCandidates, channelApprovals });
-  hydrateSelectedEntity();
-}
-
-async function loadDocuments() {
-  const list = await safe(() => api.post("/document/parse/session-list", { limit: 50 }).then((data) => data.document_ingest_sessions), null, "documents");
-  state.documentSessions = list?.sessions || [];
-  if (state.selectedIngestId && !state.documentSessions.some((session) => session.ingest_id === state.selectedIngestId)) {
-    state.selectedIngestId = "";
+function nodeStrength(d) {
+  if (typeof d._strength !== "number") {
+    const deg = Math.min(1, (d._deg || 0) / 12);
+    d._strength = 0.35 + deg * 0.55;
   }
-  if (!state.selectedIngestId && state.documentSessions[0]) state.selectedIngestId = state.documentSessions[0].ingest_id;
-  await loadDocumentSession();
+  return d._strength;
 }
 
-async function loadDocumentSession() {
-  if (!state.selectedIngestId) {
-    state.documentSession = null;
+function nodeColor(d) {
+  if (d._core) return themeColors.warm || "#d39872";
+  const age = (Date.now() - (d._ts || Date.now())) / 18000;
+  const fade = Math.max(0.25, 1 - age);
+  const t = 0.18 + nodeStrength(d) * 0.5 * fade;
+  const interp = d3.interpolateRgb(themeColors.nodeLow || "#3a556e", themeColors.nodeHigh || "#cfe3f5");
+  let color = interp(Math.min(1, t));
+  const base = d3.color(color);
+  if (base) color = base.darker(0.55) + "";
+  const useBoost = nodeUseProgress(d._nid);
+  if (isGlowing(d._nid) || useBoost > 0) {
+    const c = d3.color(color);
+    if (c) return c.brighter(2 + useBoost * 2) + "";
+  }
+  return color;
+}
+
+function nodeRadius(d) {
+  const base = d._core ? 9 : 3.4 + Math.min((d._deg || 0) * 0.9, 5.4);
+  const childScale = 1 + Math.min(1.5, (d._childCount || 0) * 0.18);
+  const useBoost = nodeUseProgress(d._nid);
+  const glowScale = isGlowing(d._nid) ? 1.08 : 1;
+  const pulseScale = 1 + (Math.sin((1 - useBoost) * Math.PI * 3) * 0.04 + useBoost * 0.12);
+  const scaledBase = base * physicsSettings.nodeSize;
+  return Math.min(scaledBase * 2.5, scaledBase * childScale * glowScale * Math.max(1, pulseScale));
+}
+
+const sim = MEMORY_GRAPH_ENABLED
+  ? d3.forceSimulation()
+    .force("link", d3.forceLink().id(d => d._nid))
+    .force("charge", d3.forceManyBody())
+    .force("center", d3.forceCenter(W / 2, H / 2 - 10))
+    .force("x", d3.forceX(W / 2))
+    .force("y", d3.forceY(H / 2 - 10))
+    .force("radial", d3.forceRadial(180, W / 2, H / 2 - 10))
+    .force("collision", d3.forceCollide())
+    .alphaDecay(0.028)
+    .velocityDecay(0.3)
+    .on("tick", tick)
+  : null;
+
+function linkDistance(link) {
+  const countFactor = Math.min(34, Math.sqrt(Math.max(1, nodeData.length)) * 4.2);
+  if (link._kind === "visual_parent") return 82 + countFactor * 0.45;
+  if (link._kind === "visual_random") return 108 + countFactor;
+  return 76 + countFactor * 0.55;
+}
+
+function linkStrength(link) {
+  if (link._kind === "visual_parent") return 0.2;
+  if (link._kind === "visual_random") return 0.035;
+  return 0.16;
+}
+
+function chargeStrength(node) {
+  const countBoost = Math.min(76, Math.sqrt(Math.max(1, nodeData.length)) * 3.5);
+  const baseCharge = -92 - countBoost * 0.4 - (node._deg || 0) * 2.4 - (node._childCount || 0) * 1.2;
+  return baseCharge * physicsSettings.repulsion;
+}
+
+function radialStrength() {
+  const baseSpread = nodeData.length > 36 ? 0.1 : 0.1;
+  return baseSpread * physicsSettings.gravity;
+}
+
+function centerPullStrength() {
+  const basePull = nodeData.length > 36 ? 0.04 : 0.055;
+  return basePull * physicsSettings.gravity;
+}
+
+function collisionRadius(node) {
+  const countPadding = nodeData.length > 36 ? 6 : 4;
+  return nodeRadius(node) + countPadding;
+}
+
+function updateSimulationForces() {
+  if (!MEMORY_GRAPH_ENABLED || !sim) return;
+  sim.force("link")
+    .distance(linkDistance)
+    .strength(linkStrength);
+
+  sim.force("charge")
+    .strength(chargeStrength);
+
+  sim.force("x")
+    .x(W / 2)
+    .strength(centerPullStrength());
+
+  sim.force("y")
+    .y(H / 2 - 10)
+    .strength(centerPullStrength());
+
+  sim.force("radial")
+    .radius(Math.min(Math.max(24, Math.sqrt(Math.max(1, nodeData.length)) * 6), 64))
+    .x(W / 2)
+    .y(H / 2 - 10)
+    .strength(radialStrength());
+
+  sim.force("collision")
+    .radius(collisionRadius)
+    .strength(0.82)
+    .iterations(nodeData.length > 40 ? 2 : 1);
+}
+
+function applyPhysicsSettings(restartAlpha = 2) {
+  updatePhysicsReadout();
+  if (!MEMORY_GRAPH_ENABLED || !sim) {
+    savePhysicsSettings();
     return;
   }
-  state.documentSession = await safe(
-    () => api.post("/document/parse/session-summary", { ingest_id: state.selectedIngestId }).then((data) => data.document_ingest_session),
-    state.documentSession,
-    "document-session",
-  );
+  updateSimulationForces();
+  refreshNodeVisuals();
+  sim.alpha(Math.max(sim.alpha(), restartAlpha)).restart();
+  savePhysicsSettings();
 }
 
-async function loadMemory() {
-  const [queue, candidates, reviews] = await Promise.all([
-    safe(() => api.post("/document/parse/memory-review-pending", { ingest_id: state.selectedIngestId || "" }).then((data) => data.document_memory_review_queue), state.memoryQueue, "memory-queue"),
-    safe(() => api.get("/document/memory-candidates").then((data) => data.document_memory_candidates || []), state.memoryCandidates, "memory-candidates"),
-    safe(() => api.get("/document/memory-reviews").then((data) => data.document_memory_reviews || []), state.memoryReviews, "memory-reviews"),
-  ]);
-  state.memoryQueue = queue;
-  state.memoryCandidates = candidates || [];
-  state.memoryReviews = reviews || [];
-  hydrateSelectedEntity();
+function refreshNodeVisuals() {
+  if (!MEMORY_GRAPH_ENABLED) return;
+  if (!nodeSel || nodeSel.empty()) return;
+  nodeSel
+    .attr("r", nodeRadius)
+    .attr("fill", nodeColor)
+    .attr("filter", d => (d._core || isGlowing(d._nid) || nodeUseProgress(d._nid) > 0) ? "url(#neb-glow)" : null)
+    .style("animation", d => nodeUseProgress(d._nid) > 0 ? "neb-node-use 10s ease-out" : null);
 }
 
-async function loadReports() {
-  const [reports, refs] = await Promise.all([
-    safe(() => api.get("/reports").then((data) => data.reports || []), state.reports, "reports"),
-    safe(() => api.get("/source-refs").then((data) => data.source_refs || []), state.sourceRefs, "source-refs"),
-  ]);
-  state.reports = reports || [];
-  state.sourceRefs = refs || [];
-  hydrateSelectedEntity();
+function dampTangentialMotion() {
+  if (!MEMORY_GRAPH_ENABLED || !sim) return;
+  const cx = W / 2;
+  const cy = H / 2 - 10;
+  const twitching = sim.alpha() > 0.45;
+
+  nodeData.forEach(node => {
+    if (!node || node.fx != null || node.fy != null) return;
+
+    const dx = (node.x ?? cx) - cx;
+    const dy = (node.y ?? cy) - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 0.001) return;
+
+    const rx = dx / dist;
+    const ry = dy / dist;
+    const tx = -ry;
+    const ty = rx;
+    const vx = node.vx || 0;
+    const vy = node.vy || 0;
+    const radialVelocity = vx * rx + vy * ry;
+    const tangentialVelocity = vx * tx + vy * ty;
+    const tangentialDamping = twitching ? 0.14 : 0.24;
+
+    node.vx = radialVelocity * rx + tangentialVelocity * tangentialDamping * tx;
+    node.vy = radialVelocity * ry + tangentialVelocity * tangentialDamping * ty;
+  });
 }
 
-async function loadChannels() {
-  const [channels, targets, diagnostics, approvals, reviews] = await Promise.all([
-    safe(() => api.get("/channels/status"), state.channels, "channels-status"),
-    safe(() => api.get("/channels/targets").then((data) => data.channel_targets || []), state.channelTargets, "channels-targets"),
-    safe(() => api.get("/channels/diagnostics").then((data) => data.channel_diagnostics || []), state.channelDiagnostics, "channels-diagnostics"),
-    safe(() => api.get("/channels/approvals").then((data) => data.channel_approvals || []), state.channelApprovals, "channels-approvals"),
-    safe(() => api.get("/channels/approvals/reviews").then((data) => data.channel_approval_reviews || []), state.channelApprovalReviews, "channels-reviews"),
-  ]);
-  state.channels = channels;
-  state.channelTargets = targets || [];
-  state.channelDiagnostics = diagnostics || [];
-  state.channelApprovals = approvals || [];
-  state.channelApprovalReviews = reviews || [];
-  hydrateSelectedEntity();
-}
-
-async function loadAgents() {
-  const [agents, sessions] = await Promise.all([
-    safe(() => api.get("/agents").then((data) => data.agents || []), state.agents, "agents"),
-    safe(() => api.get("/agents/sessions").then((data) => data.agent_sessions || []), state.agentSessions, "agent-sessions"),
-  ]);
-  state.agents = agents || [];
-  state.agentSessions = sessions || [];
-  if (state.selectedAgentSessionId && !state.agentSessions.some((item) => item.id === state.selectedAgentSessionId)) {
-    state.selectedAgentSessionId = "";
+function naturalTwitch() {
+  if (!MEMORY_GRAPH_ENABLED || !sim) return;
+  if (nodeData.length < 2) {
+    sim.alpha(1).restart();
+    return;
   }
-  if (!state.selectedAgentSessionId && state.agentSessions.length) state.selectedAgentSessionId = state.agentSessions.at(-1).id;
-  const selected = state.agentSessions.find((item) => item.id === state.selectedAgentSessionId);
-  if (!state.selectedAgentIds.length) state.selectedAgentIds = selected?.agent_ids?.length ? [...selected.agent_ids] : state.agents.map((agent) => agent.id);
-  if (state.selectedAgentSessionId) {
-    const page = await safe(
-      () =>
-        api
-          .post(`/agents/session/${state.selectedAgentSessionId}/events`, {
-            limit: state.agentEventLimit,
-            offset: state.agentEventOffset,
-          })
-          .then((data) => data.agent_events_page),
-      state.agentEventsPage,
-      "agent-events",
-    );
-    state.agentEventsPage = page;
-    state.agentEvents = page?.events || [];
-    state.agentPromotions = await safe(
-      () => api.get(`/agents/session/${state.selectedAgentSessionId}/promotions`).then((data) => data.agent_promotions || []),
-      state.agentPromotions,
-      "agent-promotions",
-    );
-  } else {
-    state.agentPromotions = [];
-  }
+
+  const nodeById = new Map(nodeData.map(node => [String(node._nid), node]));
+  const anchorMap = new Map();
+  linkData.forEach(link => {
+    if (link._kind !== "visual_parent" && link._kind !== "visual_random") return;
+    const sourceId = typeof link.source === "object" ? String(link.source._nid) : String(link.source);
+    const targetId = typeof link.target === "object" ? String(link.target._nid) : String(link.target);
+    if (!anchorMap.has(sourceId) && nodeById.has(targetId)) {
+      anchorMap.set(sourceId, nodeById.get(targetId));
+    }
+  });
+
+  const twitchCount = Math.max(6, Math.floor(nodeData.length * 0.3));
+  const candidates = shuffleArray(nodeData.filter(node => !node._core)).slice(0, twitchCount);
+
+  candidates.forEach(node => {
+    const anchor = anchorMap.get(String(node._nid)) || nodeData[deterministicIndex(node._nid, nodeData.length)];
+    if (!anchor) return;
+
+    const anchorX = anchor.x ?? (W / 2);
+    const anchorY = anchor.y ?? (H / 2 - 10);
+    const angle = Math.random() * Math.PI * 2;
+    const offset = 36 + Math.random() * 52;
+    const nextX = anchorX + Math.cos(angle) * offset;
+    const nextY = anchorY + Math.sin(angle) * offset;
+    const currentX = node.x ?? nextX;
+    const currentY = node.y ?? nextY;
+
+    node.x = currentX * 0.7 + nextX * 0.3;
+    node.y = currentY * 0.7 + nextY * 0.3;
+    node.vx = (node.vx || 0) + (nextX - currentX) * 0.14;
+    node.vy = (node.vy || 0) + (nextY - currentY) * 0.14;
+  });
+
+  sim.alpha(0.85).restart();
 }
 
-async function ensureAgentSession() {
-  if (state.selectedAgentSessionId) return state.selectedAgentSessionId;
-  const agents = state.agents.length ? state.agents : await safe(() => api.get("/agents").then((data) => data.agents || []), [], "agents");
-  state.agents = agents || state.agents;
-  const agentIds = state.selectedAgentIds.length ? state.selectedAgentIds : state.agents.map((agent) => agent.id);
-  const result = await runAction("agent-session", () =>
-    api.post("/agents/session", {
-      title: "bairui command session",
-      agent_ids: agentIds,
-    }),
-  );
-  state.selectedAgentSessionId = result?.agent_session?.id || "";
-  state.selectedAgentIds = result?.agent_session?.agent_ids || state.selectedAgentIds;
-  persistUiState();
-  return state.selectedAgentSessionId;
+function tick() {
+  if (!MEMORY_GRAPH_ENABLED) return;
+  dampTangentialMotion();
+
+  linkSel
+    .attr("x1", d => d.source.x)
+    .attr("y1", d => d.source.y)
+    .attr("x2", d => d.target.x)
+    .attr("y2", d => d.target.y);
+
+  nodeSel
+    .attr("cx", d => d.x)
+    .attr("cy", d => d.y);
 }
 
-async function submitAgentCommand(promptText, options = {}) {
-  const text = String(promptText || "").trim();
-  if (!text) return;
-  const sessionId = await ensureAgentSession();
-  if (!sessionId) return;
-  const mode = options.mode || state.agentComposerMode || "round";
-  if (mode === "message") {
-    await runAction("agent-message", () => api.post(`/agents/session/${sessionId}/message`, { content: text }), loadAgents);
-  } else {
-    await runAction("agent-round", () => api.post(`/agents/session/${sessionId}/round`, { prompt: text }));
-    state.agentEventOffset = 0;
-    await loadAgents();
-  }
-  el.commandInput.value = "";
-  render();
+function computeDegrees() {
+  const nodeById = new Map(nodeData.map(n => [n._nid, n]));
+  nodeData.forEach(n => {
+    n._deg = 0;
+    n._childCount = 0;
+  });
+  linkData.forEach(l => {
+    const s = typeof l.source === "object" ? l.source : nodeById.get(String(l.source));
+    const t = typeof l.target === "object" ? l.target : nodeById.get(String(l.target));
+    if (s) s._deg = (s._deg || 0) + 1;
+    if (t) t._deg = (t._deg || 0) + 1;
+  });
+
+  nodeData.forEach(node => {
+    const childTargets = semanticChildTargets(node);
+    if (childTargets.size) {
+      node._childCount = childTargets.size;
+      return;
+    }
+
+    const selfId = String(node._nid || "");
+    node._childCount = nodeData.reduce((count, candidate) => (
+      candidate.parent_id != null && String(candidate.parent_id) === selfId ? count + 1 : count
+    ), 0);
+  });
 }
 
-async function loadRuntimeStatus() {
-  const [configStatus, adminSession, backupStatus, memory, voice, document, intel, simulation, search, index, codegraph] = await Promise.all([
-    safe(() => api.get("/config/status"), state.configStatus, "config-status"),
-    safe(() => api.get("/admin/session"), state.adminSession, "admin-session"),
-    safe(() => api.get("/backup/status"), state.backupStatus, "backup-status"),
-    safe(() => api.get("/memory/status"), state.runtimeStatus.memory, "memory-status"),
-    safe(() => api.get("/voice/asr/status"), state.runtimeStatus.voice, "voice-status"),
-    safe(() => api.get("/document/parse/status"), state.runtimeStatus.document, "document-status"),
-    safe(() => api.get("/intel/status"), state.runtimeStatus.intel, "intel-status"),
-    safe(() => api.get("/simulation/status"), state.runtimeStatus.simulation, "simulation-status"),
-    safe(() => api.get("/search/status"), state.runtimeStatus.search, "search-status"),
-    safe(() => api.get("/index/status"), state.runtimeStatus.index, "index-status"),
-    safe(() => api.get("/codegraph/status"), state.runtimeStatus.codegraph, "codegraph-status"),
-  ]);
-  state.configStatus = configStatus;
-  state.adminSession = adminSession;
-  state.backupStatus = backupStatus;
-  state.runtimeStatus = { memory, voice, document, intel, simulation, search, index, codegraph };
+function showTip(event, d) {
+  const label = d.title || (d.content || "").slice(0, 120) || d._nid;
+  const type = d._core ? "self" : (d.event_type || "memory");
+  tip
+    .style("display", "block")
+    .style("left", `${event.clientX + 14}px`)
+    .style("top", `${event.clientY + 12}px`)
+    .html(`<span class="tip-type">${type}</span><div>${label}</div>`);
 }
 
-async function loadCodeGraph() {
-  const [codegraph, repos, overview] = await Promise.all([
-    safe(() => api.get("/codegraph/status"), state.codegraph, "codegraph-status"),
-    safe(() => api.get("/codegraph/repos").then((data) => data.codegraph_repos || []), state.codegraphRepos, "codegraph-repos"),
-    safe(() => {
-      const repoId = state.selectedCodegraphRepoId ? `?repo_id=${encodeURIComponent(state.selectedCodegraphRepoId)}` : "";
-      return api.get(`/codegraph/overview${repoId}`).then((data) => data.codegraph || null);
-    }, state.codegraphOverview, "codegraph-overview"),
-  ]);
-  state.codegraph = codegraph;
-  state.codegraphRepos = repos || [];
-  if (state.selectedCodegraphRepoId && !state.codegraphRepos.some((repo) => repo.id === state.selectedCodegraphRepoId)) {
-    state.selectedCodegraphRepoId = "";
-  }
-  if (!state.selectedCodegraphRepoId && state.codegraphRepos.length) {
-    state.selectedCodegraphRepoId = state.codegraphRepos[state.codegraphRepos.length - 1].id;
-  }
-  state.codegraphOverview = overview;
-}
-
-function connectEvents() {
+function parseEntities(raw) {
   try {
-    const events = new EventSource("/events");
-    events.onmessage = (message) => {
-      try {
-        const parsed = JSON.parse(message.data);
-        state.events = [...state.events.slice(-30), parsed];
-        renderTopbar();
-        if (state.screen === "events") renderEvents();
-      } catch (error) {
-        console.warn(error);
-      }
-    };
-    events.onerror = () => {
-      events.close();
-    };
-  } catch (error) {
-    console.warn(error);
+    const p = typeof raw === "string" ? JSON.parse(raw || "[]") : (raw || []);
+    return Array.isArray(p) ? p : [];
+  } catch { return []; }
+}
+
+function parseLinks(raw) {
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw || "[]") : (raw || []);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+function semanticChildTargets(node) {
+  const targets = new Set();
+  parseLinks(node.links).forEach(link => {
+    if (!link || typeof link !== "object") return;
+    const relation = String(link.relation || "").toLowerCase();
+    const targetId = String(link.target_id || link.targetId || "").trim();
+    if (relation === "parent_of" && targetId) targets.add(targetId);
+  });
+  return targets;
+}
+
+function markCore() {
+  nodeData.forEach(n => { n._core = false; });
+  const core = nodeData.find(n => parseEntities(n.entities).includes("agent:bairui"))
+    || nodeData[0];
+  if (core) core._core = true;
+}
+
+function renderLegend() {
+  const el = document.getElementById("legend");
+  if (!el) return;
+  const total = nodeData.length;
+  const active = nodeData.filter(n => (Date.now() - (n._ts || 0)) < 15000).length;
+  const known = Math.max(0, total - active - 1);
+  const decayed = nodeData.filter(n => (Date.now() - (n._ts || 0)) > 60000).length;
+
+  const items = [
+    { name: "Constraint", count: 1, color: themeColors.warm },
+    { name: "Memory", count: total, color: themeColors.nodeHigh },
+    { name: "Knowledge", count: known, color: themeColors.cool },
+    { name: "Decayed", count: decayed, color: themeColors.dim },
+  ];
+
+  el.innerHTML = items.map(i =>
+    `<div class="legend-item">
+      <span class="legend-dot" style="background:${i.color}"></span>
+      <span class="legend-name">${i.name}</span>
+      <span class="legend-count">${i.count}</span>
+    </div>`
+  ).join("");
+}
+
+function renderGraph(restartAlpha = 2) {
+  if (!MEMORY_GRAPH_ENABLED || !sim) {
+    updateStats();
+    renderLegend();
+    return;
+  }
+  computeDegrees();
+  markCore();
+  updateStats();
+  renderLegend();
+
+  linkSel = linkSel.data(linkData, d => d._lid);
+  linkSel.exit().remove();
+  linkSel = linkSel.enter().append("line")
+    .attr("stroke", themeColors.linkStroke || "rgba(143,182,216,0.18)")
+    .attr("stroke-width", 0.6)
+    .merge(linkSel);
+
+  nodeSel = nodeSel.data(nodeData, d => d._nid);
+  nodeSel.exit().transition().duration(280).attr("r", 0).remove();
+
+  const enter = nodeSel.enter().append("circle")
+    .attr("r", 0)
+    .attr("fill", nodeColor)
+    .style("cursor", "pointer")
+    .call(d3.drag()
+      .on("start", (event, d) => {
+        if (!event.active) sim.alphaTarget(2).restart();
+        d.fx = d.x; d.fy = d.y;
+      })
+      .on("drag", (event, d) => {
+        d.fx = event.x; d.fy = event.y;
+      })
+      .on("end", (event, d) => {
+        if (!event.active) sim.alphaTarget(0);
+        d.fx = null; d.fy = null;
+      }))
+    .on("mouseover", showTip)
+    .on("mousemove", event => {
+      tip.style("left", `${event.clientX + 14}px`)
+         .style("top", `${event.clientY + 12}px`);
+    })
+    .on("mouseout", () => tip.style("display", "none"))
+    .on("click", (event, d) => {
+      d._ts = Date.now();
+      d._strength = Math.min(1, (d._strength || 0.5) + 0.25);
+      highlightNodes([d._nid], 900);
+    });
+
+  enter.transition().duration(360).attr("r", nodeRadius);
+  nodeSel = enter.merge(nodeSel);
+
+  sim.nodes(nodeData);
+  sim.force("link").links(linkData);
+  updateSimulationForces();
+  sim.alpha(0.5).restart();
+  refreshNodeVisuals();
+}
+
+function deterministicIndex(seed, mod) {
+  let hash = 2166136261;
+  const text = String(seed);
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0) % mod;
+}
+
+function shuffleArray(items) {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function createVisualOrder(nodes) {
+  const coreNode = nodes.find(n => n._core || parseEntities(n.entities).includes("agent:bairui")) || null;
+  const rest = shuffleArray(nodes.filter(n => !coreNode || n._nid !== coreNode._nid));
+  return coreNode ? [coreNode, ...rest] : rest;
+}
+
+function chooseVisualParent(child, candidates, childCounts) {
+  if (!candidates.length) return null;
+  const weighted = [];
+  candidates.forEach(candidate => {
+    const currentChildren = childCounts.get(candidate._nid) || 0;
+    const maxChildren = maxVisualChildren(candidate);
+    const recencyBias = Math.max(0, 400000 - Math.abs((child._ts || 0) - (candidate._ts || 0))) / 100000;
+    const coreBias = candidate._core ? 1.4 : 0;
+    const strengthBias = (candidate._strength || 0.4) * 0.8;
+    const remainingCapacity = Math.max(0, maxChildren - currentChildren);
+    const capacityBias = currentChildren === 0 ? 1.2 : 0.35 + remainingCapacity * 0.25;
+    const entryCount = 1 + Math.max(0, Math.round((recencyBias + coreBias + strengthBias + capacityBias) * 2));
+    for (let w = 0; w < entryCount; w++) {
+      weighted.push(candidate);
+    }
+  });
+  if (!weighted.length) return candidates[Math.floor(Math.random() * candidates.length)] || null;
+  return weighted[Math.floor(Math.random() * weighted.length)] || null;
+}
+
+function getCurrentVisualChildCounts(nodes) {
+  const counts = new Map(nodes.map(n => [n._nid, 0]));
+  linkData.forEach(link => {
+    if (link._kind !== "visual_parent") return;
+    const parentId = typeof link.target === "object" ? String(link.target._nid) : String(link.target);
+    counts.set(parentId, (counts.get(parentId) || 0) + 1);
+  });
+  return counts;
+}
+
+function maxVisualChildren(node) {
+  if (!node) return 2;
+  if (node._core) return 4;
+  const degree = node._deg || 0;
+  const strength = node._strength || 0;
+  return (degree >= 4 || strength >= 0.72) ? 4 : 2;
+}
+
+function addSupplementalVisualLinks(linkSet, childCounts) {
+  const ordered = createVisualOrder(nodeData);
+  const extraLinks = Math.min(18, Math.max(2, Math.floor(nodeData.length / 5)));
+  let added = 0;
+
+  for (let i = 1; i < ordered.length && added < extraLinks; i++) {
+    const source = ordered[i];
+    const candidates = shuffleArray(
+      ordered.slice(0, i).filter(node => {
+        if (node._nid === source._nid) return false;
+        return (childCounts.get(node._nid) || 0) < maxVisualChildren(node);
+      })
+    );
+
+    const target = candidates[0];
+    if (!target) continue;
+
+    const lid = `visual-extra:${source._nid}=>${target._nid}`;
+    const rev = `visual-extra:${target._nid}=>${source._nid}`;
+    const base = `visual:${source._nid}=>${target._nid}`;
+    const baseRev = `visual:${target._nid}=>${source._nid}`;
+    if (linkSet.has(lid) || linkSet.has(rev) || linkSet.has(base) || linkSet.has(baseRev)) continue;
+
+    linkSet.add(lid);
+    linkData.push({ source: source._nid, target: target._nid, _lid: lid, _kind: "visual_random" });
+    childCounts.set(target._nid, (childCounts.get(target._nid) || 0) + 1);
+    added += 1;
   }
 }
 
-el.commandSend.addEventListener("click", async () => {
-  const promptText = el.commandInput.value.trim();
-  if (!promptText) return;
-  if (state.screen === "command") {
-    await submitAgentCommand(promptText);
-  } else {
-    await runAction("command", () => api.post("/jobs", { title: "Command request", prompt: promptText, route: "general" }));
-    el.commandInput.value = "";
+function addRandomVisualLinks(linkSet) {
+  if (nodeData.length < 2) return;
+
+  const ordered = createVisualOrder(nodeData);
+  const childCounts = new Map(ordered.map(n => [n._nid, 0]));
+
+  for (let i = 1; i < ordered.length; i++) {
+    const child = ordered[i];
+    const candidates = ordered
+      .slice(0, i)
+      .filter(node => (childCounts.get(node._nid) || 0) < maxVisualChildren(node));
+
+    const parent = chooseVisualParent(child, candidates, childCounts);
+    if (!parent || parent._nid === child._nid) continue;
+
+    const lid = `visual:${child._nid}=>${parent._nid}`;
+    const rev = `visual:${parent._nid}=>${child._nid}`;
+    if (linkSet.has(lid) || linkSet.has(rev)) continue;
+
+    linkSet.add(lid);
+    linkData.push({ source: child._nid, target: parent._nid, _lid: lid, _kind: "visual_parent" });
+    childCounts.set(parent._nid, (childCounts.get(parent._nid) || 0) + 1);
   }
-});
 
-el.commandInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    el.commandSend.click();
+  addSupplementalVisualLinks(linkSet, childCounts);
+}
+
+function findAnchorNode(memory, nodeMap) {
+  const nodes = Array.from(nodeMap.values());
+  const childCounts = getCurrentVisualChildCounts(nodes);
+  const candidates = createVisualOrder(nodes)
+    .filter(node => (childCounts.get(node._nid) || 0) < maxVisualChildren(node));
+  return chooseVisualParent(memory, candidates, childCounts)
+    || nodeData.find(n => n._core)
+    || nodeData[0]
+    || null;
+}
+
+async function loadMemories() {
+  if (!MEMORY_GRAPH_ENABLED) return;
+  try {
+    const [candidates, reports, sources, audit] = await Promise.all([
+      fetch(`${API}/document/memory-candidates`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+      fetch(`${API}/reports`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+      fetch(`${API}/source-refs`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+      fetch(`${API}/audit`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+    ]);
+    const rows = buildBairuiGraphRows(candidates, reports, sources, audit).slice(0, 120);
+    if (!Array.isArray(rows)) return;
+
+    const prevPositions = new Map(nodeData.map(n => [n._nid, {
+      x: n.x, y: n.y, vx: n.vx, vy: n.vy, fx: n.fx, fy: n.fy,
+    }]));
+
+    nodeData = rows.map(row => {
+      const nid = row.mem_id || String(row.id);
+      const prev = prevPositions.get(nid);
+      return {
+        ...row,
+        _nid: nid,
+        _ts: prev ? Date.now() : Date.now() - Math.random() * 8000,
+        x: prev ? prev.x : W / 2 + (Math.random() - 0.5) * 180,
+        y: prev ? prev.y : H / 2 + (Math.random() - 0.5) * 180,
+        vx: prev ? prev.vx : 0,
+        vy: prev ? prev.vy : 0,
+        fx: prev ? prev.fx : null,
+        fy: prev ? prev.fy : null,
+      };
+    });
+
+    const linkSet = new Set();
+    linkData = [];
+    addRandomVisualLinks(linkSet);
+
+    renderGraph(1.1);
+  } catch (error) {
+    console.warn("[graph] load failed:", error.message);
+    setConnectionState("未连接", false);
   }
+}
+
+function buildBairuiGraphRows(candidatesBody = {}, reportsBody = {}, sourcesBody = {}, auditBody = {}) {
+  const rows = [
+    {
+      id: "core:bairui",
+      mem_id: "core:bairui",
+      title: "bairui 内核",
+      content: "模型网关、文档、记忆审核、报告、渠道审批、CodeGraph 与运行时 readiness",
+      entities: ["agent:bairui", "system:core"],
+      kind: "core",
+    },
+  ];
+  const candidates = candidatesBody.document_memory_candidates || [];
+  const reports = reportsBody.reports || [];
+  const sources = sourcesBody.source_refs || [];
+  const audit = auditBody.audit || [];
+
+  candidates.slice(0, 36).forEach((item, index) => rows.push({
+    id: item.id || `candidate:${index}`,
+    mem_id: item.id || `candidate:${index}`,
+    title: item.title || item.source_title || "记忆候选",
+    content: item.summary || item.content || item.detail || "等待主人审核的长期记忆候选",
+    entities: ["agent:bairui", "memory:candidate", item.status ? `status:${item.status}` : ""].filter(Boolean),
+    kind: "memory_candidate",
+  }));
+  reports.slice(0, 28).forEach((item, index) => rows.push({
+    id: item.id || item.path || `report:${index}`,
+    mem_id: item.id || item.path || `report:${index}`,
+    title: item.title || item.name || "报告",
+    content: item.summary || item.path || "bairui 生成的交付报告",
+    entities: ["agent:bairui", "deliverable:report"],
+    kind: "report",
+  }));
+  sources.slice(0, 28).forEach((item, index) => rows.push({
+    id: item.id || item.source_id || `source:${index}`,
+    mem_id: item.id || item.source_id || `source:${index}`,
+    title: item.title || item.label || "来源引用",
+    content: item.url || item.path || item.detail || "可追踪来源",
+    entities: ["agent:bairui", "source:reference"],
+    kind: "source",
+  }));
+  audit.slice(0, 28).forEach((item, index) => rows.push({
+    id: item.id || `audit:${index}`,
+    mem_id: item.id || `audit:${index}`,
+    title: item.event_type || item.action || "审计事件",
+    content: item.resource_ref || item.detail || item.created_at || "运行审计记录",
+    entities: ["agent:bairui", "audit:event", item.risk_level ? `risk:${item.risk_level}` : ""].filter(Boolean),
+    kind: "audit",
+  }));
+  return rows;
+}
+
+function addNewNodes(memories) {
+  if (!MEMORY_GRAPH_ENABLED) return;
+  const nodeMap = new Map(nodeData.map(n => [n._nid, n]));
+  const newNids = [];
+  memories.forEach(memory => {
+    const nid = memory.mem_id || memory.id;
+    if (!nid || nodeMap.has(String(nid))) return;
+    const anchor = findAnchorNode(memory, nodeMap);
+    const anchorX = anchor?.x ?? W / 2;
+    const anchorY = anchor?.y ?? (H / 2 - 10);
+    const node = {
+      ...memory,
+      _nid: String(nid),
+      mem_id: String(nid),
+      event_type: memory.event_type || memory.type || "fact",
+      _ts: Date.now(),
+      _strength: 0.85,
+      x: anchorX + (Math.random() - 0.5) * 72,
+      y: anchorY + (Math.random() - 0.5) * 72,
+      vx: 0, vy: 0,
+    };
+    nodeData.push(node);
+    nodeMap.set(node._nid, node);
+    newNids.push(node._nid);
+  });
+  if (!newNids.length) return;
+
+  const linkSet = new Set();
+  linkData = [];
+  addRandomVisualLinks(linkSet);
+  renderGraph(2);
+  highlightNodes(newNids, 10000);
+}
+
+if (MEMORY_GRAPH_ENABLED) {
+  setInterval(() => naturalTwitch(), 6000);
+  setInterval(() => { nodeData.forEach(n => { if (n._strength) n._strength *= 0.97; }); }, 2500);
+}
+
+function parseUserMessageInput(raw) {
+  const text = String(raw || "");
+  const match = text.match(/^\[([^\]]+)\]\s+(\S+)\s+\[([^\]]+)\]\s+([\s\S]*)$/);
+  if (!match) return { content: text.trim(), time: null };
+  return { fromId: match[1], timestamp: match[2], channel: match[3], content: match[4].trim(), time: formatMsgTime(match[2]) };
+}
+
+function formatMsgTime(stamp) {
+  if (!stamp) return null;
+  const m = String(stamp).match(/T(\d{2}):(\d{2}):(\d{2})/);
+  if (m) return `${m[1]}:${m[2]}:${m[3]}`;
+  const m2 = String(stamp).match(/(\d{2}):(\d{2}):(\d{2})/);
+  if (m2) return `${m2[1]}:${m2[2]}:${m2[3]}`;
+  return null;
+}
+
+const L1 = new ThoughtStream("si-l1", "cool", {
+  readCSSVar,
+  thinkingLabel: "思考中…",
+  thinkingDoneLabel: "思考完成",
+  toolDetailLength: 140,
+});
+const L2 = new ThoughtStream("si-l2", "warm", {
+  readCSSVar,
+  thinkingLabel: "思考中",
+  thinkingDoneLabel: "思考完成",
+  toolDetailLength: 220,
 });
 
-el.drawerClose.addEventListener("click", () => {
-  el.drawer.style.display = "none";
+// L1 = processing flow triggered by user messages; L2 = processing flow triggered by TICK.
+// stream_*/tool_call events emitted by the backend carry no path tag;
+// routing to the correct panel is determined by the most recent message_received / tick event.
+let currentPath = "l2";
+function currentStream() { return currentPath === "l1" ? L1 : L2; }
+
+function isBusyErrorMessage(message = "") {
+  return /(429|rate limit|too many requests|busy|overload|temporarily unavailable|server busy|resource exhausted)/i.test(String(message || ""));
+}
+
+function formatRetryDelay(ms) {
+  if (!ms || ms < 1000) return `${ms || 0}ms`;
+  return `${(ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1)}s`;
+}
+
+let tokenAccum = 0;
+let tokenWindow = Date.now();
+const tokRateEl = document.getElementById("tok-rate");
+
+// 记忆系统观测（Memory-Optimization v0.1 Phase 0）：每 60s 拉一次近 1 小时的 audit stats。
+// 显示"N 次（平均 K 条）"——次数代表系统活跃度，平均条数代表召回/抽取的健康度。
+// 0 命中数会让数字变橙提醒（命中率低 = 可能有召回漏）；纯网络/服务失败保持 — 不告警。
+const memRecallEl = document.getElementById("mem-recall-rate");
+const memExtractEl = document.getElementById("mem-extract-rate");
+
+// ── AI 当前正在做什么：派生展示 ────────────────────────────────
+// 北极星（[[feedback-ai-be-itself]]）：通信问题靠界面侧派生可视化解决，不逼 AI 学人开口。
+// 工作方式：纯被动接收 tool_call 事件流，按工具名归类统计最近 60s 活动，自动推导当前活动标签。
+// AI 完全不需要为此多做任何动作；它只管干活，UI 自己把"在干什么"翻译给用户看。
+const AI_ACTIVITY_WINDOW_MS = 60_000;
+const AI_ACTIVITY_IDLE_AFTER_MS = 15_000;
+const AI_TOOL_GROUPS = {
+  "扫描文件": new Set(["read_file", "list_dir"]),
+  "改动文件": new Set(["write_file", "make_dir", "delete_file"]),
+  "执行命令": new Set(["exec_command", "kill_process", "list_processes"]),
+  "上网": new Set(["fetch_url", "web_search", "browser_read"]),
+  "调取记忆": new Set(["search_memory", "recall_memory", "probe_memory", "upsert_memory", "merge_memories", "downgrade_memory"]),
+  "推送界面": new Set(["ui_show", "ui_update", "ui_hide", "ui_patch", "ui_register", "focus_banner"]),
+  "处理多媒体": new Set(["speak", "generate_lyrics", "generate_music", "generate_image", "music", "media_mode"]),
+  "回复用户": new Set(["send_message", "express"]),
+};
+const aiActivityLog = [];
+let aiActivityFirstTs = 0;
+let aiActivityTimer = null;
+const aiActivityEl = document.getElementById("ai-activity");
+const aiActivityLabelEl = document.getElementById("ai-activity-label");
+const aiActivityDetailEl = document.getElementById("ai-activity-detail");
+
+function classifyTool(name) {
+  for (const [label, set] of Object.entries(AI_TOOL_GROUPS)) {
+    if (set.has(name)) return label;
+  }
+  return "处理事务";
+}
+
+function recordAiActivity(name) {
+  if (!name) return;
+  const now = Date.now();
+  if (aiActivityLog.length === 0) aiActivityFirstTs = now;
+  aiActivityLog.push({ name, ts: now, group: classifyTool(name) });
+  refreshAiActivity();
+}
+
+function refreshAiActivity() {
+  if (!aiActivityEl) return;
+  const now = Date.now();
+  while (aiActivityLog.length && now - aiActivityLog[0].ts > AI_ACTIVITY_WINDOW_MS) {
+    aiActivityLog.shift();
+  }
+  if (aiActivityLog.length === 0) {
+    aiActivityEl.dataset.state = "idle";
+    aiActivityLabelEl.textContent = "空闲";
+    aiActivityDetailEl.textContent = "";
+    aiActivityFirstTs = 0;
+    return;
+  }
+  const lastTs = aiActivityLog[aiActivityLog.length - 1].ts;
+  if (now - lastTs > AI_ACTIVITY_IDLE_AFTER_MS) {
+    aiActivityEl.dataset.state = "idle";
+    aiActivityLabelEl.textContent = "刚完成";
+    const ago = Math.round((now - lastTs) / 1000);
+    aiActivityDetailEl.textContent = `${ago}s 前停止`;
+    return;
+  }
+  const counts = {};
+  for (const e of aiActivityLog) counts[e.group] = (counts[e.group] || 0) + 1;
+  let domGroup = "处理事务";
+  let domCount = 0;
+  for (const [g, c] of Object.entries(counts)) {
+    if (c > domCount) { domCount = c; domGroup = g; }
+  }
+  aiActivityEl.dataset.state = "busy";
+  aiActivityLabelEl.textContent = `正在${domGroup}`;
+  const elapsed = Math.round((now - (aiActivityFirstTs || lastTs)) / 1000);
+  aiActivityDetailEl.textContent = `· ${aiActivityLog.length} 次工具 · ${elapsed}s`;
+}
+
+if (aiActivityEl) {
+  aiActivityEl.dataset.state = "idle";
+  aiActivityTimer = setInterval(refreshAiActivity, 1000);
+}
+
+async function refreshMemoryAuditStats() {
+  if (!memRecallEl || !memExtractEl) return;
+  try {
+    const res = await fetch("/audit/stats?hours=1", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    const r = data?.recall || {};
+    const e = data?.extract || {};
+    const rTotal = Number(r.total || 0);
+    const rAvg = Number(r.avg_chosen || 0);
+    const rZero = Number(r.zero_match_count || 0);
+    const eTotal = Number(e.total || 0);
+    const eAvg = Number(e.avg_extracted || 0);
+    const eSkip = Number(e.skipped_count || 0);
+    memRecallEl.textContent = rTotal ? `${rTotal}·${rAvg.toFixed(1)}` : "0";
+    memExtractEl.textContent = eTotal ? `${eTotal}·${eAvg.toFixed(1)}` : "0";
+    memRecallEl.style.color = (rTotal > 0 && rZero / rTotal > 0.2) ? "var(--warn, #e8a23a)" : "";
+    memExtractEl.style.color = (eTotal > 0 && eSkip / eTotal > 0.5) ? "var(--warn, #e8a23a)" : "";
+  } catch {
+    // 静默：dev/build 早期 audit 表可能还没数据，保持 — 即可
+  }
+}
+refreshMemoryAuditStats();
+setInterval(refreshMemoryAuditStats, 60_000);
+
+function bumpTokens(text) {
+  tokenAccum += (text || "").length / 3.4;
+  const now = Date.now();
+  if (now - tokenWindow > 700) {
+    const rate = tokenAccum / ((now - tokenWindow) / 1000);
+    tokRateEl.textContent = rate.toFixed(1);
+    tokenAccum = 0;
+    tokenWindow = now;
+    setTimeout(() => { if (tokRateEl.textContent !== "—" && tokenAccum === 0) tokRateEl.textContent = "—"; }, 4000);
+  }
+}
+
+// ── 专注帧观察面板 (focus stack) ────────────────────────────────
+// 设计文档 7.5：用户必须看得见 Agent 此刻在专注什么。
+// 纯事件驱动：focus_frame → 全量重渲染；focus_compressed → 在栈顶尾部追加 conclusion 并淡入。
+
+function escapeFocusText(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function truncateConclusion(text, max = 60) {
+  const s = String(text || "").trim();
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1).trim() + "…";
+}
+
+function renderFocusFrame(frame, { isTop }) {
+  const conclusions = Array.isArray(frame?.conclusions) ? frame.conclusions : [];
+
+  // 主行显示策略（progressive disclosure）：
+  //   1. 有 conclusion → 显示最新一条（这是子帧 pop 时压缩出的 1-2 句话结论）
+  //   2. 无 conclusion 但有 topic → 显示 topic（v0 是 ngram，几百 ms 后被 LLM refine 成人类可读短语）
+  //   3. 都没 → 返回空主行（上层 renderFocusStack 会进一步过滤）
+  // 早期 conclusion 作为弱化辅助行（栈顶帧才显示，避免视觉过载）
+  const latest = conclusions.length > 0 ? conclusions[conclusions.length - 1] : "";
+  const earlier = conclusions.length > 1 ? conclusions.slice(0, -1) : [];
+  const topicSummary = Array.isArray(frame?.topic) && frame.topic.length > 0
+    ? frame.topic.slice(0, 3).join(" · ")
+    : "";
+
+  let mainHTML = "";
+  if (latest) {
+    mainHTML = `<div class="focus-frame-main">${escapeFocusText(truncateConclusion(latest, isTop ? 120 : 80))}</div>`;
+  } else if (topicSummary) {
+    mainHTML = `<div class="focus-frame-main focus-frame-main-fallback">${escapeFocusText(truncateConclusion(topicSummary, isTop ? 60 : 40))}</div>`;
+  }
+
+  const earlierHTML = earlier.map((c) =>
+    `<div class="focus-frame-conclusion focus-frame-conclusion-earlier">${escapeFocusText(truncateConclusion(c, isTop ? 100 : 60))}</div>`
+  ).join("");
+
+  // 该帧既无 conclusion 也无 topic（极短暂的"刚 push 还没赋 topic"状态），不渲染外层壳
+  if (!mainHTML && !earlierHTML) return "";
+
+  return (
+    `<div class="focus-frame${isTop ? " top" : ""}">` +
+      mainHTML +
+      earlierHTML +
+    `</div>`
+  );
+}
+
+function renderFocusStack(stack) {
+  if (!focusStackEl || !focusBlockEl) return;
+  const list = Array.isArray(stack) ? stack : [];
+  if (focusDepthEl) focusDepthEl.textContent = String(list.length);
+
+  if (list.length === 0) {
+    focusBlockEl.dataset.state = "empty";
+    focusStackEl.innerHTML = `<div class="focus-empty">无专注</div>`;
+    return;
+  }
+
+  focusBlockEl.dataset.state = "active";
+  // 渲染策略：只渲染"有 conclusion 的帧 + 栈顶帧"。
+  // 非栈顶 + 无 conclusion 的帧静默隐藏——这种帧是"已 push 但还没 pop"的活帧，
+  // conclusion 永远空着，渲染出来只是占位文字（"…"），堆叠多了视觉很噪。
+  // depth 数字仍然显示真实栈深度，让用户知道还有未压缩的帧挂着。
+  // 栈底 → 栈顶；视觉上栈顶在最下（最近一次最强），跟终端 / 思考流方向一致。
+  const html = list.map((frame, i) => {
+    const isTop = i === list.length - 1;
+    const hasConclusion = Array.isArray(frame?.conclusions) && frame.conclusions.length > 0;
+    if (!isTop && !hasConclusion) return "";
+    return renderFocusFrame(frame, { isTop });
+  }).filter(Boolean).join("");
+  focusStackEl.innerHTML = html;
+}
+
+function flashFocusCompressed() {
+  if (!focusBlockEl) return;
+  // 让栈顶帧的主行（最新 conclusion）走淡入动画；同时整块做一次柔和高光。
+  focusBlockEl.classList.remove("focus-compress-pulse");
+  // 强制 reflow 让动画重启
+  void focusBlockEl.offsetWidth;
+  focusBlockEl.classList.add("focus-compress-pulse");
+
+  const topFrame = focusStackEl?.querySelector(".focus-frame.top");
+  const mainEl = topFrame?.querySelector(".focus-frame-main");
+  if (mainEl) {
+    mainEl.classList.remove("just-added");
+    void mainEl.offsetWidth;
+    mainEl.classList.add("just-added");
+  }
+}
+
+function connectSSE() {
+  setConnectionState("连接中", true);
+  const es = new EventSource(`${API}/events`);
+
+  es.onopen = () => setConnectionState("已连接", true);
+
+  es.onmessage = event => {
+    try { handle(JSON.parse(event.data)); } catch (_) {}
+  };
+
+  es.onerror = () => {
+    setConnectionState("重连中", false);
+    es.close();
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+function extractNids(memList) {
+  return (memList || [])
+    .map(m => m.mem_id || (m.id != null ? String(m.id) : null))
+    .filter(Boolean);
+}
+
+function handle({ type, data = {} }) {
+  switch (type) {
+    case "message_received": {
+      currentPath = "l1";
+      // 兜底：上一轮若被打断、message/response 均未到达，实时气泡会成孤儿、流式会话可能还挂着麦克风
+      // ——定稿气泡、收尾流式会话（恢复麦克风）、复位状态，再开新一轮。
+      if (sttsActive) endStreamingTTS();
+      if (chat.hasLivebairuiMsg()) chat.finalizeLivebairuiMsg(null);
+      liveReplyActive = false;
+      liveRawText = "";
+      liveTurnSpeak = false;
+      L1.beginRound();
+      const parsed = parseUserMessageInput(data.input);
+      L1.newLine("user message received", {
+        content: parsed.content,
+        time: parsed.time || undefined,
+      });
+      // Immediately show a "thinking" indicator so the gap between message_received
+      // and the first stream_start (injector + LLM TTFT, often 3–30s) doesn't look frozen.
+      L1.startThinkingSession();
+      break;
+    }
+    case "tick":
+      currentPath = "l2";
+      L2.beginRound();
+      L2.newLine("heartbeat tick");
+      L2.startThinkingSession();
+      break;
+    case "stream_start":
+      currentStream().startThinkingSession();
+      // 正文流（plainReply）：把 token 实时打进聊天气泡。一轮可能有多段正文（正文→工具→正文），
+      // 只在尚未开始时建气泡，后续段累积进同一个。speak 轮（语音）额外开启逐句流式合成。
+      if (data.mode === "text" && data.plainReply) {
+        if (data.speak) liveTurnSpeak = true;
+        if (!liveReplyActive) {
+          liveReplyActive = true;
+          liveRawText = "";
+          chat.beginLivebairuiMsg({ alert: true });
+          if (liveTurnSpeak && isTTSStreamingEnabled()) beginStreamingTTS();
+        }
+      }
+      break;
+    case "stream_chunk":
+      // 思考流：只驱动 token 速率指示器，不进聊天（保持 dashboard 纯净）
+      currentStream().clearStatus();
+      bumpTokens(data.text);
+      // 正文流：累积 + 实时重渲染气泡（剥离协议标记 / 藏半截标记）；语音轮喂给逐句合成队列
+      if (data.mode === "text" && liveReplyActive) {
+        liveRawText += data.text;
+        chat.updateLivebairuiMsg(cleanStreamText(liveRawText));
+        if (sttsActive) feedStreamingTTS(liveRawText);
+      }
+      break;
+    case "stream_end":
+      currentStream().stopThinking();
+      // 正文段结束：把残句先送去合成，降低尾句延迟（不结束会话，可能还有后续正文段）
+      if (data.mode === "text" && sttsActive) flushStreamingTTSBuf();
+      break;
+    case "tool_preparing": {
+      // 思考动画已停，但工具尚未真正执行 —— 给一个占位状态避免 UI 死寂
+      const stream = currentStream();
+      const label = data.name ? stream.toolLabel(data.name) : "";
+      stream.setStatus(label ? `准备调用 ${label}…` : "准备工具调用…", "busy");
+      break;
+    }
+    case "tool_executing": {
+      const stream = currentStream();
+      const label = data.name ? stream.toolLabel(data.name) : "工具";
+      stream.setTimedStatus(`正在执行 ${label}…`, "busy", {
+        staleAfterMs: 45000,
+        staleText: `执行 ${label} 时间偏长，仍在等结果…`,
+      });
+      break;
+    }
+    case "tool_call":
+      currentStream().tool(data.name, data.args, data.result, data.ok);
+      recordAiActivity(data.name);
+      break;
+    case "response":
+      // Round complete — stop all animations
+      currentStream().end();
+      // 兜底：本轮结束时（response 必在 message 之后发）若流式合成会话仍开着——极少见，模型只调了工具
+      // 没产出可投递正文、message 未到达——标记正文已尽让队列放完即恢复麦克风，避免麦克风一直挂起。
+      // 正常情况 message 已 finalize 过，此处幂等无副作用，不会打断仍在播放的尾句。
+      if (sttsActive) finalizeStreamingTTS();
+      if (chat.hasLivebairuiMsg()) chat.finalizeLivebairuiMsg(null);
+      liveReplyActive = false; liveRawText = ""; liveTurnSpeak = false;
+      break;
+    case "processing_preempted":
+      currentStream().end();
+      break;
+    case "llm_retry": {
+      currentStream().startThinkingSession();
+      const nextAttempt = Number(data.nextAttempt || 2);
+      const delayText = formatRetryDelay(Number(data.delayMs || 0));
+      currentStream().setStatus("LLM 繁忙，第 " + nextAttempt + " 次重试将于 " + delayText + " 后开始", "busy");
+      break;
+    }
+    case "message_requeued": {
+      currentStream().startThinkingSession();
+      const retryCount = Number(data.retryCount || 1);
+      currentStream().setStatus("LLM 繁忙，已入队重试 " + retryCount + "/3", "busy");
+      break;
+    }
+    case "message_dropped":
+      currentStream().startThinkingSession();
+      currentStream().setStatus("LLM 繁忙，重试次数已达上限", "failed");
+      break;
+    case "error":
+      if (isBusyErrorMessage(data.error)) {
+        currentStream().startThinkingSession();
+        currentStream().setStatus("LLM 繁忙，请稍后重试", "busy");
+      } else {
+        currentStream().stopThinking();
+        currentStream().setStatus(data.error || "处理失败", "failed");
+      }
+      break;
+    case "protocol_violation":
+      currentStream().end();
+      break;
+    case "injector_result": {
+      const nids = [...extractNids(data.matchedMemories), ...extractNids(data.recallMemories)];
+      if (nids.length) highlightNodes(nids, 10000);
+      break;
+    }
+    case "focus_frame": {
+      renderFocusStack(data.focusStack);
+      break;
+    }
+    case "focus_compressed": {
+      // 后端 emit 顺序：先 focus_frame（栈已 pop 完）→ 异步压缩完再 focus_compressed。
+      // 触发时栈顶帧的 conclusions 数组在后端已被追加，但前端 DOM 里还是旧的。
+      // 新布局：把新 conclusion 写入「主行」(.focus-frame-main)；
+      // 若主行原本是 fallback（暂无沉淀结论），就把它升级为正常主行。
+      // 若主行已有旧 conclusion，把旧值降级追加到「早期 conclusion」列表里，再覆盖主行。
+      // 下一次 focus_frame 事件会带最新 conclusions 全量覆盖，所以即使错位也很快收敛。
+      const topFrame = focusStackEl?.querySelector(".focus-frame.top");
+      if (topFrame && data.conclusion) {
+        const mainEl = topFrame.querySelector(".focus-frame-main");
+        const newText = truncateConclusion(data.conclusion, 120);
+        if (mainEl) {
+          const wasFallback = mainEl.classList.contains("focus-frame-main-fallback");
+          if (!wasFallback && mainEl.textContent) {
+            const earlier = document.createElement("div");
+            earlier.className = "focus-frame-conclusion focus-frame-conclusion-earlier";
+            earlier.textContent = mainEl.textContent;
+            topFrame.appendChild(earlier);
+          }
+          mainEl.classList.remove("focus-frame-main-fallback");
+          mainEl.innerHTML = "";
+          mainEl.textContent = newText;
+        }
+      }
+      flashFocusCompressed();
+      break;
+    }
+    case "memories_written":
+      if (Array.isArray(data.memories) && data.memories.length) {
+        addNewNodes(data.memories);
+      }
+      break;
+    case "message":
+      if (data.from === "consciousness") {
+        lastbairuiContent = data.content;
+        const viaLabel = friendlyChannelLabel(data.channel);
+        const content = viaLabel ? `_→ ${viaLabel}_  \n${data.content}` : data.content;
+        // 若本轮正文已流式进了实时气泡：用权威全文定稿同一个气泡，避免新建重复气泡
+        if (chat.hasLivebairuiMsg()) {
+          chat.finalizeLivebairuiMsg(content);
+        } else {
+          addMsg("bairui", content);
+        }
+        // 语音轮的 TTS 收尾：逐句会话进行中 → flush 尾句并收尾；若未走逐句（流式合成关闭）→ 整段播一次
+        if (liveTurnSpeak) {
+          if (sttsActive) finalizeStreamingTTS();
+          else playTTSReply(toPlainSpeech(data.content));
+        }
+        liveReplyActive = false;
+        liveRawText = "";
+        liveTurnSpeak = false;
+        enrichVisiblePersonCardFromText(data.content, { source: 'assistant_message' });
+        openChat(true);
+      }
+      break;
+    case "message_in": {
+      // 外部渠道判定：channel 非空且非本地，或 from_id 仍带外部前缀（兼容连接器直接 emit 的事件）
+      const ch = String(data.channel || "").toUpperCase();
+      const isExternal =
+        (ch && ch !== "TUI" && ch !== "API" && ch !== "SYSTEM" && ch !== "REMINDER" && ch !== "APP_SIGNAL" && ch !== "VOICE" && ch !== "语音识别")
+        || (data.from_id && /^(wechat|discord|feishu|wecom):/i.test(data.from_id));
+      if (isExternal) {
+        const label = friendlyChannelLabel(data.channel) || data.from_id || "External";
+        addMsg("external", data.content, { label, alert: false });
+        openChat(true);
+      }
+      break;
+    }
+    case "agent_name_updated":
+      setAgentName(data.name);
+      break;
+    case "media_mode":
+      window.dispatchEvent(new CustomEvent("bairui:media", { detail: data }));
+      break;
+    case "aivideo_mode":
+      window.dispatchEvent(new CustomEvent("bairui:aivideo", { detail: data }));
+      break;
+    case "hotspot_mode":
+      setHotspotMode(!!data.active || data.action === "show" || data.action === "open", { source: "agent_event" });
+      break;
+    case "doc_panel_mode":
+      setDocPanelMode(!!data.active || data.action === "open", { topicId: data.topic || null, source: "agent_event" });
+      break;
+    case "person_card_mode":
+      setPersonCardMode(!!data.active || data.action === "show" || data.action === "open" || data.action === "update", { source: "agent_event", card: data.card || null });
+      break;
+    case "social_status":
+      window.dispatchEvent(new CustomEvent("bairui:social_status", { detail: data }));
+      break;
+    case "show_wechat_popup":
+      showWechatPopup();
+      break;
+    case "audio_created":
+      if (data.autoPlay && data.path) {
+        const audioUrl = `${API}/${data.path}`;
+        const audioEl = new Audio(audioUrl);
+        audioEl.play().catch(() => {});
+      }
+      break;
+    case "tts_reply":
+      if (data.text) playTTSReply(data.text);
+      break;
+    case "key_configured":
+      chat.deleteLastUserMsg();
+      if (data.service === 'tts' && data.ttsText) playTTSReply(data.ttsText);
+      break;
+    case "startup_self_check_started":
+      playbairuiStartupSound();
+      setTimeout(() => playTTSReply("系统启动中，正在运行自检"), 1500);
+      break;
+    default:
+      break;
+  }
+}
+
+// ── bairui-style startup self-check sound ────────────────────────────────────
+function playbairuiStartupSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === "suspended") ctx.resume();
+    const t = ctx.currentTime;
+
+    // Layer 1: low-frequency mechanical hum (sawtooth, simulates power-on)
+    const drone = ctx.createOscillator();
+    const droneGain = ctx.createGain();
+    const droneFilter = ctx.createBiquadFilter();
+    drone.type = "sawtooth";
+    drone.frequency.setValueAtTime(50, t);
+    drone.frequency.linearRampToValueAtTime(90, t + 0.5);
+    droneFilter.type = "lowpass";
+    droneFilter.frequency.value = 350;
+    droneFilter.Q.value = 3;
+    droneGain.gain.setValueAtTime(0, t);
+    droneGain.gain.linearRampToValueAtTime(0.09, t + 0.06);
+    droneGain.gain.linearRampToValueAtTime(0.06, t + 0.4);
+    droneGain.gain.linearRampToValueAtTime(0, t + 0.65);
+    drone.connect(droneFilter);
+    droneFilter.connect(droneGain);
+    droneGain.connect(ctx.destination);
+    drone.start(t);
+    drone.stop(t + 0.7);
+
+    // Layer 2: system-online frequency sweep (sine, low to high)
+    const sweep = ctx.createOscillator();
+    const sweepGain = ctx.createGain();
+    sweep.type = "sine";
+    sweep.frequency.setValueAtTime(280, t + 0.12);
+    sweep.frequency.exponentialRampToValueAtTime(2800, t + 1.0);
+    sweepGain.gain.setValueAtTime(0, t + 0.12);
+    sweepGain.gain.linearRampToValueAtTime(0.13, t + 0.22);
+    sweepGain.gain.exponentialRampToValueAtTime(0.001, t + 1.05);
+    sweep.connect(sweepGain);
+    sweepGain.connect(ctx.destination);
+    sweep.start(t + 0.12);
+    sweep.stop(t + 1.1);
+
+    // Layer 3: three confirmation beeps (square wave, self-check passed)
+    [[880, 1.15], [1100, 1.28], [1320, 1.41]].forEach(([freq, bt]) => {
+      const beep = ctx.createOscillator();
+      const beepGain = ctx.createGain();
+      const beepFilter = ctx.createBiquadFilter();
+      beep.type = "square";
+      beep.frequency.value = freq;
+      beepFilter.type = "bandpass";
+      beepFilter.frequency.value = freq;
+      beepFilter.Q.value = 8;
+      beepGain.gain.setValueAtTime(0.14, t + bt);
+      beepGain.gain.exponentialRampToValueAtTime(0.001, t + bt + 0.075);
+      beep.connect(beepFilter);
+      beepFilter.connect(beepGain);
+      beepGain.connect(ctx.destination);
+      beep.start(t + bt);
+      beep.stop(t + bt + 0.09);
+    });
+
+    setTimeout(() => ctx.close().catch(() => {}), 2500);
+  } catch (_) {
+    // silently ignore if browser does not support AudioContext
+  }
+}
+
+// ── TTS reply playback ────────────────────────────────────────────────────────
+let ttsAudioEl = null;
+let ttsCurrentText = '';
+let activeTTSVoiceId = null; // 后端当前配置的 TTS 音色，用于决定播放时是否叠加机器人音效
+let ttsInterruptedRemaining = '';
+let lastbairuiContent = '';
+let ttsInterruptedOriginalContent = '';
+let ttsInterruptionApplied = false;
+let ttsInterruptionDbTimer = null;
+let ttsStreamReader = null; // 当前流式合成的网络读取器；打断/重播时取消，避免旧流继续占用
+
+// ── 边出文字边逐句流式合成（streaming sentence TTS）─────────────────────────────
+// 正文 token 边到边按句末标点切句入队，一个顺序播放队列逐句 /tts/stream 播放——第一句在
+// 后面还在生成时就出声。麦克风的挂起/恢复由队列在首段/末段统一各做一次（不可每段反复，
+// 否则 ttsStartTime/bargein 缓冲会被反复重置）。
+let ttsStreamingMode = false; // 本轮 TTS 走逐句队列（true）还是单段整段（false）；stopTTS 据此分支
+let sttsActive = false;       // 逐句会话进行中
+let sttsConsumed = 0;         // liveRawText 已喂入切句器的「干净文本」长度
+let sttsBuf = '';             // 尚未凑成整句的残句缓冲
+let sttsQueue = [];           // 已切出、待合成播放的句子
+let sttsPlaying = false;      // 当前有一段正在 fetch / 播放
+let sttsSpoken = '';          // 已完整播放过的句子拼接（打断时算"已说到哪"）
+let sttsCurSeg = '';          // 当前正在播放的句子文本
+let sttsStreamDone = false;   // 正文已全部到达（message 定稿），队列放完即收尾
+let sttsMicSuspended = false; // 已对麦克风做过一次 suspendForTTS
+
+const STTS_SENTENCE_RE = /[^。！？!?\n]*[。！？!?\n]+/g;
+function sttsHasReadable(s) { return /[\p{L}\p{N}]/u.test(s); }
+
+// 本轮流式回复状态：是否正在把正文打进实时气泡 / 累积的原始正文 / 本轮是否语音播报
+let liveReplyActive = false;
+let liveRawText = '';
+let liveTurnSpeak = false;
+
+// 流式语音合成：边下边播，首包到达即出声（后端 /tts/stream 本就分块返回，
+// 这里用 MediaSource 消费，省去"等整段下载完再播"的延迟）。默认开启，可在设置关闭。
+const TTS_STREAMING_KEY = 'bairui.tts.streaming';
+function isTTSStreamingEnabled() {
+  try { return localStorage.getItem(TTS_STREAMING_KEY) !== '0'; } catch { return true; } // 默认开启
+}
+function setTTSStreamingEnabled(on) {
+  try { localStorage.setItem(TTS_STREAMING_KEY, on ? '1' : '0'); } catch {}
+}
+// 仅当开启 + 浏览器支持 MSE 流式 MP3 时才走流式，否则退回整段 blob 播放（绝不让声音变哑）
+function ttsCanStream() {
+  if (!isTTSStreamingEnabled()) return false;
+  if (typeof window.MediaSource === 'undefined') return false;
+  try { return MediaSource.isTypeSupported('audio/mpeg'); } catch { return false; }
+}
+
+// Estimate spoken char count from audio progress, snapping to a sentence boundary
+function calcRemainingText(text, currentTime, duration) {
+  if (!text || !duration || duration <= 0) return { remaining: '', spokenUpTo: 0 };
+  const progress = Math.min(1, currentTime / duration);
+  const spokenChars = Math.floor(text.length * progress);
+  const BOUNDARIES = /[。！？，.!?,\n]/g;
+  let bestPos = spokenChars;
+  let match;
+  BOUNDARIES.lastIndex = Math.max(0, spokenChars - 10);
+  while ((match = BOUNDARIES.exec(text)) !== null) {
+    if (match.index >= spokenChars) {
+      bestPos = match.index + 1;
+      break;
+    }
+  }
+  return { remaining: text.slice(bestPos).trim(), spokenUpTo: bestPos };
+}
+
+// Estimate cut position in original markdown based on spoken ratio in TTS plain text
+function findMarkdownCutPos(markdown, ttsFullLen, ttsSpokenUpTo) {
+  if (!markdown || ttsFullLen <= 0) return 0;
+  const ratio = ttsSpokenUpTo / ttsFullLen;
+  const approxPos = Math.floor(markdown.length * ratio);
+  const BOUNDARIES = /[。！？\n.!?]/g;
+  let bestPos = approxPos;
+  BOUNDARIES.lastIndex = Math.max(0, approxPos - 15);
+  let match;
+  while ((match = BOUNDARIES.exec(markdown)) !== null) {
+    if (match.index >= approxPos) { bestPos = match.index + 1; break; }
+  }
+  return bestPos;
+}
+
+// Apply interruption marker to chat UI; delay DB write so false triggers can be undone
+function applyTTSInterruption(spokenUpTo) {
+  const originalContent = lastbairuiContent || ttsCurrentText;
+  if (!originalContent) return;
+  ttsInterruptedOriginalContent = originalContent;
+  ttsInterruptionApplied = true;
+
+  const cutPos = findMarkdownCutPos(originalContent, ttsCurrentText.length, spokenUpTo);
+  const spokenMarkdown = originalContent.slice(0, cutPos).trimEnd();
+  const displayText = spokenMarkdown ? spokenMarkdown + ' ✋' : '✋';
+  const dbContent = spokenMarkdown || '✋';
+
+  updateLastbairuiMsg(displayText);
+
+  if (ttsInterruptionDbTimer) clearTimeout(ttsInterruptionDbTimer);
+  ttsInterruptionDbTimer = setTimeout(() => {
+    ttsInterruptionDbTimer = null;
+    fetch(`${API}/tts/interrupted`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spokenContent: dbContent }),
+    }).catch(() => {});
+  }, 4000);
+}
+
+// Called by voice-panel interruption detection: stop current TTS and record cut point
+window.stopTTS = () => {
+  if (ttsStreamingMode && sttsActive) { stopStreamingTTS(); return; }
+  if (!ttsAudioEl) return;
+  const { remaining, spokenUpTo } = calcRemainingText(
+    ttsCurrentText,
+    ttsAudioEl.currentTime,
+    ttsAudioEl.duration,
+  );
+  // When duration is not yet loaded (NaN): spokenUpTo=0, remaining='', falls back to full text
+  ttsInterruptedRemaining = remaining || ttsCurrentText;
+  applyTTSInterruption(spokenUpTo);
+  ttsAudioEl.pause();
+  try { URL.revokeObjectURL(ttsAudioEl.src); } catch {}
+  if (ttsStreamReader) { try { ttsStreamReader.cancel(); } catch {} ttsStreamReader = null; }
+  ttsAudioEl = null;
+};
+
+// Called by voice-panel on impact noise: duck TTS volume without stopping
+window.duckTTS = () => {
+  if (ttsAudioEl) ttsAudioEl.volume = 0.15;
+};
+
+// Called by voice-panel after confirming noise: restore original volume
+window.unduckTTS = () => {
+  if (ttsAudioEl) ttsAudioEl.volume = 1.0;
+};
+
+// Called by voice-panel on false-positive noise: resume TTS from interruption point and restore chat
+window.resumeTTSIfNoSpeech = () => {
+  const text = ttsInterruptedRemaining;
+  ttsInterruptedRemaining = '';
+  if (!text) return;
+  // Cancel the pending DB write and restore chat UI
+  if (ttsInterruptionDbTimer) { clearTimeout(ttsInterruptionDbTimer); ttsInterruptionDbTimer = null; }
+  if (ttsInterruptionApplied && ttsInterruptedOriginalContent) {
+    updateLastbairuiMsg(ttsInterruptedOriginalContent);
+  }
+  ttsInterruptionApplied = false;
+  ttsInterruptedOriginalContent = '';
+  playTTSReply(text);
+};
+
+// 接管一个 <audio> 元素开始播放：叠加音色音效、挂起 ASR、注册结束/出错清理。
+// revokeUrl 为该元素 src 的 objectURL（播放结束/出错时回收）。多条播放路径共用。
+// opts.manageMic：是否由本函数挂起/恢复麦克风（单段播放=true；逐句队列由队列在首尾统一管，传 false）。
+// opts.onComplete：播放正常/出错收尾时的回调（队列用它推进下一段）；不传则走默认收尾（恢复麦克风）。
+function startTTSAudio(audioEl, revokeUrl, opts = {}) {
+  const { manageMic = true, onComplete = null } = opts;
+  ttsAudioEl = audioEl;
+  audioEl.volume = 1.0; // ensure full volume (avoid residual duck state from previous play)
+  attachbairuiFx(audioEl, activeTTSVoiceId); // 仅当该音色开启了机器人音效才叠加；否则原生播放
+  // Suspend cloud ASR but keep the mic hardware open for interruption detection
+  if (manageMic) window.bairuiVoice?.suspendForTTS?.();
+  // 结束/出错收尾。注意：被新一轮播放替换掉的旧元素，其 onerror 可能在 pause/revoke 后迟到触发；
+  // 此时全局已指向新元素，必须用 ttsAudioEl===audioEl 守卫，否则会误杀新播放的流读取器和状态。
+  const finish = () => {
+    if (revokeUrl) { try { URL.revokeObjectURL(revokeUrl); } catch {} } // 释放本元素 URL（无论是否当前）
+    if (ttsAudioEl !== audioEl) return; // 已不是当前播放对象：仅回收 URL，不动全局
+    if (ttsStreamReader) { try { ttsStreamReader.cancel(); } catch {} ttsStreamReader = null; }
+    ttsAudioEl = null;
+    if (onComplete) { onComplete(); return; } // 队列段：交回队列推进，麦克风/收尾由队列统一管
+    ttsCurrentText = '';
+    if (manageMic) window.bairuiVoice?.resumeAfterMedia();
+  };
+  audioEl.onended = finish;
+  audioEl.onerror = finish;
+  audioEl.play().catch(() => {
+    if (ttsAudioEl !== audioEl) return;
+    if (onComplete) { ttsAudioEl = null; onComplete(); return; }
+    if (manageMic) window.bairuiVoice?.resumeAfterMedia();
+  });
+}
+
+// 流式播放：把 /tts/stream 的分块响应喂进 MediaSource，首包到达即出声。
+function playTTSViaMediaSource(resp, opts = {}) {
+  const mediaSource = new MediaSource();
+  const url = URL.createObjectURL(mediaSource);
+  startTTSAudio(new Audio(url), url, opts); // play() 会在缓冲到首包后自动开始
+  mediaSource.addEventListener('sourceopen', () => {
+    let sb;
+    try { sb = mediaSource.addSourceBuffer('audio/mpeg'); }
+    catch { try { mediaSource.endOfStream(); } catch {} return; }
+    const reader = resp.body.getReader();
+    ttsStreamReader = reader;
+    const queue = [];
+    let finished = false;
+    // appendBuffer 是异步的，更新中不能再次 append；用队列在 updateend 时串行送入
+    const flush = () => {
+      if (sb.updating) return;
+      if (queue.length) { try { sb.appendBuffer(queue.shift()); } catch {} return; }
+      if (finished && mediaSource.readyState === 'open') { try { mediaSource.endOfStream(); } catch {} }
+    };
+    sb.addEventListener('updateend', flush);
+    (async () => {
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) { finished = true; flush(); break; }
+          if (value && value.byteLength) { queue.push(value); flush(); }
+        }
+      } catch { finished = true; flush(); } // 被取消/网络中断：收尾，已播部分照常结束
+    })();
+  }, { once: true });
+}
+
+async function playTTSReply(text) {
+  ttsStreamingMode = false; // 单段整段播放：stopTTS 走原有进度估算分支
+  ttsCurrentText = text;
+  ttsInterruptedRemaining = '';
+  ttsInterruptionApplied = false;
+  ttsInterruptedOriginalContent = '';
+  // 取消上一段仍在进行的流式读取，避免旧网络流继续占用
+  if (ttsStreamReader) { try { ttsStreamReader.cancel(); } catch {} ttsStreamReader = null; }
+  try {
+    const resp = await fetch(`${API}/tts/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!resp.ok) {
+      let errMsg = `HTTP ${resp.status}`;
+      try { const j = await resp.json(); errMsg = j.error || errMsg; } catch {}
+      throw new Error(errMsg);
+    }
+    if (ttsAudioEl) { ttsAudioEl.pause(); try { URL.revokeObjectURL(ttsAudioEl.src); } catch {} }
+    // 默认流式：边下边播；不支持 MSE / 已关闭流式 → 退回整段 blob 播放
+    if (ttsCanStream() && resp.body) {
+      playTTSViaMediaSource(resp);
+    } else {
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      startTTSAudio(new Audio(url), url);
+    }
+  } catch {
+    ttsCurrentText = '';
+    window.bairuiVoice?.resumeAfterMedia();
+  }
+}
+
+// ── 流式回复文本工具 ───────────────────────────────────────────────────────────
+// 协议标记（[RECALL:…]/[SET_TASK:…]/[CLEAR_TASK]/[UPDATE_PERSONA:…]）剥离。与后端 markers.js 等价；
+// 流式场景额外把"末尾尚未闭合的标记起始"整段藏起，避免半截标记被显示或念出来（等 ] 到了再放出）。
+const MARKER_STRIP_RE = /\[(?:RECALL:[\s\S]*?|SET_TASK:[\s\S]*?|CLEAR_TASK|UPDATE_PERSONA:[\s\S]*?)\]/g;
+function cleanStreamText(raw) {
+  let s = String(raw || '').replace(MARKER_STRIP_RE, '');
+  const lastOpen = s.lastIndexOf('[');
+  if (lastOpen >= 0 && s.indexOf(']', lastOpen) === -1) {
+    // 仅当 '[' 后看起来是协议标记关键字（全大写/下划线，可带 ":..."）才藏；不误伤 [链接](url) 等普通括号
+    if (/^\[[A-Z_]*(:[\s\S]*)?$/.test(s.slice(lastOpen))) s = s.slice(0, lastOpen);
+  }
+  return s;
+}
+
+// markdown → 朗读用纯文本（与后端 autoSpeakForVoiceReply 的剥离一致）
+function toPlainSpeech(md) {
+  return String(md || '').trim()
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/#{1,6}\s+/g, '')
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+    .replace(/!\[[^\]]*\]\([^\)]+\)/g, '')
+    .replace(/\n+/g, ' ')
+    .trim();
+}
+
+// ── 逐句流式 TTS 队列 ──────────────────────────────────────────────────────────
+function beginStreamingTTS() {
+  // 停掉上一段仍在进行的单段播放 / 流读取
+  if (ttsStreamReader) { try { ttsStreamReader.cancel(); } catch {} ttsStreamReader = null; }
+  if (ttsAudioEl) { try { ttsAudioEl.pause(); URL.revokeObjectURL(ttsAudioEl.src); } catch {} ttsAudioEl = null; }
+  ttsStreamingMode = true;
+  sttsActive = true;
+  sttsConsumed = 0; sttsBuf = ''; sttsQueue = []; sttsPlaying = false;
+  sttsSpoken = ''; sttsCurSeg = ''; sttsStreamDone = false; sttsMicSuspended = false;
+  ttsCurrentText = '';
+}
+
+// 喂入到目前为止的全部原始正文，内部只取新增的干净尾巴做切句
+function feedStreamingTTS(rawFull) {
+  if (!sttsActive) return;
+  const cleaned = cleanStreamText(rawFull);
+  if (cleaned.length <= sttsConsumed) return;
+  sttsBuf += cleaned.slice(sttsConsumed);
+  sttsConsumed = cleaned.length;
+  extractSttsSentences({});
+}
+
+function extractSttsSentences({ flushPartial = false, markDone = false } = {}) {
+  let lastIdx = 0, m;
+  STTS_SENTENCE_RE.lastIndex = 0;
+  while ((m = STTS_SENTENCE_RE.exec(sttsBuf)) !== null) {
+    const s = m[0].trim();
+    lastIdx = STTS_SENTENCE_RE.lastIndex;
+    if (s && sttsHasReadable(s)) sttsQueue.push(s);
+  }
+  sttsBuf = sttsBuf.slice(lastIdx);
+  if (flushPartial) {
+    const tail = sttsBuf.trim();
+    sttsBuf = '';
+    if (tail && sttsHasReadable(tail)) sttsQueue.push(tail);
+  }
+  if (markDone) sttsStreamDone = true;
+  pumpSttsQueue();
+}
+
+async function pumpSttsQueue() {
+  if (!sttsActive || sttsPlaying) return;
+  const seg = sttsQueue.shift();
+  if (!seg) {
+    if (sttsStreamDone) endStreamingTTS(); // 正文已尽且队列放完 → 收尾
+    return;
+  }
+  sttsPlaying = true;
+  sttsCurSeg = seg;
+  // 麦克风只在首段挂起一次（后续段之间保持挂起，避免反复重置 bargein 缓冲/预热计时）
+  if (!sttsMicSuspended) { sttsMicSuspended = true; window.bairuiVoice?.suspendForTTS?.(); }
+  const onComplete = () => {
+    sttsSpoken += seg;
+    sttsCurSeg = '';
+    sttsPlaying = false;
+    pumpSttsQueue();
+  };
+  try {
+    const resp = await fetch(`${API}/tts/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: seg }),
+    });
+    if (!sttsActive) return; // 期间被打断/收尾
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (ttsCanStream() && resp.body) {
+      playTTSViaMediaSource(resp, { manageMic: false, onComplete });
+    } else {
+      const blob = await resp.blob();
+      if (!sttsActive) return;
+      const url = URL.createObjectURL(blob);
+      startTTSAudio(new Audio(url), url, { manageMic: false, onComplete });
+    }
+  } catch {
+    onComplete(); // 本句合成失败：跳过，继续下一句，绝不卡住队列
+  }
+}
+
+// 正文段落结束（stream_end text）：把残句也凑成一段送出，但不结束会话（可能还有后续正文段）
+function flushStreamingTTSBuf() {
+  if (sttsActive) extractSttsSentences({ flushPartial: true });
+}
+
+// message 定稿：flush 残句并标记正文已尽，队列放完即收尾
+function finalizeStreamingTTS() {
+  if (sttsActive) extractSttsSentences({ flushPartial: true, markDone: true });
+}
+
+function endStreamingTTS() {
+  sttsActive = false;
+  ttsStreamingMode = false;
+  if (sttsMicSuspended) { sttsMicSuspended = false; window.bairuiVoice?.resumeAfterMedia(); }
+  sttsQueue = []; sttsBuf = ''; sttsCurSeg = ''; sttsSpoken = ''; sttsPlaying = false;
+}
+
+// 打断（barge-in）：停当前句、清队列，算出"已说到哪"标 ✋，并把剩余文本留给 resumeTTSIfNoSpeech 续播。
+// 麦克风的恢复由 voice-panel 在调用 stopTTS 后自己 resumeVoiceInputFromMedia(true) 负责（与单段路径一致），
+// 这里只置 sttsMicSuspended=false 防止重复恢复。
+function stopStreamingTTS() {
+  let curSpoken = '', curRemain = '';
+  if (ttsAudioEl && sttsCurSeg) {
+    const r = calcRemainingText(sttsCurSeg, ttsAudioEl.currentTime, ttsAudioEl.duration);
+    curSpoken = sttsCurSeg.slice(0, r.spokenUpTo);
+    curRemain = r.remaining || sttsCurSeg; // duration 未加载(NaN) → 整句视为未说
+  }
+  const spokenPlain = sttsSpoken + curSpoken;
+  const remainingPlain = [curRemain, sttsQueue.join(''), sttsBuf].filter(Boolean).join('').trim();
+  const fullPlain = (spokenPlain + remainingPlain) || (lastbairuiContent || '');
+  ttsCurrentText = fullPlain;                       // 让 ✋/续播的文本计算有一致的全文基准
+  ttsInterruptedRemaining = remainingPlain || fullPlain;
+  applyTTSInterruption(spokenPlain.length);
+  if (ttsAudioEl) { try { ttsAudioEl.pause(); URL.revokeObjectURL(ttsAudioEl.src); } catch {} }
+  if (ttsStreamReader) { try { ttsStreamReader.cancel(); } catch {} ttsStreamReader = null; }
+  ttsAudioEl = null;
+  sttsActive = false; ttsStreamingMode = false;
+  sttsQueue = []; sttsBuf = ''; sttsCurSeg = ''; sttsSpoken = ''; sttsPlaying = false;
+  sttsMicSuspended = false; // 麦克风恢复交给 voice-panel 的 resumeVoiceInputFromMedia(true)
+}
+
+resetViewBtn.addEventListener("click", resetZoom);
+
+document.querySelectorAll(".panel, .console, .theme-switcher, .reset-view").forEach(el => {
+  el.addEventListener("wheel", event => event.stopPropagation(), { passive: true });
 });
 
-restoreUiState();
-renderRail();
-renderTopbar();
-render();
-refresh();
-connectEvents();
+physicsControl.addEventListener("wheel", event => event.stopPropagation(), { passive: true });
+
+window.addEventListener("resize", () => {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  svg.attr("width", W).attr("height", H);
+  if (!MEMORY_GRAPH_ENABLED || !sim) return;
+  sim.force("center", d3.forceCenter(W / 2, H / 2 - 10))
+     .force("x", d3.forceX(W / 2))
+     .force("y", d3.forceY(H / 2 - 10))
+     .force("radial", d3.forceRadial(180, W / 2, H / 2 - 10));
+  updateSimulationForces();
+  sim.alpha(5).restart();
+});
+
+let _lastVisualRefresh = 0;
+d3.timer(() => {
+  if (!MEMORY_GRAPH_ENABLED) return true;
+  if (glowSet.size === 0 && usePulseSet.size === 0) return;
+  const now = Date.now();
+  if (now - _lastVisualRefresh < 48) return;
+  _lastVisualRefresh = now;
+  refreshNodeVisuals();
+});
+
+function extractPersonCardQuery(text = "") {
+  const value = String(text || "").trim();
+  if (!value || /热点|热搜/.test(value)) return "";
+
+  const patterns = [
+    /^谁是\s*([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z0-9·.\-\s]{1,40})[？?]?$/,
+    /^([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z0-9·.\-\s]{1,40})\s*(?:是谁|是誰|是什么人|是什麼人|是干嘛的|简介|介绍|资料|履历)[？?]?$/,
+    /^(?:介绍一下|介绍下|查一下|了解一下|认识一下)\s*([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z0-9·.\-\s]{1,40})[？?]?$/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = value.match(pattern);
+    const name = match?.[1]?.trim();
+    if (name) return name.replace(/[，,。.!！：:；;]+$/g, "").trim();
+  }
+  return "";
+}
+
+setAgentName(DEFAULT_AGENT_NAME);
+initUiZoom();
+readPhysicsSettings();
+updatePhysicsReadout();
+refreshThemeColors();
+chat = initChat({
+  apiBase: API,
+  maxHistory: MAX_CHAT_HISTORY,
+  activationWarmupKey: ACTIVATION_WARMUP_KEY,
+  getAgentName: () => agentName,
+  defaultInputPlaceholder,
+  openSettings: (tab) => openSettingsRef?.(tab),
+  onUserMessage: (text) => {
+    if (document.body.classList.contains('hotspot-mode') && /关闭|退出|关掉|隐藏/.test(text)) {
+      toggleHotspot();
+      return;
+    }
+    if (document.body.classList.contains('person-card-mode') && /关闭|退出|关掉|隐藏/.test(text)) {
+      setPersonCardMode(false, { source: 'chat_input' });
+      return;
+    }
+    if (/热点|热搜/.test(text) && !document.body.classList.contains('hotspot-mode')) {
+      toggleHotspot();
+    }
+    const personQuery = extractPersonCardQuery(text);
+    if (personQuery) {
+      showPersonCardByName(personQuery, { source: 'chat_input' });
+    }
+  },
+});
+chat.applyActivationWarmupLock();
+if (MEMORY_GRAPH_ENABLED) {
+  if (graphEl) graphEl.style.display = "block";
+  loadMemories();
+  setInterval(() => {
+    loadMemories();
+  }, 5 * 60 * 1000);
+}
+connectSSE();
+loadAgentProfile();
+initPersonCard();
+initDocPanel().catch((err) => console.warn('[DocPanel] init failed:', err));
+chat.restoreChatHistory();
+chat.unlockAudioOnFirstGesture();
+
+bootstrapACUI();
+initPanelCollapse();
+initWechatPopup();
+sanitizePublicBrandText();
+
+// ── TTS settings panel init ───────────────────────────────────────────────────
+function initTTSSettings() {
+  const providerSel = document.getElementById("tts-provider-select");
+  const voiceSel    = document.getElementById("tts-voice-select");
+  const testBtn     = document.getElementById("tts-test-btn");
+  const testStatus  = document.getElementById("tts-test-status");
+  const fxToggle    = document.getElementById("tts-fx-toggle");
+  if (!providerSel) return;
+
+  // 流式合成开关（默认开）：纯播放行为，存在 localStorage
+  const streamingToggle = document.getElementById("tts-streaming-toggle");
+  if (streamingToggle) {
+    streamingToggle.checked = isTTSStreamingEnabled();
+    streamingToggle.addEventListener("change", () => setTTSStreamingEnabled(streamingToggle.checked));
+  }
+
+  let allVoices = {};
+
+  // ── 机器人音效：开关 + 滑块面板 ──
+  const fxSlidersBox = document.getElementById("tts-fx-sliders");
+  // 滑块对应的参数键，及数值显示精度
+  const FX_SLIDERS = [
+    { key: "wet",              digits: 2 },
+    { key: "reverbSeconds",    digits: 1 },
+    { key: "driveMix",         digits: 2 },
+    { key: "metallic",         digits: 2 },
+    { key: "ring",             digits: 2 },
+    { key: "chorus",           digits: 2 },
+    { key: "metallicFeedback", digits: 2 },
+    { key: "metallicDelayMs",  digits: 1 },
+    { key: "ringHz",           digits: 0 },
+  ];
+
+  function loadFxSliders() {
+    const p = getbairuiFxParams();
+    for (const s of FX_SLIDERS) {
+      const el = document.getElementById(`tts-fx-${s.key}`);
+      const val = document.getElementById(`tts-fx-${s.key}-val`);
+      const v = Number(p[s.key] ?? 0);
+      if (el) el.value = v;
+      if (val) val.textContent = v.toFixed(s.digits);
+    }
+  }
+
+  for (const s of FX_SLIDERS) {
+    const el = document.getElementById(`tts-fx-${s.key}`);
+    const val = document.getElementById(`tts-fx-${s.key}-val`);
+    if (!el) continue;
+    el.addEventListener("input", () => {
+      const v = parseFloat(el.value);
+      setbairuiFxParams({ [s.key]: v });
+      if (val) val.textContent = v.toFixed(s.digits);
+    });
+  }
+
+  const fxReset = document.getElementById("tts-fx-reset");
+  if (fxReset) {
+    fxReset.addEventListener("click", () => { resetbairuiFxParams(); loadFxSliders(); });
+  }
+
+  // 语速滑块（豆包 speech_rate，-50~100，0=正常）：显示更新；存档走保存/试听
+  const fmtRate = (r) => (r === 0 ? "正常" : (r > 0 ? "+" + r : String(r)));
+  const doubaoRateEl = document.getElementById("tts-doubao-rate");
+  const doubaoRateVal = document.getElementById("tts-doubao-rate-val");
+  if (doubaoRateEl) {
+    doubaoRateEl.addEventListener("input", () => {
+      if (doubaoRateVal) doubaoRateVal.textContent = fmtRate(parseInt(doubaoRateEl.value, 10) || 0);
+    });
+  }
+
+  // 付费解锁
+  const fxLockBox = document.getElementById("tts-fx-lock");
+  const fxPwInput = document.getElementById("tts-fx-pw");
+  const fxUnlockBtn = document.getElementById("tts-fx-unlock");
+  const fxUnlockMsg = document.getElementById("tts-fx-unlock-msg");
+
+  // 机器人音效开关跟随当前选中的音色；未解锁则禁用开关+显示付费提示；解锁且开启时展开滑块
+  function syncFxToggle() {
+    const unlocked = isFxUnlocked();
+    const on = unlocked && isFxEnabledForVoice(voiceSel?.value);
+    if (fxToggle) { fxToggle.checked = on; fxToggle.disabled = !unlocked; }
+    if (fxSlidersBox) fxSlidersBox.style.display = on ? "flex" : "none";
+    if (fxLockBox) fxLockBox.style.display = unlocked ? "none" : "flex";
+  }
+  if (fxToggle) {
+    fxToggle.addEventListener("change", () => {
+      if (!isFxUnlocked()) { fxToggle.checked = false; syncFxToggle(); return; }
+      setFxEnabledForVoice(voiceSel?.value, fxToggle.checked);
+      if (fxSlidersBox) fxSlidersBox.style.display = fxToggle.checked ? "flex" : "none";
+    });
+  }
+  if (fxUnlockBtn) {
+    fxUnlockBtn.addEventListener("click", () => {
+      const res = tryUnlockFx(fxPwInput?.value?.trim() || "");
+      if (fxUnlockMsg) {
+        fxUnlockMsg.textContent = res.ok ? "已解锁 ✓ 现在可以开启机器人音效了" : res.reason;
+        fxUnlockMsg.style.color = res.ok ? "#3ba55d" : "#e05050";
+      }
+      if (res.ok) syncFxToggle();
+    });
+  }
+  if (voiceSel) {
+    voiceSel.addEventListener("change", syncFxToggle);
+  }
+  loadFxSliders();
+  syncFxToggle();
+
+  const credSections = {
+    doubao:     document.getElementById("tts-creds-doubao"),
+    minimax:    document.getElementById("tts-creds-minimax"),
+    openai:     document.getElementById("tts-creds-openai"),
+    elevenlabs: document.getElementById("tts-creds-elevenlabs"),
+    volcano:    document.getElementById("tts-creds-volcano"),
+  };
+
+  function showCredSection(provider) {
+    Object.entries(credSections).forEach(([k, el]) => {
+      if (el) el.style.display = k === provider ? "" : "none";
+    });
+  }
+
+  function updateVoiceOptions(provider, savedId) {
+    if (!voiceSel) return;
+    const voices = allVoices[provider] || [];
+    voiceSel.innerHTML = voices.map(v =>
+      `<option value="${v.id}">${v.label}</option>`
+    ).join("");
+    if (savedId && voices.some(v => v.id === savedId)) {
+      voiceSel.value = savedId;
+    }
+    syncFxToggle();
+  }
+
+  providerSel.addEventListener("change", () => {
+    showCredSection(providerSel.value);
+    updateVoiceOptions(providerSel.value);
+  });
+
+  fetch(`${API}/settings/tts`).then(r => r.json()).then(({ tts, voices }) => {
+    if (voices) allVoices = voices;
+    const provider = tts?.ttsProvider || "doubao";
+    if (tts?.ttsProvider) providerSel.value = tts.ttsProvider;
+    else providerSel.value = "doubao";
+    updateVoiceOptions(provider, tts?.ttsVoiceId);
+    activeTTSVoiceId = voiceSel?.value || tts?.ttsVoiceId || null;
+    const appidEl = document.getElementById("tts-volcano-appid");
+    if (appidEl && tts?.volcanoAppId?.value) appidEl.value = tts.volcanoAppId.value;
+    const doubaoAppIdEl = document.getElementById("tts-doubao-appid");
+    if (doubaoAppIdEl && tts?.doubaoAppId?.value) doubaoAppIdEl.value = tts.doubaoAppId.value;
+    const doubaoResourceEl = document.getElementById("tts-doubao-resource");
+    if (doubaoResourceEl && tts?.doubaoResourceId) doubaoResourceEl.value = tts.doubaoResourceId;
+    const doubaoStyleEl = document.getElementById("tts-doubao-style");
+    if (doubaoStyleEl && tts?.doubaoStyle) doubaoStyleEl.value = tts.doubaoStyle;
+    const rateEl = document.getElementById("tts-doubao-rate");
+    if (rateEl) {
+      const r = Number(tts?.doubaoSpeechRate || 0) || 0;
+      rateEl.value = r;
+      const rv = document.getElementById("tts-doubao-rate-val");
+      if (rv) rv.textContent = r === 0 ? "正常" : (r > 0 ? "+" + r : String(r));
+    }
+    const baseurlEl = document.getElementById("tts-openai-baseurl");
+    if (baseurlEl && tts?.openaiTtsBaseURL) baseurlEl.value = tts.openaiTtsBaseURL;
+    showCredSection(provider);
+  }).catch(() => {});
+
+  showCredSection(providerSel.value);
+
+  const origSaveBtn = document.getElementById("settings-save-voice");
+  if (origSaveBtn) {
+    origSaveBtn.addEventListener("click", () => {
+      const ttsBody = { ttsProvider: providerSel.value };
+      const voiceId  = voiceSel?.value?.trim();
+      if (voiceId) { ttsBody.ttsVoiceId = voiceId; activeTTSVoiceId = voiceId; }
+      const minimaxKey = document.getElementById("tts-minimax-key")?.value?.trim();
+      if (minimaxKey) ttsBody.minimaxKey = minimaxKey;
+      const doubaoKey = document.getElementById("tts-doubao-key")?.value?.trim();
+      if (doubaoKey) ttsBody.doubaoKey = doubaoKey;
+      const doubaoResource = document.getElementById("tts-doubao-resource")?.value?.trim();
+      if (doubaoResource) ttsBody.doubaoResourceId = doubaoResource;
+      const doubaoStyleEl2 = document.getElementById("tts-doubao-style");
+      if (doubaoStyleEl2) ttsBody.doubaoStyle = doubaoStyleEl2.value.trim(); // 空＝清除（回中性）
+      const rateEl2 = document.getElementById("tts-doubao-rate");
+      if (rateEl2) ttsBody.doubaoSpeechRate = rateEl2.value;
+      const doubaoAppId = document.getElementById("tts-doubao-appid")?.value?.trim();
+      if (doubaoAppId) ttsBody.doubaoAppId = doubaoAppId;
+      const doubaoAccessKey = document.getElementById("tts-doubao-access-key")?.value?.trim();
+      if (doubaoAccessKey) ttsBody.doubaoAccessKey = doubaoAccessKey;
+      const openaiKey = document.getElementById("tts-openai-key")?.value?.trim();
+      if (openaiKey) ttsBody.openaiTtsKey = openaiKey;
+      const baseURL = document.getElementById("tts-openai-baseurl")?.value?.trim();
+      if (baseURL) ttsBody.openaiTtsBaseURL = baseURL;
+      const elevenKey = document.getElementById("tts-elevenlabs-key")?.value?.trim();
+      if (elevenKey) ttsBody.elevenLabsKey = elevenKey;
+      const volcanoAppId = document.getElementById("tts-volcano-appid")?.value?.trim();
+      if (volcanoAppId) ttsBody.volcanoAppId = volcanoAppId;
+      const volcanoToken = document.getElementById("tts-volcano-token")?.value?.trim();
+      if (volcanoToken) ttsBody.volcanoToken = volcanoToken;
+
+      fetch(`${API}/settings/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ttsBody),
+      }).then(() => {
+        ["tts-minimax-key", "tts-doubao-key", "tts-doubao-access-key", "tts-openai-key", "tts-elevenlabs-key", "tts-volcano-token"].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = "";
+        });
+      }).catch(() => {});
+    });
+  }
+
+  if (testBtn) {
+    testBtn.addEventListener("click", async () => {
+      testBtn.disabled = true;
+      if (testStatus) testStatus.textContent = "保存配置中…";
+      try {
+        const preBody = { ttsProvider: providerSel.value };
+        const currentVoice = voiceSel?.value?.trim();
+        if (currentVoice) { preBody.ttsVoiceId = currentVoice; activeTTSVoiceId = currentVoice; }
+        const minimaxKey2 = document.getElementById("tts-minimax-key")?.value?.trim();
+        if (minimaxKey2) preBody.minimaxKey = minimaxKey2;
+        const doubaoKey = document.getElementById("tts-doubao-key")?.value?.trim();
+        if (doubaoKey) preBody.doubaoKey = doubaoKey;
+        const doubaoResource = document.getElementById("tts-doubao-resource")?.value?.trim();
+        if (doubaoResource) preBody.doubaoResourceId = doubaoResource;
+        const doubaoStyleEl3 = document.getElementById("tts-doubao-style");
+        if (doubaoStyleEl3) preBody.doubaoStyle = doubaoStyleEl3.value.trim();
+        const rateEl3 = document.getElementById("tts-doubao-rate");
+        if (rateEl3) preBody.doubaoSpeechRate = rateEl3.value;
+        const doubaoAppId = document.getElementById("tts-doubao-appid")?.value?.trim();
+        if (doubaoAppId) preBody.doubaoAppId = doubaoAppId;
+        const doubaoAccessKey = document.getElementById("tts-doubao-access-key")?.value?.trim();
+        if (doubaoAccessKey) preBody.doubaoAccessKey = doubaoAccessKey;
+        const openaiKey = document.getElementById("tts-openai-key")?.value?.trim();
+        if (openaiKey) preBody.openaiTtsKey = openaiKey;
+        const elevenKey = document.getElementById("tts-elevenlabs-key")?.value?.trim();
+        if (elevenKey) preBody.elevenLabsKey = elevenKey;
+        const volcanoAppId = document.getElementById("tts-volcano-appid")?.value?.trim();
+        if (volcanoAppId) preBody.volcanoAppId = volcanoAppId;
+        const volcanoToken = document.getElementById("tts-volcano-token")?.value?.trim();
+        if (volcanoToken) preBody.volcanoToken = volcanoToken;
+        await fetch(`${API}/settings/tts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(preBody),
+        });
+        if (testStatus) testStatus.textContent = "合成中…";
+        const ttsResp = await fetch(`${API}/tts/stream`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: "你好，这是一段语音合成测试，听起来清晰自然吗？" }),
+        });
+        if (!ttsResp.ok) {
+          let errMsg = `合成失败（HTTP ${ttsResp.status}）`;
+          try { const j = await ttsResp.json(); errMsg = j.error || errMsg; } catch {}
+          if (testStatus) testStatus.textContent = errMsg;
+          return;
+        }
+        const ttsBlob = await ttsResp.blob();
+        if (ttsBlob.size === 0) {
+          if (testStatus) testStatus.textContent = "合成失败：接口返回空数据，请检查 API Key 和账户配置。";
+          return;
+        }
+        const ttsUrl = URL.createObjectURL(ttsBlob);
+        const ttsAudio = new Audio(ttsUrl);
+        attachbairuiFx(ttsAudio, voiceSel?.value || activeTTSVoiceId); // 试听按当前选中音色的开关决定是否叠加
+        ttsAudio.onended = () => { URL.revokeObjectURL(ttsUrl); if (testStatus) testStatus.textContent = ""; };
+        ttsAudio.onerror = () => { URL.revokeObjectURL(ttsUrl); if (testStatus) testStatus.textContent = "播放失败"; };
+        await ttsAudio.play();
+        if (testStatus) testStatus.textContent = "播放中";
+        setTimeout(() => { if (testStatus && testStatus.textContent === "播放中") testStatus.textContent = ""; }, 8000);
+      } catch {
+        if (testStatus) testStatus.textContent = "失败 — 请检查配置和 API Key";
+      } finally {
+        testBtn.disabled = false;
+      }
+    });
+  }
+}
+
+// ── Settings modal ──
+(function initSettings() {
+  const settingsBtn     = document.getElementById("settings-btn");
+  const overlay         = document.getElementById("settings-overlay");
+  const closeBtn        = document.getElementById("settings-close");
+  const providerSelect  = document.getElementById("settings-provider-select");
+  const modelSelect     = document.getElementById("settings-model-select");
+  const llmKeyInput     = document.getElementById("settings-llm-key");
+  const saveLlmBtn      = document.getElementById("settings-save-llm");
+  const llmFeedback     = document.getElementById("settings-llm-feedback");
+  const tempSlider      = document.getElementById("settings-temperature");
+  const tempVal         = document.getElementById("settings-temperature-val");
+  const saveTempBtn     = document.getElementById("settings-save-temperature");
+  const tempFeedback    = document.getElementById("settings-temperature-feedback");
+  const minimaxKeyInput = document.getElementById("settings-minimax-key");
+  const saveMinimaxBtn  = document.getElementById("settings-save-minimax");
+  const minimaxFeedback = document.getElementById("settings-minimax-feedback");
+  const saveSocialBtn   = document.getElementById("settings-save-social");
+  const socialFeedback  = document.getElementById("settings-social-feedback");
+  const saveVoiceBtn    = document.getElementById("settings-save-voice");
+  const voiceFeedback   = document.getElementById("settings-voice-feedback");
+  const voiceThreshSlider = document.getElementById("settings-voice-threshold");
+  const voiceThreshVal    = document.getElementById("settings-voice-threshold-val");
+
+  if (!settingsBtn || !overlay) return;
+
+  let cachedProviders = null;
+
+  overlay.querySelectorAll(".settings-nav-item").forEach(btn => {
+    btn.addEventListener("click", () => {
+      overlay.querySelectorAll(".settings-nav-item").forEach(b => b.classList.remove("active"));
+      overlay.querySelectorAll(".settings-tab").forEach(t => t.classList.remove("active"));
+      btn.classList.add("active");
+      const tab = btn.dataset.tab;
+      overlay.querySelector(`.settings-tab[data-tab="${tab}"]`)?.classList.add("active");
+      if (tab === "social") loadSocialSettings();
+      if (tab === "security") loadSecuritySettings();
+      if (tab === "web-search") loadWebSearchSettings();
+      if (tab === "update") loadUpdateSettings();
+    });
+  });
+
+  function showFeedback(el, msg, isError = false) {
+    if (!el) return;
+    el.textContent = msg;
+    el.className = "settings-feedback" + (isError ? " error" : "");
+    setTimeout(() => { el.textContent = ""; el.className = "settings-feedback"; }, 3000);
+  }
+
+  function refreshConfigSummary({ llm, minimax }) {
+    const cfgLlm = document.getElementById("settings-cfg-llm");
+    const cfgLlmDot = document.getElementById("settings-cfg-llm-dot");
+    const cfgMedia = document.getElementById("settings-cfg-media");
+    const cfgMediaDot = document.getElementById("settings-cfg-media-dot");
+    if (cfgLlm) cfgLlm.textContent = `${llm.provider || "—"} · ${llm.model || "—"}`;
+    if (cfgLlmDot) {
+      cfgLlmDot.textContent = "●";
+      cfgLlmDot.className = `settings-config-dot ${llm.activated ? "active" : "inactive"}`;
+      cfgLlmDot.title = llm.activated ? "Running" : "Inactive";
+    }
+    if (cfgMedia) cfgMedia.textContent = `minimax · ${minimax.configured ? "configured" : "not configured"}`;
+    if (cfgMediaDot) {
+      cfgMediaDot.textContent = "●";
+      cfgMediaDot.className = `settings-config-dot ${minimax.configured ? "active" : "inactive"}`;
+    }
+  }
+
+  function populateModelSelect(models, current) {
+    if (!modelSelect || !models) return;
+    modelSelect.innerHTML = models
+      .map(m => `<option value="${m.id}"${m.deprecated ? " data-deprecated" : ""}>${m.label}</option>`)
+      .join("");
+    if (current) modelSelect.value = current;
+  }
+
+  function populateProviderSelect(providers, current) {
+    if (!providerSelect || !providers) return;
+    const selected = current || providerSelect.value || "auto";
+    const options = [`<option value="auto">Auto-detect</option>`]
+      .concat(Object.entries(providers).map(([id, provider]) => {
+        const label = provider.label || id;
+        return `<option value="${id}">${label}</option>`;
+      }));
+    providerSelect.innerHTML = options.join("");
+    providerSelect.value = providers[selected] || selected === "auto" ? selected : "auto";
+  }
+
+  function applyCustomProviderUI(llm) {
+    const customSection = document.getElementById("settings-custom-llm-section");
+    const modelRow = document.getElementById("settings-model-row");
+    if (llm?.provider === "custom") {
+      if (customSection) customSection.style.display = "";
+      if (modelRow) modelRow.style.display = "none";
+      const baseUrlEl = document.getElementById("settings-custom-baseurl");
+      const modelEl = document.getElementById("settings-custom-model");
+      if (baseUrlEl && llm.baseURL) baseUrlEl.value = llm.baseURL;
+      if (modelEl && llm.model) modelEl.value = llm.model;
+    } else {
+      if (customSection) customSection.style.display = "none";
+      if (modelRow) modelRow.style.display = "";
+    }
+  }
+
+  async function loadSettings() {
+    try {
+      const data = await fetch(`${API}/settings`).then(r => r.json());
+      const { llm, minimax, providers } = data;
+      if (providers) cachedProviders = providers;
+      refreshConfigSummary({ llm, minimax });
+      populateProviderSelect(providers, llm.provider || "auto");
+      if (providerSelect && llm.provider) providerSelect.value = llm.provider;
+      applyCustomProviderUI(llm);
+      if (llm.provider !== "custom") populateModelSelect(llm.models, llm.model);
+      if (typeof llm.temperature === "number" && tempSlider) {
+        tempSlider.value = String(llm.temperature);
+        if (tempVal) tempVal.textContent = llm.temperature.toFixed(2);
+      }
+    } catch {}
+  }
+
+  const SOCIAL_FIELD_MAP = {
+    "social-discord-token":  "DISCORD_BOT_TOKEN",
+    "social-feishu-appid":   "FEISHU_APP_ID",
+    "social-feishu-secret":  "FEISHU_APP_SECRET",
+    "social-feishu-token":   "FEISHU_VERIFICATION_TOKEN",
+    "social-wechat-appid":   "WECHAT_OFFICIAL_APP_ID",
+    "social-wechat-secret":  "WECHAT_OFFICIAL_APP_SECRET",
+    "social-wechat-token":   "WECHAT_OFFICIAL_TOKEN",
+    "social-wecom-botkey":   "WECOM_BOT_KEY",
+    "social-wecom-token":    "WECOM_INCOMING_TOKEN",
+  };
+
+  const SOCIAL_PLATFORM_STATUS = {
+    "social-status-discord": ["DISCORD_BOT_TOKEN"],
+    "social-status-feishu":  ["FEISHU_APP_ID", "FEISHU_APP_SECRET", "FEISHU_VERIFICATION_TOKEN"],
+    "social-status-wechat":  ["WECHAT_OFFICIAL_APP_ID", "WECHAT_OFFICIAL_APP_SECRET", "WECHAT_OFFICIAL_TOKEN"],
+    "social-status-wecom":   ["WECOM_BOT_KEY", "WECOM_INCOMING_TOKEN"],
+  };
+
+  async function loadSocialSettings() {
+    try {
+      const { social } = await fetch(`${API}/settings/social`).then(r => r.json());
+      for (const [statusId, keys] of Object.entries(SOCIAL_PLATFORM_STATUS)) {
+        const el = document.getElementById(statusId);
+        if (!el) continue;
+        const configuredCount = keys.filter(k => social[k]?.configured).length;
+        if (configuredCount === keys.length) {
+          el.textContent = "● 已配置";
+          el.className = "settings-platform-status ok";
+        } else if (configuredCount > 0) {
+          el.textContent = `● 部分配置 (${configuredCount}/${keys.length})`;
+          el.className = "settings-platform-status miss";
+        } else {
+          el.textContent = "○ 未配置";
+          el.className = "settings-platform-status miss";
+        }
+      }
+    } catch {}
+  }
+
+  const fileSandboxToggle = document.getElementById("security-file-sandbox");
+  const execSandboxToggle = document.getElementById("security-exec-sandbox");
+  const saveSecurityBtn   = document.getElementById("settings-save-security");
+  const securityFeedback  = document.getElementById("settings-security-feedback");
+
+  async function loadWebSearchSettings() {
+    try {
+      const { webSearch } = await fetch(`${API}/settings/web-search`).then(r => r.json());
+      const urlEl = document.getElementById("websearch-searxng-url");
+      if (urlEl) urlEl.value = webSearch?.searxngUrl || "";
+      const setStatus = (id, configured, fromEnv, extra) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const truncated = extra && extra.length > 60 ? extra.slice(0, 60) + "…" : extra;
+        if (configured) {
+          el.textContent = `已配置${fromEnv ? "（环境变量）" : ""}${truncated ? ` · ${truncated}` : ""}`;
+          el.style.color = "var(--ok, #4caf50)";
+        } else {
+          el.textContent = "未配置（兜底链中跳过）";
+          el.style.color = "var(--ink2)";
+        }
+      };
+      setStatus("websearch-status-serper",  !!webSearch?.serperConfigured, !!webSearch?.serperFromEnv);
+      setStatus("websearch-status-brave",   !!webSearch?.braveConfigured,  !!webSearch?.braveFromEnv);
+      setStatus("websearch-status-tavily",  !!webSearch?.tavilyConfigured, !!webSearch?.tavilyFromEnv);
+      setStatus("websearch-status-jina",    !!webSearch?.jinaConfigured,   !!webSearch?.jinaFromEnv);
+      const searxngConfigured = !!webSearch?.searxngUrl || !!webSearch?.searxngFromEnv;
+      setStatus("websearch-status-searxng", searxngConfigured, !!webSearch?.searxngFromEnv, webSearch?.effectiveSearxngUrl || "");
+    } catch {}
+  }
+
+  const saveWebSearchBtn = document.getElementById("settings-save-web-search");
+  const webSearchFeedback = document.getElementById("settings-web-search-feedback");
+  if (saveWebSearchBtn) {
+    saveWebSearchBtn.addEventListener("click", async () => {
+      const updates = {};
+      const serperEl  = document.getElementById("websearch-serper-key");
+      const braveEl   = document.getElementById("websearch-brave-key");
+      const tavilyEl  = document.getElementById("websearch-tavily-key");
+      const jinaEl    = document.getElementById("websearch-jina-key");
+      const searxngEl = document.getElementById("websearch-searxng-url");
+      const serperVal  = serperEl?.value?.trim();
+      const braveVal   = braveEl?.value?.trim();
+      const tavilyVal  = tavilyEl?.value?.trim();
+      const jinaVal    = jinaEl?.value?.trim();
+      const searxngVal = searxngEl?.value?.trim();
+      if (serperVal)  updates.serperKey  = serperVal;
+      if (braveVal)   updates.braveKey   = braveVal;
+      if (tavilyVal)  updates.tavilyKey  = tavilyVal;
+      if (jinaVal)    updates.jinaKey    = jinaVal;
+      // SearXNG URL：空字符串也要传，让用户能清掉
+      if (searxngEl)  updates.searxngUrl = searxngVal || "";
+      saveWebSearchBtn.disabled = true;
+      try {
+        const res = await fetch(`${API}/settings/web-search`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updates),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showFeedback(webSearchFeedback, "已保存");
+          if (serperEl) serperEl.value = "";
+          if (braveEl)  braveEl.value = "";
+          if (tavilyEl) tavilyEl.value = "";
+          if (jinaEl)   jinaEl.value = "";
+          loadWebSearchSettings();
+        } else {
+          showFeedback(webSearchFeedback, data.error || "保存失败", true);
+        }
+      } catch {
+        showFeedback(webSearchFeedback, "请求失败", true);
+      } finally {
+        saveWebSearchBtn.disabled = false;
+      }
+    });
+  }
+
+  async function loadSecuritySettings() {
+    try {
+      const { security } = await fetch(`${API}/settings/security`).then(r => r.json());
+      if (fileSandboxToggle) fileSandboxToggle.checked = security.fileSandbox !== false;
+      if (execSandboxToggle) execSandboxToggle.checked = security.execSandbox !== false;
+      document.querySelectorAll(".security-blocked-tool").forEach(cb => {
+        cb.checked = (security.blockedTools || []).includes(cb.value);
+      });
+    } catch {}
+  }
+
+  if (saveSecurityBtn) {
+    saveSecurityBtn.addEventListener("click", async () => {
+      const blockedTools = [...document.querySelectorAll(".security-blocked-tool")]
+        .filter(cb => cb.checked)
+        .map(cb => cb.value);
+      const body = {
+        fileSandbox: fileSandboxToggle ? fileSandboxToggle.checked : true,
+        execSandbox: execSandboxToggle ? execSandboxToggle.checked : true,
+        blockedTools,
+      };
+      saveSecurityBtn.disabled = true;
+      try {
+        const res = await fetch(`${API}/settings/security`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showFeedback(securityFeedback, "已保存 — 立即生效");
+        } else {
+          showFeedback(securityFeedback, data.error || "保存失败", true);
+        }
+      } catch {
+        showFeedback(securityFeedback, "请求失败", true);
+      } finally {
+        saveSecurityBtn.disabled = false;
+      }
+    });
+  }
+
+  if (saveSocialBtn) {
+    saveSocialBtn.addEventListener("click", async () => {
+      const updates = {};
+      for (const [fieldId, envKey] of Object.entries(SOCIAL_FIELD_MAP)) {
+        const val = document.getElementById(fieldId)?.value?.trim() || "";
+        if (val) updates[envKey] = val;
+      }
+      saveSocialBtn.disabled = true;
+      try {
+        const res = await fetch(`${API}/settings/social`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updates),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showFeedback(socialFeedback, "已保存");
+          Object.keys(SOCIAL_FIELD_MAP).forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = "";
+          });
+          loadSocialSettings();
+        } else {
+          showFeedback(socialFeedback, data.error || "保存失败", true);
+        }
+      } catch {
+        showFeedback(socialFeedback, "请求失败", true);
+      } finally {
+        saveSocialBtn.disabled = false;
+      }
+    });
+  }
+
+  if (tempSlider && tempVal) {
+    tempSlider.addEventListener("input", () => {
+      tempVal.textContent = parseFloat(tempSlider.value).toFixed(2);
+    });
+  }
+  if (saveTempBtn) {
+    saveTempBtn.addEventListener("click", async () => {
+      const temperature = parseFloat(tempSlider?.value ?? "0.5");
+      saveTempBtn.disabled = true;
+      try {
+        const res = await fetch(`${API}/settings/temperature`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ temperature }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showFeedback(tempFeedback, `已设为 ${data.temperature.toFixed(2)}`);
+        } else {
+          showFeedback(tempFeedback, data.error || "保存失败", true);
+        }
+      } catch { showFeedback(tempFeedback, "请求失败", true); }
+      finally { saveTempBtn.disabled = false; }
+    });
+  }
+
+  const VOICE_LANG_KEY       = "bairui-voice-lang";
+  const VOICE_AUTO_SEND_KEY  = "bairui-voice-auto-send";
+  const VOICE_AUTO_MIC_KEY   = "bairui-voice-auto-mic";
+  const VOICE_THRESHOLD_KEY  = "bairui-voice-threshold";
+  const VOICE_PROVIDER_KEY   = "bairui-voice-provider";
+
+  function applyVoiceProviderUI(provider) {
+    const panels = {
+      aliyun: "voice-cred-aliyun",
+      volcengine: "voice-cred-volcengine",
+      tencent: "voice-cred-tencent",
+      xunfei: "voice-cred-xunfei",
+    };
+    for (const [key, id] of Object.entries(panels)) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = key === provider ? "" : "none";
+    }
+  }
+
+  function detectVoiceProviderFromKey(key) {
+    const value = (key || "").trim();
+    if (!value) return null;
+    if (/^sk-[A-Za-z0-9_\-.]{20,}$/.test(value)) {
+      return { provider: "aliyun", label: "阿里云 ASR", fieldId: "voice-aliyun-key" };
+    }
+    if (/^AKID/i.test(value)) {
+      return { provider: "tencent", label: "腾讯云 ASR", fieldId: "voice-tencent-sid" };
+    }
+    if (/^\d{6,10}$/.test(value)) {
+      return { provider: "xunfei", label: "科大讯飞", fieldId: "voice-xunfei-appid" };
+    }
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+      return {
+        provider: "volcengine",
+        label: "火山豆包 ASR",
+        fieldId: "voice-volc-apikey",
+        defaults: { "voice-volc-resourceid": "volc.bigasr.sauc.duration" },
+      };
+    }
+    return null;
+  }
+
+  const voiceProviderSelect = document.getElementById("voice-provider-select");
+  if (voiceProviderSelect) {
+    voiceProviderSelect.addEventListener("change", () => applyVoiceProviderUI(voiceProviderSelect.value));
+  }
+
+  const voiceAutoKey = document.getElementById("voice-auto-key");
+  const voiceAutoDetect = document.getElementById("voice-auto-detect");
+  if (voiceAutoKey) {
+    voiceAutoKey.addEventListener("input", () => {
+      const detected = detectVoiceProviderFromKey(voiceAutoKey.value);
+      if (!detected) {
+        if (voiceAutoDetect) voiceAutoDetect.textContent = voiceAutoKey.value.trim() ? "未识别" : "";
+        return;
+      }
+      if (voiceProviderSelect) voiceProviderSelect.value = detected.provider;
+      applyVoiceProviderUI(detected.provider);
+      const target = document.getElementById(detected.fieldId);
+      if (target) target.value = voiceAutoKey.value.trim();
+      for (const [id, value] of Object.entries(detected.defaults || {})) {
+        const el = document.getElementById(id);
+        if (el && !el.value.trim()) el.value = value;
+      }
+      if (voiceAutoDetect) voiceAutoDetect.textContent = detected.label;
+    });
+  }
+
+  async function loadVoiceSettings() {
+    const langSelect = document.getElementById("voice-lang-select");
+    const autoSend   = document.getElementById("voice-auto-send");
+    if (langSelect) langSelect.value = localStorage.getItem(VOICE_LANG_KEY) || "zh-CN";
+    if (autoSend) autoSend.checked = localStorage.getItem(VOICE_AUTO_SEND_KEY) !== "false";
+    const autoMic = document.getElementById("voice-auto-mic");
+    if (autoMic) autoMic.checked = localStorage.getItem(VOICE_AUTO_MIC_KEY) === "true";
+    const savedThresh = parseFloat(localStorage.getItem(VOICE_THRESHOLD_KEY) || "0.008");
+    if (voiceThreshSlider) voiceThreshSlider.value = String(savedThresh);
+    if (voiceThreshVal)    voiceThreshVal.textContent = savedThresh.toFixed(3);
+
+    let savedProvider = localStorage.getItem(VOICE_PROVIDER_KEY) || "aliyun";
+    try {
+      const resp = await fetch("http://127.0.0.1:3721/settings/voice");
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok && data?.voice?.voiceProvider) {
+        savedProvider = data.voice.voiceProvider;
+        localStorage.setItem(VOICE_PROVIDER_KEY, savedProvider);
+      }
+    } catch {}
+    if (voiceProviderSelect) voiceProviderSelect.value = savedProvider;
+    applyVoiceProviderUI(savedProvider);
+  }
+
+  if (voiceThreshSlider && voiceThreshVal) {
+    voiceThreshSlider.addEventListener("input", () => {
+      voiceThreshVal.textContent = parseFloat(voiceThreshSlider.value).toFixed(3);
+    });
+  }
+
+
+  if (saveVoiceBtn) {
+    saveVoiceBtn.addEventListener("click", async () => {
+      const lang      = document.getElementById("voice-lang-select")?.value || "zh-CN";
+      const autoSend  = document.getElementById("voice-auto-send")?.checked ?? true;
+      const autoMic   = document.getElementById("voice-auto-mic")?.checked ?? false;
+      const threshold = parseFloat(voiceThreshSlider?.value ?? "0.008");
+      const provider  = voiceProviderSelect?.value || "aliyun";
+
+      localStorage.setItem(VOICE_LANG_KEY,      lang);
+      localStorage.setItem(VOICE_AUTO_SEND_KEY,  String(autoSend));
+      localStorage.setItem(VOICE_AUTO_MIC_KEY,   String(autoMic));
+      localStorage.setItem(VOICE_THRESHOLD_KEY,  String(threshold));
+      localStorage.setItem(VOICE_PROVIDER_KEY,   provider);
+
+      window.dispatchEvent(new CustomEvent("bairui:voice-threshold", { detail: { threshold } }));
+
+      const body = { voiceProvider: provider };
+      const aliyunKey = document.getElementById("voice-aliyun-key")?.value?.trim();
+      if (aliyunKey) body.aliyunApiKey = aliyunKey;
+      const tencentSid = document.getElementById("voice-tencent-sid")?.value?.trim();
+      if (tencentSid) body.tencentSecretId = tencentSid;
+      const tencentSkey = document.getElementById("voice-tencent-skey")?.value?.trim();
+      if (tencentSkey) body.tencentSecretKey = tencentSkey;
+      const tencentAppid = document.getElementById("voice-tencent-appid")?.value?.trim();
+      if (tencentAppid) body.tencentAppId = tencentAppid;
+      const xunfeiAppid = document.getElementById("voice-xunfei-appid")?.value?.trim();
+      if (xunfeiAppid) body.xunfeiAppId = xunfeiAppid;
+      const xunfeiApikey = document.getElementById("voice-xunfei-apikey")?.value?.trim();
+      if (xunfeiApikey) body.xunfeiApiKey = xunfeiApikey;
+      const volcApiKey = document.getElementById("voice-volc-apikey")?.value?.trim();
+      if (volcApiKey) body.volcAsrApiKey = volcApiKey;
+      const volcResourceId = document.getElementById("voice-volc-resourceid")?.value?.trim();
+      if (volcResourceId) body.volcAsrResourceId = volcResourceId;
+      const volcAppKey = document.getElementById("voice-volc-appkey")?.value?.trim();
+      if (volcAppKey) body.volcAsrAppKey = volcAppKey;
+      const volcAccessKey = document.getElementById("voice-volc-accesskey")?.value?.trim();
+      if (volcAccessKey) body.volcAsrAccessKey = volcAccessKey;
+
+      if (Object.keys(body).length > 0) {
+        try {
+          saveVoiceBtn.disabled = true;
+          const resp = await fetch("http://127.0.0.1:3721/settings/voice", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (!resp.ok) throw new Error("保存失败");
+          [
+            "voice-aliyun-key",
+            "voice-auto-key",
+            "voice-tencent-sid",
+            "voice-tencent-skey",
+            "voice-xunfei-apikey",
+            "voice-volc-apikey",
+            "voice-volc-appkey",
+            "voice-volc-accesskey",
+          ].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = "";
+          });
+          if (voiceAutoDetect) voiceAutoDetect.textContent = "";
+          showFeedback(voiceFeedback, "已保存");
+        } catch { showFeedback(voiceFeedback, "保存失败", true); }
+        finally { saveVoiceBtn.disabled = false; }
+      } else {
+        showFeedback(voiceFeedback, "已保存");
+      }
+    });
+  }
+
+  initTTSSettings();
+
+  const memoryGraphToggle = document.getElementById("settings-memory-graph-toggle");
+  const memoryGraphFeedback = document.getElementById("settings-memory-graph-feedback");
+  if (memoryGraphToggle) {
+    memoryGraphToggle.checked = localStorage.getItem(MEMORY_GRAPH_STORAGE_KEY) !== "false";
+    memoryGraphToggle.addEventListener("change", () => {
+      localStorage.setItem(MEMORY_GRAPH_STORAGE_KEY, String(memoryGraphToggle.checked));
+      if (memoryGraphFeedback) {
+        memoryGraphFeedback.textContent = "下次刷新页面后生效";
+        memoryGraphFeedback.className = "settings-feedback";
+        setTimeout(() => { memoryGraphFeedback.textContent = ""; }, 3000);
+      }
+    });
+  }
+
+  function openSettings(tab = null) {
+    overlay.hidden = false;
+    loadSettings();
+    loadVoiceSettings();
+    if (tab) {
+      overlay.querySelectorAll(".settings-nav-item").forEach(b => {
+        b.classList.toggle("active", b.dataset.tab === tab);
+      });
+      overlay.querySelectorAll(".settings-tab").forEach(t => {
+        t.classList.toggle("active", t.dataset.tab === tab);
+      });
+      if (tab === "social") loadSocialSettings();
+      if (tab === "web-search") loadWebSearchSettings();
+      if (tab === "update") loadUpdateSettings();
+    }
+  }
+
+  function closeSettings() {
+    overlay.hidden = true;
+    if (llmKeyInput) llmKeyInput.value = "";
+    if (minimaxKeyInput) minimaxKeyInput.value = "";
+  }
+
+  // 暴露给 chat.js 的斜杠命令使用
+  openSettingsRef = openSettings;
+
+  settingsBtn.addEventListener("click", () => openSettings());
+  closeBtn.addEventListener("click", closeSettings);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeSettings(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) closeSettings(); });
+
+  if (providerSelect) {
+    providerSelect.addEventListener("change", () => {
+      const provider = providerSelect.value;
+      const customSection = document.getElementById("settings-custom-llm-section");
+      const modelRow = document.getElementById("settings-model-row");
+      if (provider === "custom") {
+        if (customSection) customSection.style.display = "";
+        if (modelRow) modelRow.style.display = "none";
+      } else {
+        if (customSection) customSection.style.display = "none";
+        if (modelRow) modelRow.style.display = "";
+        if (cachedProviders?.[provider]) populateModelSelect(cachedProviders[provider].models, null);
+      }
+    });
+  }
+
+  saveLlmBtn?.addEventListener("click", async () => {
+    const provider = providerSelect?.value || "auto";
+    const apiKey = llmKeyInput.value.trim();
+    saveLlmBtn.disabled = true;
+
+    if (provider === "custom") {
+      const baseURL = document.getElementById("settings-custom-baseurl")?.value?.trim();
+      const model   = document.getElementById("settings-custom-model")?.value?.trim();
+      if (!baseURL || !model) {
+        showFeedback(llmFeedback, "请填入 Base URL 和模型名称", true);
+        saveLlmBtn.disabled = false;
+        return;
+      }
+      try {
+        const res = await fetch(`${API}/activate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provider: "custom", baseURL, model, apiKey: apiKey || "none" }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showFeedback(llmFeedback, `已连接：${data.model}`);
+          llmKeyInput.value = "";
+          loadSettings();
+        } else {
+          showFeedback(llmFeedback, data.error || "连接失败", true);
+        }
+      } catch { showFeedback(llmFeedback, "请求失败", true); }
+      finally { saveLlmBtn.disabled = false; }
+      return;
+    }
+
+    const model = modelSelect.value;
+    try {
+      const body = apiKey
+        ? { provider, apiKey, ...(provider === "auto" ? {} : { model }) }
+        : { model };
+      const res = await fetch(apiKey ? `${API}/activate` : `${API}/settings/model`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showFeedback(llmFeedback, "已保存");
+        llmKeyInput.value = "";
+        loadSettings();
+      } else {
+        showFeedback(llmFeedback, data.error || "保存失败", true);
+      }
+    } catch { showFeedback(llmFeedback, "请求失败", true); }
+    finally { saveLlmBtn.disabled = false; }
+  });
+
+  saveMinimaxBtn?.addEventListener("click", async () => {
+    const apiKey = minimaxKeyInput.value.trim();
+    if (!apiKey) { showFeedback(minimaxFeedback, "API Key 不能为空", true); return; }
+    saveMinimaxBtn.disabled = true;
+    try {
+      const res = await fetch(`${API}/settings/minimax`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showFeedback(minimaxFeedback, "已保存");
+        minimaxKeyInput.value = "";
+        loadSettings();
+      } else {
+        showFeedback(minimaxFeedback, data.error || "保存失败", true);
+      }
+    } catch { showFeedback(minimaxFeedback, "请求失败", true); }
+    finally { saveMinimaxBtn.disabled = false; }
+  });
+
+  const clawbotConnectBtn = document.getElementById("clawbot-connect-btn");
+  const clawbotLogoutBtn  = document.getElementById("clawbot-logout-btn");
+  const clawbotQrArea     = document.getElementById("clawbot-qr-area");
+  const clawbotQrImg      = document.getElementById("clawbot-qr-img");
+  const clawbotQrHint     = document.getElementById("clawbot-qr-hint");
+  const clawbotFeedback   = document.getElementById("clawbot-feedback");
+  const clawbotStatus     = document.getElementById("social-status-clawbot");
+  let clawbotPollTimer    = null;
+
+  function setClawbotStatus(text, ok) {
+    if (!clawbotStatus) return;
+    clawbotStatus.textContent = ok ? `● ${text}` : `○ ${text}`;
+    clawbotStatus.className = `settings-platform-status ${ok ? "ok" : "miss"}`;
+  }
+
+  function stopClawbotPoll() {
+    if (clawbotPollTimer) { clearInterval(clawbotPollTimer); clawbotPollTimer = null; }
+  }
+
+  async function pollClawbotQR() {
+    try {
+      const data = await fetch(`${API}/social/wechat-clawbot/qr`).then(r => r.json());
+      if (data.status === "connected") {
+        stopClawbotPoll();
+        if (clawbotQrArea) clawbotQrArea.style.display = "none";
+        setClawbotStatus("已连接", true);
+        if (clawbotFeedback) showFeedback(clawbotFeedback, "微信绑定成功！");
+        loadSocialSettings();
+      } else if (data.status === "qr_ready" && data.qr_url) {
+        if (clawbotQrImg) clawbotQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data.qr_url)}`;
+        if (clawbotQrArea) clawbotQrArea.style.display = "block";
+        if (clawbotQrHint) clawbotQrHint.textContent = "等待扫码…";
+        setClawbotStatus("等待扫码", false);
+      } else if (data.status === "qr_pending") {
+        if (clawbotQrHint) clawbotQrHint.textContent = "正在生成二维码…";
+      } else if (data.status === "error") {
+        stopClawbotPoll();
+        if (clawbotQrArea) clawbotQrArea.style.display = "none";
+        setClawbotStatus("连接失败", false);
+        if (clawbotFeedback) showFeedback(clawbotFeedback, data.error || "连接失败", true);
+      }
+    } catch {}
+  }
+
+  if (clawbotConnectBtn) {
+    pollClawbotQR();
+  }
+
+  clawbotConnectBtn?.addEventListener("click", async () => {
+    if (clawbotQrArea) clawbotQrArea.style.display = "none";
+    setClawbotStatus("启动中…", false);
+    stopClawbotPoll();
+    try {
+      await fetch(`${API}/settings/social`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _clawbot_connect: "1" }),
+      });
+    } catch {}
+    await pollClawbotQR();
+    clawbotPollTimer = setInterval(pollClawbotQR, 2000);
+  });
+
+  clawbotLogoutBtn?.addEventListener("click", async () => {
+    stopClawbotPoll();
+    if (clawbotQrArea) clawbotQrArea.style.display = "none";
+    try {
+      await fetch(`${API}/social/wechat-clawbot/logout`, { method: "POST" });
+      setClawbotStatus("已断开", false);
+      showFeedback(clawbotFeedback, "微信已断开");
+    } catch {
+      showFeedback(clawbotFeedback, "请求失败", true);
+    }
+  });
+
+  window.addEventListener("bairui:social_status", (e) => {
+    const d = e.detail;
+    if (d?.platform !== "wechat-clawbot") return;
+    if (d.status === "connected") {
+      stopClawbotPoll();
+      if (clawbotQrArea) clawbotQrArea.style.display = "none";
+      setClawbotStatus("已连接", true);
+    } else if (d.status === "qr_ready") {
+      if (!clawbotPollTimer) clawbotPollTimer = setInterval(pollClawbotQR, 2000);
+      pollClawbotQR();
+    } else if (d.status === "session_expired") {
+      stopClawbotPoll();
+      setClawbotStatus("会话已过期 — 请重新扫码", false);
+    } else if (d.status === "idle") {
+      setClawbotStatus("未连接", false);
+    }
+  });
+
+  const settingsCheckUpdateBtn     = document.getElementById("settings-check-update-btn");
+  const settingsDownloadUpdateBtn  = document.getElementById("settings-download-update-btn");
+  const settingsInstallUpdateBtn   = document.getElementById("settings-install-update-btn");
+  const settingsIgnoreUpdateBtn    = document.getElementById("settings-ignore-update-btn");
+  const settingsUpdateStatusEl     = document.getElementById("settings-update-status");
+  const settingsUpdateFeedback     = document.getElementById("settings-update-feedback");
+  const settingsCurrentVersion     = document.getElementById("settings-current-version");
+  const settingsSuppressToggle     = document.getElementById("settings-suppress-updates");
+  const settingsIgnoredSection     = document.getElementById("settings-ignored-section");
+  const settingsIgnoredVersionEl   = document.getElementById("settings-ignored-version-val");
+  const settingsClearIgnoredBtn    = document.getElementById("settings-clear-ignored-btn");
+
+  let pendingUpdateVersion = null;
+  let removeUpdaterListener = null;
+
+  function setUpdateStatusText(text, state = "idle") {
+    if (!settingsUpdateStatusEl) return;
+    settingsUpdateStatusEl.textContent = text;
+    settingsUpdateStatusEl.dataset.state = state;
+  }
+
+  function setUpdateFeedback(text, isError = false) {
+    if (!settingsUpdateFeedback) return;
+    settingsUpdateFeedback.textContent = text || "";
+    settingsUpdateFeedback.className = isError ? "settings-feedback error" : "settings-feedback";
+  }
+
+  function showUpdateButtons({ check = true, checkDisabled = false, checkLabel = "检查更新", download = false, install = false, ignore = false } = {}) {
+    if (settingsCheckUpdateBtn) {
+      settingsCheckUpdateBtn.classList.toggle("hidden", !check);
+      settingsCheckUpdateBtn.disabled = checkDisabled;
+      settingsCheckUpdateBtn.textContent = checkLabel;
+    }
+    settingsDownloadUpdateBtn?.classList.toggle("hidden", !download);
+    settingsInstallUpdateBtn?.classList.toggle("hidden", !install);
+    settingsIgnoreUpdateBtn?.classList.toggle("hidden", !ignore);
+  }
+
+  function syncUpdateSettings() {
+    const ignored = localStorage.getItem(IGNORED_VERSION_KEY) || null;
+    const suppressed = localStorage.getItem(SUPPRESS_UPDATES_KEY) === "true";
+    if (settingsSuppressToggle) settingsSuppressToggle.checked = suppressed;
+    if (settingsIgnoredSection) settingsIgnoredSection.style.display = ignored ? "" : "none";
+    if (settingsIgnoredVersionEl && ignored) settingsIgnoredVersionEl.textContent = ignored;
+  }
+
+  async function loadUpdateSettings() {
+    syncUpdateSettings();
+    const bridge = window.bairui;
+    if (!bridge?.isElectron) {
+      if (settingsCurrentVersion) settingsCurrentVersion.textContent = "仅桌面端可用";
+      if (settingsCheckUpdateBtn) settingsCheckUpdateBtn.disabled = true;
+      setUpdateStatusText("仅桌面端可用", "muted");
+      return;
+    }
+    try {
+      const ver = await bridge.getVersion?.();
+      if (settingsCurrentVersion && ver) settingsCurrentVersion.textContent = ver;
+    } catch {}
+
+    removeUpdaterListener = bridge.onUpdaterStatus?.((payload = {}) => {
+      const stage = payload.stage || "idle";
+      const ver = payload.version || "";
+      const percent = typeof payload.percent === "number" ? Math.round(payload.percent) : null;
+
+      switch (stage) {
+        case "checking":
+          setUpdateStatusText("正在检查更新…", "checking");
+          showUpdateButtons({ checkDisabled: true, checkLabel: "检查中…" });
+          break;
+        case "available":
+          pendingUpdateVersion = ver;
+          setUpdateStatusText(`发现新版本 ${ver}`, "available");
+          showUpdateButtons({ check: false, download: true, ignore: true });
+          break;
+        case "downloading":
+          setUpdateStatusText(`下载中${percent !== null ? ` ${percent}%` : "…"}`, "downloading");
+          showUpdateButtons({ check: false });
+          break;
+        case "downloaded":
+          setUpdateStatusText(`版本 ${ver} 已就绪 — 重启后安装`, "ready");
+          showUpdateButtons({ check: false, install: true });
+          break;
+        case "up-to-date":
+          setUpdateStatusText(`已是最新版本 ${ver}`, "idle");
+          showUpdateButtons({ checkLabel: "检查更新" });
+          break;
+        case "error":
+          setUpdateStatusText(`更新失败：${payload.message || "请稍后再试"}`, "error");
+          showUpdateButtons({ checkLabel: "重试" });
+          break;
+        case "dev":
+          setUpdateStatusText("开发模式不检查更新", "muted");
+          showUpdateButtons({ checkDisabled: true, checkLabel: "开发模式" });
+          break;
+        default:
+          showUpdateButtons({});
+          break;
+      }
+    }) || null;
+  }
+
+  window.addEventListener("beforeunload", () => {
+    if (typeof removeUpdaterListener === "function") {
+      removeUpdaterListener();
+      removeUpdaterListener = null;
+    }
+  });
+
+  settingsSuppressToggle?.addEventListener("change", () => {
+    localStorage.setItem(SUPPRESS_UPDATES_KEY, settingsSuppressToggle.checked ? "true" : "false");
+    syncUpdateSettings();
+  });
+
+  settingsClearIgnoredBtn?.addEventListener("click", () => {
+    localStorage.removeItem(IGNORED_VERSION_KEY);
+    syncUpdateSettings();
+  });
+
+  settingsCheckUpdateBtn?.addEventListener("click", async () => {
+    const bridge = window.bairui;
+    if (!bridge?.isElectron) return;
+    setUpdateStatusText("正在检查更新…", "checking");
+    setUpdateFeedback("");
+    showUpdateButtons({ checkDisabled: true, checkLabel: "检查中…" });
+    try {
+      const result = await bridge.checkForUpdates?.();
+      if (result?.ok === false && result?.message) {
+        setUpdateStatusText(`更新失败：${result.message}`, "error");
+        showUpdateButtons({ checkLabel: "重试" });
+      }
+    } catch (err) {
+      setUpdateStatusText(`更新失败：${err?.message || "请稍后再试"}`, "error");
+      showUpdateButtons({ checkLabel: "重试" });
+    }
+  });
+
+  settingsDownloadUpdateBtn?.addEventListener("click", async () => {
+    const bridge = window.bairui;
+    if (!bridge?.isElectron) return;
+    setUpdateStatusText("开始下载…", "downloading");
+    showUpdateButtons({ check: false });
+    try {
+      await bridge.startDownload?.();
+    } catch (err) {
+      setUpdateStatusText(`下载失败：${err?.message || "请稍后再试"}`, "error");
+      showUpdateButtons({ checkLabel: "重试" });
+    }
+  });
+
+  settingsInstallUpdateBtn?.addEventListener("click", () => {
+    window.bairui?.quitAndInstall?.();
+  });
+
+  settingsIgnoreUpdateBtn?.addEventListener("click", () => {
+    if (pendingUpdateVersion) {
+      localStorage.setItem(IGNORED_VERSION_KEY, pendingUpdateVersion);
+      syncUpdateSettings();
+    }
+    setUpdateStatusText("已忽略此版本", "muted");
+    showUpdateButtons({ checkLabel: "检查更新" });
+  });
+})();
+
+// ── Voice panel ──
+initVoicePanel({
+  btnId:      "voice-btn",
+  panelId:    "voice-panel",
+  canvasId:   "voice-canvas",
+  statusId:   "voice-status",
+  transcriptId: "voice-transcript",
+  getChatInput:  () => document.getElementById("msg-input"),
+  getSendBtn:    () => document.getElementById("send-btn"),
+  getSendMessage: (options) => chat?.send?.(options),
+  getLang:       () => localStorage.getItem("bairui-voice-lang") || "zh-CN",
+  getAutoSend:   () => localStorage.getItem("bairui-voice-auto-send") !== "false",
+  getAutoMic:    () => localStorage.getItem("bairui-voice-auto-mic") === "true",
+});
+
+// ── Hotspot mode ──
+initHotspot().catch((err) => console.warn('[Hotspot] init failed:', err));
+
+// ── Media modes (video / image) ──
+(function initMediaModes() {
+  const videoBtn      = document.getElementById("video-btn");
+  const videoExitBtn  = document.getElementById("video-exit-btn");
+  const videoFeed     = document.getElementById("video-feed");
+  const videoFrame    = document.getElementById("video-frame");
+  const videoSurface  = document.getElementById("video-surface");
+  const videoBackdrop = document.getElementById("video-backdrop");
+  const videoTitle    = document.getElementById("video-title");
+  const imageExitBtn  = document.getElementById("image-exit-btn");
+  const imageDisplay  = document.getElementById("image-display");
+  const imageSurface  = document.getElementById("image-surface");
+  const imageTitle    = document.getElementById("image-title");
+
+  let videoStream = null;
+  let videoActive = false;
+  let imageActive = false;
+  let videoKind   = "empty";
+  let currentVideoSource = "";
+  let currentVideoStart = null;
+  // wall-clock ms when current play started/resumed; used to estimate elapsed
+  // for cross-origin iframes (bilibili) where we can't read currentTime.
+  let playResumeAt = null;
+
+  function normalizeUrl(url = "") {
+    return String(url || "").trim();
+  }
+
+  function localPathToUrl(src) {
+    const s = String(src || "").trim();
+    if (!s) return "";
+    if (/^https?:\/\//i.test(s)) return s;
+    // Local path (file:// or absolute) → backend HTTP media endpoint to avoid file:// CORS restriction
+    let resolved = s;
+    if (/^file:\/\//i.test(s)) {
+      resolved = decodeURIComponent(s.replace(/^file:\/\/\//i, "").replace(/^file:\/\//i, ""));
+    }
+    const filename = resolved.split(/[\\/]/).filter(Boolean).pop() || "";
+    if (!filename) return s;
+    return "/media/music/" + encodeURIComponent(filename);
+  }
+
+  function extractYoutubeId(url) {
+    return normalizeUrl(url).match(
+      /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([A-Za-z0-9_-]{6,})/
+    )?.[1] || null;
+  }
+
+  function youtubeEmbedUrl(url, { autoplay = false, start = null } = {}) {
+    const id = extractYoutubeId(url);
+    if (!id) return null;
+    const params = new URLSearchParams({
+      enablejsapi: "1",
+      playsinline: "1",
+      rel: "0",
+      autoplay: autoplay ? "1" : "0",
+    });
+    if (Number.isFinite(Number(start))) params.set("start", String(Math.max(0, Math.round(Number(start)))));
+    return `https://www.youtube.com/embed/${id}?${params.toString()}`;
+  }
+
+  function extractBilibiliId(url) {
+    const raw = normalizeUrl(url);
+    return raw.match(/\/video\/(BV[A-Za-z0-9]+)/i)?.[1]
+        || raw.match(/\b(BV[A-Za-z0-9]+)\b/i)?.[1]
+        || null;
+  }
+
+  function bilibiliEmbedUrl(url, { autoplay = false, start = null } = {}) {
+    const bvid = extractBilibiliId(url);
+    if (!bvid) return null;
+    const params = new URLSearchParams({
+      bvid,
+      autoplay: autoplay ? "1" : "0",
+      high_quality: "1",
+    });
+    if (Number.isFinite(Number(start))) params.set("t", String(Math.max(0, Math.round(Number(start)))));
+    return `https://player.bilibili.com/player.html?${params.toString()}`;
+  }
+
+  function iframeUrlFor(url, options) {
+    return youtubeEmbedUrl(url, options) || bilibiliEmbedUrl(url, options);
+  }
+
+  function saveMediaHistory({ url, title, kind, videoId = null, platform = null }) {
+    fetch(`${API}/media/history`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, title: title || "", kind, videoId, platform }),
+    }).catch(() => {});
+  }
+
+  async function validateYoutubeUrl(url) {
+    try {
+      const oembed = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+      const res = await fetch(oembed, { signal: AbortSignal.timeout(5000) });
+      return res.ok;
+    } catch {
+      return null; // network failure — don't block, allow playback to proceed
+    }
+  }
+
+  function stopCamera() {
+    videoStream?.getTracks().forEach(t => t.stop());
+    videoStream = null;
+  }
+
+  function setPanelVisible(visible) {
+    videoActive = Boolean(visible);
+    document.body.classList.toggle("video-mode", videoActive);
+    videoBtn?.classList.toggle("active", videoActive);
+    if (videoActive) moveVoicePanelToBody();
+    else restoreVoicePanel();
+    window.dispatchEvent(new CustomEvent("bairui:video-mode", {
+      detail: { active: videoActive, kind: videoKind },
+    }));
+  }
+
+  function pauseCurrentVideo() {
+    if (videoKind === "youtube") {
+      postFrameCommand("pauseVideo");
+      playResumeAt = null;
+    } else if (videoKind === "bilibili") {
+      // bilibili iframe 跨域读不到 currentTime，用 wall-clock 估算累计进度
+      if (playResumeAt) {
+        const elapsed = (Date.now() - playResumeAt) / 1000;
+        currentVideoStart = (Number(currentVideoStart) || 0) + elapsed;
+      }
+      playResumeAt = null;
+      reloadFrameAutoplay(false);
+    } else if (videoKind === "file") {
+      try { videoFeed?.pause?.(); } catch {}
+      playResumeAt = null;
+    }
+  }
+
+  function resumeCurrentVideo() {
+    if (videoKind === "youtube") {
+      postFrameCommand("playVideo");
+      playResumeAt = Date.now();
+    } else if (videoKind === "bilibili") {
+      reloadFrameAutoplay(true);
+      playResumeAt = Date.now();
+    } else if (videoKind === "file") {
+      videoFeed?.play?.().catch(() => {});
+      playResumeAt = Date.now();
+    }
+  }
+
+  function resetVideoSurface() {
+    stopCamera();
+    if (videoFeed) {
+      try { videoFeed.pause(); } catch {}
+      videoFeed.removeAttribute("src");
+      videoFeed.srcObject = null;
+      videoFeed.hidden = true;
+      videoFeed.load?.();
+    }
+    if (videoFrame) {
+      videoFrame.src = "about:blank";
+      videoFrame.hidden = true;
+    }
+    if (videoBackdrop) videoBackdrop.style.backgroundImage = "";
+    videoSurface?.classList.remove("has-media");
+    videoKind = "empty";
+    currentVideoSource = "";
+    currentVideoStart = null;
+    playResumeAt = null;
+  }
+
+  function toggleVideoPanelVisibility() {
+    if (videoActive) {
+      pauseCurrentVideo();
+      setPanelVisible(false);
+    } else {
+      if (musicActive) closeMusicPanel();
+      setPanelVisible(true);
+      if (videoKind !== "empty") resumeCurrentVideo();
+    }
+  }
+
+  function closeAndDestroyVideo() {
+    setPanelVisible(false);
+    resetVideoSurface();
+  }
+
+  function setVideoModeActive(active) {
+    if (!active) {
+      closeAndDestroyVideo();
+    } else {
+      setPanelVisible(true);
+    }
+  }
+
+  function setBackdrop(kind, url) {
+    if (!videoBackdrop) return;
+    if (kind === "youtube") {
+      const id = extractYoutubeId(url);
+      if (id) {
+        videoBackdrop.style.backgroundImage =
+          `url(https://img.youtube.com/vi/${id}/maxresdefault.jpg)`;
+        return;
+      }
+    }
+    // Bilibili / file / camera: solid color fallback (CSS already sets #000 background)
+    videoBackdrop.style.backgroundImage = "";
+  }
+
+  async function showCamera({ title = "Camera", autoplay = true } = {}) {
+    setPanelVisible(true);
+    resetVideoSurface();
+    if (videoTitle) videoTitle.textContent = title;
+    try {
+      videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      if (videoFeed) {
+        videoFeed.hidden = false;
+        videoFeed.muted = true;
+        videoFeed.srcObject = videoStream;
+        if (autoplay) videoFeed.play?.().catch(() => {});
+      }
+      videoSurface?.classList.add("has-media");
+      videoKind = "camera";
+    } catch (e) {
+      console.warn("Camera access failed:", e);
+    }
+  }
+
+  async function showVideo({
+    url = "", title = "Video", autoplay = true,
+    muted = false, volume = null, currentTime = null, camera = false,
+  } = {}) {
+    if (camera) { showCamera({ title, autoplay }); return; }
+
+    const source = normalizeUrl(url);
+    if (musicActive) closeMusicPanel();
+    setPanelVisible(true);
+    resetVideoSurface();
+    currentVideoSource = source;
+    currentVideoStart = Number.isFinite(Number(currentTime)) ? Math.max(0, Number(currentTime)) : null;
+    if (videoTitle) videoTitle.textContent = title || "Video";
+
+    const embedUrl = iframeUrlFor(source, { autoplay, start: currentTime });
+    if (embedUrl && videoFrame) {
+      videoFrame.hidden = false;
+      videoFrame.src = embedUrl;
+      videoSurface?.classList.add("has-media");
+      videoKind = embedUrl.includes("youtube.com") ? "youtube" : "bilibili";
+      if (autoplay) playResumeAt = Date.now();
+
+      setBackdrop(videoKind, source);
+      saveMediaHistory({
+        url: source,
+        title,
+        kind: videoKind,
+        videoId: videoKind === "youtube" ? extractYoutubeId(source) : extractBilibiliId(source),
+        platform: videoKind,
+      });
+
+      if (videoKind === "youtube") {
+        validateYoutubeUrl(source).then(ok => {
+          if (ok === false) console.warn("[Media] YouTube video may not play (region block / private / deleted):", source);
+        });
+      }
+      return;
+    }
+
+    if (videoFeed && source) {
+      videoFeed.hidden = false;
+      videoFeed.src = source;
+      videoFeed.muted = Boolean(muted);
+      if (Number.isFinite(Number(volume))) videoFeed.volume = Math.max(0, Math.min(1, Number(volume)));
+      if (Number.isFinite(Number(currentTime))) videoFeed.currentTime = Math.max(0, Number(currentTime));
+      videoSurface?.classList.add("has-media");
+      videoKind = "file";
+      saveMediaHistory({ url: source, title, kind: "file" });
+      if (autoplay) {
+        videoFeed.play?.().catch(() => {});
+        playResumeAt = Date.now();
+      }
+    }
+  }
+
+  function postFrameCommand(command, args = []) {
+    if (!videoFrame?.contentWindow || videoFrame.hidden) return;
+    if (videoKind === "youtube") {
+      videoFrame.contentWindow.postMessage(JSON.stringify({
+        event: "command",
+        func: command,
+        args,
+      }), "*");
+    }
+  }
+
+  function reloadFrameAutoplay(autoplay) {
+    if (!videoFrame || videoFrame.hidden || !currentVideoSource) return;
+    const nextUrl = iframeUrlFor(currentVideoSource, {
+      autoplay,
+      start: currentVideoStart,
+    });
+    if (nextUrl) videoFrame.src = nextUrl;
+  }
+
+  function controlVideo({ action, volume, currentTime, autoplay } = {}) {
+    const op = action || (autoplay ? "play" : null);
+    if (op === "hide" || op === "close") { closeAndDestroyVideo(); return; }
+    if (op === "play") resumeCurrentVideo();
+    if (op === "pause") pauseCurrentVideo();
+    if (Number.isFinite(Number(volume))) {
+      const v = Math.max(0, Math.min(1, Number(volume)));
+      if (videoFeed) { videoFeed.volume = v; videoFeed.muted = v === 0; }
+      postFrameCommand("setVolume", [Math.round(v * 100)]);
+    }
+    if (Number.isFinite(Number(currentTime))) {
+      const t = Math.max(0, Number(currentTime));
+      currentVideoStart = t;
+      if (videoFeed) videoFeed.currentTime = t;
+      postFrameCommand("seekTo", [t, true]);
+      // seek 后重置 elapsed 基线，下次 pause 时累计才正确
+      if (playResumeAt) playResumeAt = Date.now();
+    }
+  }
+
+  function setImageModeActive(active) {
+    imageActive = Boolean(active);
+    document.body.classList.toggle("image-mode", imageActive);
+    if (!imageActive && imageDisplay) {
+      imageDisplay.removeAttribute("src");
+      imageDisplay.alt = "";
+      imageSurface?.classList.remove("has-media");
+    }
+  }
+
+  function showImage({ url = "", title = "Image", alt = "" } = {}) {
+    const source = normalizeUrl(url);
+    setImageModeActive(true);
+    if (imageTitle) imageTitle.textContent = title || "Image";
+    if (imageDisplay && source) {
+      imageDisplay.src = source;
+      imageDisplay.alt = alt || title || "";
+      imageSurface?.classList.add("has-media");
+    }
+  }
+
+  function handleMediaCommand(payload = {}) {
+    const mode   = payload.mode || payload.kind;
+    const action = payload.action || "show";
+    if (mode === "image") {
+      if (action === "hide" || action === "close") setImageModeActive(false);
+      else showImage(payload);
+      return { ok: true, mode: "image", action };
+    }
+    if (mode === "camera") {
+      if (action === "hide" || action === "close") closeAndDestroyVideo();
+      else showCamera(payload);
+      return { ok: true, mode: "camera", action };
+    }
+    if (mode === "video") {
+      if (action === "show" || payload.url || payload.camera) showVideo(payload);
+      else controlVideo(payload);
+      return { ok: true, mode: "video", action };
+    }
+    if (mode === "music") {
+      if (action === "show" || payload.src || payload.playlist) showMusic(payload);
+      else controlMusic(payload);
+      return { ok: true, mode: "music", action };
+    }
+    return { ok: false, error: "unknown media mode" };
+  }
+
+  // ── Music mode ────────────────────────────────────────────────────────────
+  const musicBtn       = document.getElementById("music-btn");
+  const musicExitBtn   = document.getElementById("music-exit-btn");
+  const musicAudio     = document.getElementById("music-audio");
+  const musicPlayBtn   = document.getElementById("music-play");
+  const musicPrevBtn   = document.getElementById("music-prev");
+  const musicNextBtn   = document.getElementById("music-next");
+  const musicSeek      = document.getElementById("music-seek");
+  const musicVolInput  = document.getElementById("music-vol");
+  const musicTimeCur   = document.getElementById("music-time-cur");
+  const musicTimeTotal = document.getElementById("music-time-total");
+  const musicMetaTitle  = document.getElementById("music-meta-title");
+  const musicMetaArtist = document.getElementById("music-meta-artist");
+  const musicCoverEl    = document.getElementById("music-cover");
+  const musicCoverTitle = document.getElementById("music-cover-title");
+  const musicCoverArtist = document.getElementById("music-cover-artist");
+  const musicLyricsScroll = document.getElementById("music-lyrics-scroll");
+  const musicNoLyrics     = document.getElementById("music-no-lyrics");
+
+  let musicActive  = false;
+  let musicPlaying = false;
+  let musicWasPlayingBeforeHide = false;
+  let lrcLines     = [];
+  let playlist     = [];
+  let playlistIdx  = 0;
+  let isSeeking    = false;
+
+  function parseLrc(text) {
+    const lines = [];
+    const re = /\[(\d+):(\d{1,2}(?:\.\d+)?)\](.*)/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const t = parseInt(m[1], 10) * 60 + parseFloat(m[2]);
+      const txt = m[3].trim();
+      if (txt) lines.push({ time: t, text: txt });
+    }
+    return lines.sort((a, b) => a.time - b.time);
+  }
+
+  function fmtTime(s) {
+    if (!isFinite(s) || s < 0) return "0:00";
+    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  }
+
+  function setMusicPanelVisible(visible) {
+    musicActive = Boolean(visible);
+    document.body.classList.toggle("music-mode", musicActive);
+    musicBtn?.classList.toggle("active", musicActive);
+    window.dispatchEvent(new CustomEvent("bairui:music-mode", {
+      detail: { active: musicActive },
+    }));
+  }
+
+  function setMusicPlaying(playing) {
+    musicPlaying = Boolean(playing);
+    document.body.classList.toggle("music-playing", musicPlaying);
+    if (musicPlayBtn) musicPlayBtn.textContent = musicPlaying ? "⏸" : "▶";
+    if (musicPlaying) {
+      musicAudio?.play?.().catch(() => {});
+    } else {
+      musicAudio?.pause?.();
+    }
+  }
+
+  function loadLrc(lrcText) {
+    lrcLines = lrcText ? parseLrc(lrcText) : [];
+    if (musicLyricsScroll) {
+      musicLyricsScroll.innerHTML = lrcLines
+        .map((l, i) => `<div class="lrc-line" data-idx="${i}">${l.text}</div>`)
+        .join("");
+    }
+    if (musicNoLyrics) musicNoLyrics.hidden = lrcLines.length > 0;
+  }
+
+  function syncLyrics(currentTime) {
+    if (!lrcLines.length || !musicLyricsScroll) return;
+    let active = -1;
+    for (let i = 0; i < lrcLines.length; i++) {
+      if (lrcLines[i].time <= currentTime + 0.3) active = i;
+      else break;
+    }
+    if (active < 0) return;
+    const lines = musicLyricsScroll.querySelectorAll(".lrc-line");
+    lines.forEach((el, i) => el.classList.toggle("active", i === active));
+    const activeLine = lines[active];
+    if (activeLine) {
+      const pane = document.getElementById("music-lyrics-pane");
+      if (pane) pane.scrollTo({ top: activeLine.offsetTop - pane.clientHeight / 2 + activeLine.clientHeight / 2, behavior: "smooth" });
+    }
+  }
+
+  function loadTrack(index, autoplay = true) {
+    const track = playlist[index];
+    if (!track || !musicAudio) return;
+
+    musicAudio.src = localPathToUrl(track.src || "");
+    musicAudio.volume = parseFloat(musicVolInput?.value ?? "0.8");
+
+    const title  = track.title  || "未知曲目";
+    const artist = track.artist || "";
+    if (musicMetaTitle)  musicMetaTitle.textContent  = title;
+    if (musicMetaArtist) musicMetaArtist.textContent = artist;
+    if (musicCoverTitle)  musicCoverTitle.textContent  = title.slice(0, 14);
+    if (musicCoverArtist) musicCoverArtist.textContent = artist;
+    if (musicTimeCur)   musicTimeCur.textContent   = "0:00";
+    if (musicTimeTotal) musicTimeTotal.textContent = "0:00";
+    if (musicSeek)      { musicSeek.value = "0"; musicSeek.max = "100"; }
+
+    if (track.cover && musicCoverEl) {
+      musicCoverEl.style.backgroundImage = `url(${track.cover})`;
+      musicCoverEl.style.background = "";
+    } else if (musicCoverEl) {
+      musicCoverEl.style.backgroundImage = "";
+      let hash = 0;
+      for (const ch of title) hash = (hash * 31 + ch.charCodeAt(0)) & 0xffffffff;
+      const hue = Math.abs(hash) % 360;
+      musicCoverEl.style.background = `hsl(${hue}, 45%, 32%)`;
+    }
+
+    loadLrc(track.lrc || "");
+    if (autoplay) setMusicPlaying(true);
+  }
+
+  function showMusic({
+    src = "", title = "", artist = "", lrc = "", cover = "",
+    autoplay = true, playlist: pl = null,
+  } = {}) {
+    if (videoActive) closeAndDestroyVideo();
+    setMusicPanelVisible(true);
+    if (pl && pl.length) {
+      playlist = pl;
+    } else {
+      playlist = [{ src, title, artist, lrc, cover }];
+    }
+    playlistIdx = 0;
+    loadTrack(0, autoplay);
+  }
+
+  function closeMusicPanel() {
+    setMusicPlaying(false);
+    setMusicPanelVisible(false);
+    if (musicAudio) musicAudio.src = "";
+    lrcLines = [];
+    if (musicLyricsScroll) musicLyricsScroll.innerHTML = "";
+    if (musicNoLyrics) musicNoLyrics.hidden = false;
+  }
+
+  function controlMusic({ action, volume, currentTime } = {}) {
+    if (action === "hide" || action === "close") { closeMusicPanel(); return; }
+    if (action === "play")  setMusicPlaying(true);
+    if (action === "pause") setMusicPlaying(false);
+    if (Number.isFinite(Number(volume))) {
+      const v = Math.max(0, Math.min(1, Number(volume)));
+      if (musicAudio) musicAudio.volume = v;
+      if (musicVolInput) musicVolInput.value = String(v);
+    }
+    if (Number.isFinite(Number(currentTime)) && musicAudio) {
+      musicAudio.currentTime = Math.max(0, Number(currentTime));
+    }
+  }
+
+  function toggleMusicPanelVisibility() {
+    if (musicActive) {
+      musicWasPlayingBeforeHide = musicPlaying;
+      setMusicPlaying(false);
+      setMusicPanelVisible(false);
+    } else if (musicAudio?.src) {
+      if (videoActive) closeAndDestroyVideo();
+      setMusicPanelVisible(true);
+      if (musicWasPlayingBeforeHide) setMusicPlaying(true);
+    }
+  }
+
+  if (musicAudio) {
+    musicAudio.addEventListener("loadedmetadata", () => {
+      if (musicTimeTotal) musicTimeTotal.textContent = fmtTime(musicAudio.duration);
+      if (musicSeek) musicSeek.max = String(musicAudio.duration || 100);
+    });
+    musicAudio.addEventListener("timeupdate", () => {
+      if (isSeeking) return;
+      const t = musicAudio.currentTime;
+      if (musicTimeCur) musicTimeCur.textContent = fmtTime(t);
+      if (musicSeek && musicAudio.duration) musicSeek.value = String(t);
+      syncLyrics(t);
+    });
+    musicAudio.addEventListener("ended", () => {
+      setMusicPlaying(false);
+      if (playlistIdx < playlist.length - 1) {
+        playlistIdx++;
+        loadTrack(playlistIdx, true);
+      }
+    });
+  }
+
+  musicPlayBtn?.addEventListener("click", () => setMusicPlaying(!musicPlaying));
+  musicPrevBtn?.addEventListener("click", () => {
+    if (playlistIdx > 0) { playlistIdx--; loadTrack(playlistIdx, musicPlaying); }
+    else if (musicAudio) musicAudio.currentTime = 0;
+  });
+  musicNextBtn?.addEventListener("click", () => {
+    if (playlistIdx < playlist.length - 1) { playlistIdx++; loadTrack(playlistIdx, musicPlaying); }
+  });
+  musicVolInput?.addEventListener("input", () => {
+    if (musicAudio) musicAudio.volume = parseFloat(musicVolInput.value);
+  });
+  musicSeek?.addEventListener("mousedown", () => { isSeeking = true; });
+  musicSeek?.addEventListener("input", () => {
+    if (musicTimeCur) musicTimeCur.textContent = fmtTime(parseFloat(musicSeek.value));
+  });
+  musicSeek?.addEventListener("change", () => {
+    if (musicAudio) musicAudio.currentTime = parseFloat(musicSeek.value);
+    isSeeking = false;
+  });
+  musicExitBtn?.addEventListener("click", closeMusicPanel);
+  musicBtn?.addEventListener("click", toggleMusicPanelVisibility);
+
+  window.addEventListener("keydown", (e) => {
+    if (e.target?.tagName === "INPUT" || e.target?.tagName === "TEXTAREA" || e.target?.isContentEditable) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "m" || e.key === "M") {
+      e.preventDefault();
+      toggleMusicPanelVisibility();
+    }
+  });
+
+  window.bairuiMedia = { handle: handleMediaCommand, showVideo, controlVideo, showImage, showCamera, showMusic, controlMusic };
+  window.addEventListener("bairui:media", (event) => handleMediaCommand(event.detail || {}));
+
+  // Push-to-talk：按住空格说话；Agent 正在说话时按下空格直接打断
+  (() => {
+    let pttHeld = false;
+    const isSpace = (e) => e.code === "Space" || e.key === " " || e.key === "Spacebar";
+    const isTypingTarget = (t) =>
+      !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+
+    window.addEventListener("keydown", (e) => {
+      if (!isSpace(e)) return;
+      if (isTypingTarget(e.target)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      if (e.repeat) return;
+      if (pttHeld) return;
+      pttHeld = true;
+      // 不论是否在播，stopTTS 内部已做 no-op 守卫
+      try { window.stopTTS?.(); } catch {}
+      window.bairuiVoice?.pttStart?.();
+    }, { capture: true });
+
+    window.addEventListener("keyup", (e) => {
+      if (!isSpace(e)) return;
+      if (!pttHeld) return;
+      pttHeld = false;
+      e.preventDefault();
+      window.bairuiVoice?.pttEnd?.();
+    }, { capture: true });
+
+    // 切到后台/失焦（如点开 DevTools、切窗口）时如果还按着，强制释放 PTT，避免 mic 永远不关。
+    // 关键：用 send:false —— 失焦不是"主动松手发送"，不能把没说完的半句误发出去。
+    window.addEventListener("blur", () => {
+      if (!pttHeld) return;
+      pttHeld = false;
+      window.bairuiVoice?.pttEnd?.({ send: false });
+    });
+  })();
+
+  videoBtn?.addEventListener("click", toggleVideoPanelVisibility);
+  videoExitBtn?.addEventListener("click", closeAndDestroyVideo);
+  imageExitBtn?.addEventListener("click", () => setImageModeActive(false));
+
+  window.addEventListener("keydown", (e) => {
+    if (e.target?.tagName === "INPUT" || e.target?.tagName === "TEXTAREA" || e.target?.isContentEditable) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "v" || e.key === "V") {
+      e.preventDefault();
+      toggleVideoPanelVisibility();
+    }
+    // H key: toggle hotspot mode
+    if (e.key === "h" || e.key === "H") {
+      e.preventDefault();
+      toggleHotspot();
+    }
+  });
+})();
+
+
+// ── AI 视频生成模式（Seedance · 生成工作台）──
+// 三段式：生成栏(多任务队列) + 播放区 + 输入区。全程由 aivideo_mode SSE 事件驱动。
+(function initAIVideoMode(){
+  var el = function(id){ return document.getElementById(id); };
+  var panel = el("aivideo-panel");
+  if (!panel) return;
+  var queueEl=el("aivideo-queue"), stage=el("aivideo-stage"), stageEmpty=el("aivideo-stage-empty"),
+      feed=el("aivideo-feed"), dlBtn=el("aivideo-dl"), playerMeta=el("aivideo-player-meta"),
+      dropzone=el("aivideo-dropzone"), modeTag=el("aivideo-modetag"), modeHint=el("aivideo-modehint"),
+      promptInput=el("aivideo-prompt-input"), ratioSel=el("aivideo-ratio"), resSel=el("aivideo-resolution"),
+      durSel=el("aivideo-duration"), submitBtn=el("aivideo-submit"), composeErr=el("aivideo-compose-err"),
+      fileInput=el("aivideo-file-input"), newBtn=el("aivideo-new-btn"), exitBtn=el("aivideo-exit-btn");
+
+  var active=false, jobs=[], selId=null, images=[], submitting=false;
+
+  var toastEl=document.createElement("div"); toastEl.className="aivideo-toast"; document.body.appendChild(toastEl);
+  var toastTimer=null;
+  function showToast(html){ toastEl.innerHTML=html; toastEl.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(function(){ toastEl.classList.remove("show"); },3200); }
+
+  function mediaUrl(u){ var s=String(u||""); if(!s) return ""; return s.charAt(0)==="/" ? (API+s) : s; }
+  function modeLabel(m){ return m==="flf"?"首尾帧":(m==="image"?"图生视频":"文生视频"); }
+  function jobById(id){ for(var i=0;i<jobs.length;i++){ if(jobs[i].id===id) return jobs[i]; } return null; }
+
+  // —— 感知同步：把「面板开关 + 提示词草稿」实时回传后端，让 agent 能直接看到用户在框里写了什么 ——
+  var draftTimer=null, lastDraftSent=null;
+  function syncDraft(immediate){
+    clearTimeout(draftTimer);
+    var doSync=function(){
+      var payload=JSON.stringify({ open:active, prompt:(promptInput.value||"") });
+      if(payload===lastDraftSent) return;            // 没变化就不发，省流量
+      lastDraftSent=payload;
+      try{ fetch(API+"/aivideo/draft",{method:"POST",headers:{"Content-Type":"application/json"},body:payload}).catch(function(){}); }catch(e){}
+    };
+    if(immediate) doSync(); else draftTimer=setTimeout(doSync,400);
+  }
+
+  function setActive(on){
+    active=!!on; document.body.classList.toggle("aivideo-mode", active);
+    if(active){ try{ window.bairuiMedia&&window.bairuiMedia.controlVideo&&window.bairuiMedia.controlVideo({action:"pause"}); }catch(e){} document.body.classList.remove("video-mode"); }
+    syncDraft(true);   // 开/关状态立即同步
+  }
+
+  // —— 生成栏 ——
+  function renderQueue(){
+    queueEl.innerHTML="";
+    if(!jobs.length){ var em=document.createElement("div"); em.className="aivideo-queue-empty"; em.textContent="还没有生成任务"; queueEl.appendChild(em); return; }
+    jobs.forEach(function(j){
+      var t=document.createElement("div");
+      t.className="av-tile "+(j.status==="gen"?"gen":j.status==="fail"?"fail":"")+(j.id===selId?" sel":"");
+      var fr=document.createElement("div"); fr.className="frame";
+      if(j.status==="done"){
+        var v=document.createElement("video"); v.className="thumb"; v.src=mediaUrl(j.videoUrl); v.muted=true; v.playsInline=true; v.preload="metadata"; fr.appendChild(v);
+        var pl=document.createElement("div"); pl.className="play"; pl.textContent="▶"; fr.appendChild(pl);
+        if(j.dur){ var d=document.createElement("div"); d.className="dur"; d.textContent=j.dur+"s"; fr.appendChild(d); }
+      } else if(j.status==="gen"){
+        var orb=document.createElement("div"); orb.className="av-orb"; orb.innerHTML="<i></i><i></i>"; fr.appendChild(orb);
+        var gb=document.createElement("div"); gb.className="genbadge"; gb.textContent="生成中"; fr.appendChild(gb);
+        var gt=document.createElement("div"); gt.className="gentime"; gt.dataset.start=String(j.start||Date.now()); gt.textContent="0:00"; fr.appendChild(gt);
+      } else {
+        var x=document.createElement("div"); x.className="x"; x.textContent="!"; fr.appendChild(x);
+      }
+      if(j.status!=="gen"){ var rm=document.createElement("button"); rm.className="rm"; rm.textContent="×"; rm.onclick=function(e){ e.stopPropagation(); removeJob(j.id); }; fr.appendChild(rm); }
+      t.appendChild(fr);
+      var lb=document.createElement("div"); lb.className="label";
+      lb.textContent = j.status==="fail" ? ("失败 · "+(j.error||"")) : (j.prompt || modeLabel(j.mode));
+      t.appendChild(lb);
+      t.onclick=function(){ if(j.status==="done") loadPlayer(j); };
+      queueEl.appendChild(t);
+    });
+  }
+  function tickTimers(){ var now=Date.now(); var list=queueEl.querySelectorAll(".gentime"); for(var i=0;i<list.length;i++){ var s=Math.floor((now-Number(list[i].dataset.start))/1000); if(s<0)s=0; list[i].textContent=Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); } }
+  setInterval(tickTimers,500);
+  function removeJob(id){ jobs=jobs.filter(function(j){ return j.id!==id; }); if(selId===id){ selId=null; clearPlayer(); } renderQueue(); }
+
+  // —— 重建历史：从后端拉已完成视频（newest-first），合并进 jobs。 ——
+  // 修复「面板关闭重开 / app 重启后队列空了」：jobs[] 原本纯内存，重载即丢，
+  // 而视频其实还在磁盘。这里按 id 去重，不覆盖本会话进行中的瓦片。
+  function hydrateHistory(){
+    fetch(API+"/aivideo/history").then(function(r){ return r.json(); }).then(function(d){
+      if(!d||!d.ok||!Array.isArray(d.jobs)) return;
+      var changed=false;
+      d.jobs.forEach(function(h){
+        if(!h||!h.id) return;
+        var ex=jobById(h.id);
+        if(ex){
+          if(ex.status!=="done"&&h.videoUrl){ ex.status="done"; ex.videoUrl=h.videoUrl; ex.mode=ex.mode||h.mode; ex.prompt=ex.prompt||h.prompt; ex.res=ex.res||h.res; ex.ratio=ex.ratio||h.ratio; ex.dur=ex.dur||h.dur; changed=true; }
+          return;
+        }
+        jobs.push({ id:h.id, status:"done", videoUrl:h.videoUrl, mode:h.mode, prompt:h.prompt, res:h.res, ratio:h.ratio, dur:h.dur });
+        changed=true;
+      });
+      if(changed) renderQueue();
+    }).catch(function(){});
+  }
+
+  // —— 播放区 ——
+  function clearPlayer(){ try{ feed.pause(); }catch(e){} feed.removeAttribute("src"); if(feed.load) feed.load(); feed.hidden=true; dlBtn.hidden=true; stageEmpty.hidden=false; if(stage) stage.classList.add("is-empty"); playerMeta.textContent=""; }
+  function loadPlayer(j){
+    selId=j.id; feed.src=mediaUrl(j.videoUrl); feed.hidden=false; feed.muted=false; dlBtn.hidden=false; stageEmpty.hidden=true; if(stage) stage.classList.remove("is-empty");
+    playerMeta.innerHTML="<b>"+modeLabel(j.mode)+"</b>"+(j.res?" · "+j.res:"")+(j.ratio?" · "+j.ratio:"")+(j.dur?" · "+j.dur+"s":"");
+    if(feed.play) feed.play().catch(function(){}); renderQueue();
+  }
+  function download(){
+    if(!selId) return; dlBtn.disabled=true; var old=dlBtn.textContent; dlBtn.textContent="保存中…";
+    fetch(API+"/aivideo/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobId:selId})})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(d&&d.ok){ showToast('已保存到　<span class="mono">'+(d.path||"")+'</span>'); } else { showToast('保存失败：'+((d&&d.error)||"未知错误")); } })
+      .catch(function(e){ showToast('保存失败：'+e.message); })
+      .then(function(){ dlBtn.disabled=false; dlBtn.textContent=old; });
+  }
+  dlBtn.addEventListener("click", download);
+
+  // —— 输入区：加图（点击/拖拽/粘贴，最多 2 张）——
+  function renderDropzone(){
+    dropzone.innerHTML="";
+    images.forEach(function(src,i){
+      var cell=document.createElement("div"); cell.className="av-imgcell";
+      var im=document.createElement("img"); im.src=src; cell.appendChild(im);
+      var r=document.createElement("div"); r.className="role"; r.textContent=images.length===2?(i===0?"首帧":"尾帧"):"参考图"; cell.appendChild(r);
+      var rm=document.createElement("button"); rm.className="rm"; rm.textContent="×"; rm.onclick=function(e){ e.stopPropagation(); images.splice(i,1); renderDropzone(); updateMode(); }; cell.appendChild(rm);
+      dropzone.appendChild(cell);
+    });
+    if(images.length<2){ var add=document.createElement("div"); add.className="av-addcell"; add.innerHTML='<span class="plus">+</span><span>图片</span><small>点击/拖拽/粘贴</small>'; add.onclick=function(){ fileInput.click(); }; dropzone.appendChild(add); }
+  }
+  var hadImages=false;
+  function updateMode(){
+    var m=images.length>=2?"flf":(images.length===1?"image":"text");
+    // 进入图生/首尾帧默认「适配图片」(输出比例跟随上传图)；退回文生时恢复 16:9。仅在边界切换，尊重用户在同一模式内的手动选择
+    if(images.length>0 && !hadImages){ ratioSel.value="adaptive"; }
+    else if(images.length===0 && hadImages && ratioSel.value==="adaptive"){ ratioSel.value="16:9"; }
+    hadImages=images.length>0;
+    modeTag.textContent=modeLabel(m); modeTag.classList.toggle("flf", m==="flf");
+    modeHint.textContent = m==="text" ? "不加图 = 文生视频 · 1 张 = 图生视频 · 2 张 = 首尾帧"
+      : m==="image" ? "已加 1 张参考图 → 图生视频（比例已设为「适配图片」）"
+      : "已加 2 张 → 首尾帧：第 1 张为「首帧」，第 2 张为「尾帧」";
+  }
+  function addImage(src){ if(images.length>=2) return; images.push(src); renderDropzone(); updateMode(); }
+  fileInput.addEventListener("change", function(e){ var f=e.target.files&&e.target.files[0]; if(f){ var rd=new FileReader(); rd.onload=function(){ addImage(String(rd.result||"")); }; rd.readAsDataURL(f); } e.target.value=""; });
+  ["dragenter","dragover"].forEach(function(ev){ dropzone.addEventListener(ev,function(e){ e.preventDefault(); dropzone.classList.add("dragover"); }); });
+  ["dragleave","drop"].forEach(function(ev){ dropzone.addEventListener(ev,function(e){ e.preventDefault(); dropzone.classList.remove("dragover"); }); });
+  dropzone.addEventListener("drop", function(e){ var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f&&f.type.indexOf("image/")===0){ var rd=new FileReader(); rd.onload=function(){ addImage(String(rd.result||"")); }; rd.readAsDataURL(f); } });
+  document.addEventListener("paste", function(e){
+    if(!active) return; var cd=e.clipboardData||window.clipboardData; var items=cd&&cd.items; if(!items) return;
+    for(var i=0;i<items.length;i++){ if(items[i].type.indexOf("image")===0){ var blob=items[i].getAsFile(); var rd=new FileReader(); rd.onload=function(){ addImage(String(rd.result||"")); }; rd.readAsDataURL(blob); e.preventDefault(); break; } }
+  });
+
+  var PROMPT_MIN=46, PROMPT_MAX=160;
+  function autoGrow(){
+    if(!promptInput.clientWidth){ promptInput.style.height=""; return; } // 面板隐藏(宽0)时测量会拿到错误的 scrollHeight，跳过，交给 CSS min-height
+    promptInput.style.height="auto";
+    var b=promptInput.offsetHeight-promptInput.clientHeight;
+    promptInput.style.height=Math.min(PROMPT_MAX, Math.max(PROMPT_MIN, promptInput.scrollHeight+b))+"px";
+  }
+  promptInput.addEventListener("input", function(){ autoGrow(); syncDraft(); });
+
+  // —— 提交生成 ——
+  function submitGenerate(){
+    if(submitting) return;
+    var prompt=(promptInput.value||"").trim();
+    if(!prompt && images.length===0){ composeErr.textContent="请至少输入一段画面描述（或加一张参考图）"; composeErr.hidden=false; return; }
+    composeErr.hidden=true; submitting=true; submitBtn.disabled=true; submitBtn.textContent="提交中…";
+    fetch(API+"/aivideo/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ prompt:prompt, images:images.slice(0,2), ratio:ratioSel.value, resolution:resSel.value, duration:Number(durSel.value)||5 })})
+      .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+      .then(function(res){
+        submitting=false; submitBtn.disabled=false; submitBtn.textContent="生成";
+        if(!res.ok || !res.d || !res.d.ok){ var d=res.d||{}; composeErr.textContent=d.guide||d.error||"提交失败"; composeErr.hidden=false; return; }
+        promptInput.value=""; autoGrow(); images=[]; renderDropzone(); updateMode(); syncDraft(true);
+      })
+      .catch(function(e){ submitting=false; submitBtn.disabled=false; submitBtn.textContent="生成"; composeErr.textContent="网络错误："+e.message; composeErr.hidden=false; });
+  }
+  submitBtn.addEventListener("click", submitGenerate);
+  promptInput.addEventListener("keydown", function(e){ if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){ e.preventDefault(); submitGenerate(); } });
+
+  // —— 打开/关闭 ——
+  function openPanel(configured){
+    setActive(true);
+    hydrateHistory();   // 每次打开都拉一次历史，重建之前生成的视频队列
+    if(configured===false){ composeErr.textContent="尚未配置媒体运行时 API Key，请先在设置中完成授权后再生成。"; composeErr.hidden=false; }
+    else composeErr.hidden=true;
+    setTimeout(function(){ try{ promptInput.focus(); }catch(e){} },60);
+  }
+  function closePanel(){ setActive(false); try{ feed.pause(); }catch(e){} }
+  newBtn.addEventListener("click", function(){ images=[]; renderDropzone(); updateMode(); promptInput.value=""; autoGrow(); composeErr.hidden=true; syncDraft(true); try{ promptInput.focus(); }catch(e){} });
+  exitBtn.addEventListener("click", closePanel);
+  window.addEventListener("keydown", function(e){ if(!active) return; if(e.key==="Escape"){ if(document.activeElement===promptInput){ promptInput.blur(); return; } e.preventDefault(); closePanel(); } });
+
+  // —— SSE 事件 ——
+  function handle(data){
+    data=data||{}; var action=data.action||"show";
+    if(action==="hide"||action==="close"){ closePanel(); return; }
+    if(action==="open"){ openPanel(data.configured); return; }
+    if(action==="set_prompt"){
+      // agent 在用户确认采用后，把优化好的提示词写回输入框（覆盖草稿）
+      if(!active) setActive(true);
+      promptInput.value=String(data.prompt||""); autoGrow(); syncDraft(true);
+      showToast("已采用优化后的提示词，检查后点「生成」即可");
+      try{ promptInput.focus(); }catch(e){}
+      return;
+    }
+    if(action==="show"){
+      setActive(true);
+      var j=jobById(data.jobId);
+      if(!j){ j={ id:data.jobId, status:"gen", start:Date.now() }; jobs.unshift(j); }
+      j.status="gen"; j.prompt=data.prompt||j.prompt||""; j.mode=data.mode||j.mode||"text";
+      j.res=data.resolution||j.res; j.ratio=data.ratio||j.ratio; j.dur=data.duration||j.dur;
+      if(!j.start) j.start=Date.now();
+      renderQueue(); return;
+    }
+    var job=jobById(data.jobId); if(!job) return;
+    if(action==="progress"){ job.status="gen"; return; }
+    if(action==="ready"){ job.status="done"; job.videoUrl=data.videoUrl; renderQueue(); if(!active) setActive(true); loadPlayer(job); return; }
+    if(action==="error"){ job.status="fail"; job.error=data.message||"生成失败"; renderQueue(); return; }
+  }
+  window.addEventListener("bairui:aivideo", function(e){ handle(e.detail||{}); });
+  window.bairuiAIVideo={ handle:handle, open:openPanel, close:closePanel };
+
+  renderDropzone(); updateMode(); renderQueue(); autoGrow();
+  hydrateHistory();   // 初始化即重建一次（覆盖 app 重启/渲染进程重载后的历史恢复）
+})();

@@ -219,6 +219,22 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path == "/diagnostics/bundle":
             self._send({"service": PUBLIC_SERVICE, "diagnostic_bundle": build_diagnostic_bundle(settings)})
             return
+        if self.path.startswith("/audit/stats"):
+            self._send(
+                {
+                    "service": PUBLIC_SERVICE,
+                    "stats": {
+                        "memory_recall_rate": 0,
+                        "memory_recall_avg": 0,
+                        "memory_extract_rate": 0,
+                        "memory_extract_avg": 0,
+                    },
+                }
+            )
+            return
+        if self.path == "/docs":
+            self._send({"service": PUBLIC_SERVICE, "docs": []})
+            return
         if self.path == "/metrics":
             self._send({"service": PUBLIC_SERVICE, "metrics": build_metrics_summary(settings)})
             return
@@ -254,7 +270,7 @@ class HermesHandler(BaseHTTPRequestHandler):
             session_id = self.path.removeprefix("/agents/session/").removesuffix("/promotions").strip("/")
             self._send({"service": PUBLIC_SERVICE, "agent_promotions": list_agent_promotions(settings, session_id=session_id)})
             return
-        if self.path.startswith("/agents/") and not self.path.startswith("/agents/session"):
+        if self.path.startswith("/agents/") and not self.path.startswith("/agents/session") and not self.path.startswith("/agents/events"):
             agent_id = self.path.removeprefix("/agents/").strip("/")
             agent = get_agent(settings, agent_id)
             if agent is None:
@@ -265,7 +281,7 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path == "/agents/sessions":
             self._send({"service": PUBLIC_SERVICE, "agent_sessions": list_agent_sessions(settings)})
             return
-        if self.path == "/agents/events":
+        if self.path == "/agents/events" or self.path.startswith("/agents/events?"):
             self._send({"service": PUBLIC_SERVICE, "agent_events": list_agent_events(settings)})
             return
         if self.path == "/document/ingests":
@@ -297,6 +313,18 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/audit":
             self._send({"service": PUBLIC_SERVICE, "audit": list_audit_events(settings.data_dir)})
+            return
+        if self.path == "/settings/tts":
+            self._send({"service": PUBLIC_SERVICE, "tts": {"configured": False, "provider": "missing_config"}, "voices": []})
+            return
+        if self.path == "/social/wechat-clawbot/qr":
+            self._send({"service": PUBLIC_SERVICE, "status": "disabled", "message": "channel authorization is managed by bairui approvals"})
+            return
+        if self.path == "/hotspots":
+            self._send({"service": PUBLIC_SERVICE, "hotspots": []})
+            return
+        if self.path == "/aivideo/history":
+            self._send({"service": PUBLIC_SERVICE, "items": [], "history": []})
             return
         if self.path == "/events":
             self._send_sse(list_frontend_events(settings.data_dir))
@@ -1044,7 +1072,8 @@ class HermesHandler(BaseHTTPRequestHandler):
 
     def _send_console_asset(self, asset_ref: str) -> None:
         root = Path(__file__).resolve().parents[2] / "web" / "bairui-console"
-        path = (root / unquote(asset_ref)).resolve()
+        clean_ref = urlparse(asset_ref).path
+        path = (root / unquote(clean_ref)).resolve()
         try:
             path.relative_to(root.resolve())
         except ValueError:
