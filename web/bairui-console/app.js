@@ -19,6 +19,8 @@ const ACTIVATION_DISMISSED_KEY = "bairui.activation.dismissed.v1";
 const UI_ZOOM_STORAGE_KEY = "bairui_ui_zoom_factor";
 const MAX_CHAT_HISTORY = 60;
 const DEFAULT_AGENT_NAME = "bairui";
+const PERSONA_NAME_STORAGE_KEY = "bairui-persona-display-name";
+const PERSONA_IMAGE_STORAGE_KEY = "bairui-persona-image";
 const DEFAULT_UI_ZOOM = 1.1;
 const MIN_UI_ZOOM = 0.8;
 const MAX_UI_ZOOM = 1.8;
@@ -42,6 +44,7 @@ const gravityValue = document.getElementById("gravity-value");
 const repulsionValue = document.getElementById("repulsion-value");
 const nodeSizeValue = document.getElementById("node-size-value");
 const brandNameEl = document.getElementById("agent-brand-name");
+const brandMarkEl = document.querySelector(".brand-mark");
 const graphEl = document.getElementById("graph");
 const focusBlockEl = document.getElementById("focus-block");
 const focusStackEl = document.getElementById("focus-stack");
@@ -63,6 +66,54 @@ function isTyping() { return chat?.isTyping() || false; }
 
 function defaultInputPlaceholder() {
   return `向 ${agentName} 发消息…`;
+}
+
+function normalizePersonaDisplayName(value) {
+  const text = String(value || "").trim().replace(/\s+/g, " ");
+  if (!text || text.toLowerCase() === DEFAULT_AGENT_NAME) return DEFAULT_AGENT_NAME;
+  return text.slice(0, 24);
+}
+
+function loadPersonaDisplayName() {
+  try {
+    return normalizePersonaDisplayName(localStorage.getItem(PERSONA_NAME_STORAGE_KEY));
+  } catch {
+    return DEFAULT_AGENT_NAME;
+  }
+}
+
+function loadPersonaImage() {
+  try {
+    return localStorage.getItem(PERSONA_IMAGE_STORAGE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function cachePersona(persona = {}) {
+  try {
+    localStorage.setItem(PERSONA_NAME_STORAGE_KEY, normalizePersonaDisplayName(persona.display_name));
+    if (persona.image_data_url) localStorage.setItem(PERSONA_IMAGE_STORAGE_KEY, persona.image_data_url);
+    else localStorage.removeItem(PERSONA_IMAGE_STORAGE_KEY);
+  } catch {}
+}
+
+function applyPersonaImage(dataUrl = loadPersonaImage()) {
+  const preview = document.getElementById("settings-persona-avatar-preview");
+  [brandMarkEl, preview].forEach((el) => {
+    if (!el) return;
+    if (dataUrl) {
+      el.style.backgroundImage = `url("${dataUrl}")`;
+      el.style.backgroundSize = "cover";
+      el.style.backgroundPosition = "center";
+      el.classList?.add("has-persona-image");
+    } else {
+      el.style.backgroundImage = "";
+      el.style.backgroundSize = "";
+      el.style.backgroundPosition = "";
+      el.classList?.remove("has-persona-image");
+    }
+  });
 }
 
 function sanitizePublicBrandText(root = document.body) {
@@ -192,13 +243,13 @@ function initUiZoom() {
 }
 
 function setAgentName(nextName) {
-  const normalized = "bairui";
+  const normalized = normalizePersonaDisplayName(nextName);
   agentName = normalized;
-  document.title = `${normalized} Console`;
-  if (brandNameEl) brandNameEl.textContent = `${normalized} Agent`;
-  if (graphEl) graphEl.setAttribute("aria-label", `${normalized} memory graph`);
+  document.title = "bairui Console";
+  if (brandNameEl) brandNameEl.textContent = normalized === DEFAULT_AGENT_NAME ? "bairui Agent" : `${normalized} · bairui Agent`;
+  if (graphEl) graphEl.setAttribute("aria-label", "bairui Obsidian graph");
   const input = document.getElementById("msg-input");
-  if (input && !chat?.isComposerLocked?.() && document.activeElement === input) input.placeholder = defaultInputPlaceholder();
+  if (input && !chat?.isComposerLocked?.()) input.placeholder = defaultInputPlaceholder();
   document.querySelectorAll(".msg-bairui .msg-label").forEach((el) => {
     el.textContent = normalized;
   });
@@ -209,7 +260,17 @@ async function loadAgentProfile() {
     const res = await fetch(`${API}/health`, { cache: "no-store", headers: ownerAuthHeaders() });
     if (!res.ok) return setAgentName(DEFAULT_AGENT_NAME);
     await res.json();
-    setAgentName(DEFAULT_AGENT_NAME);
+    try {
+      const personaRes = await fetch(`${API}/persona`, { cache: "no-store", headers: ownerAuthHeaders() });
+      const personaBody = personaRes.ok ? await personaRes.json() : {};
+      const persona = personaBody.persona || {};
+      cachePersona(persona);
+      setAgentName(persona.display_name || loadPersonaDisplayName());
+      applyPersonaImage(persona.image_data_url || "");
+    } catch {
+      setAgentName(loadPersonaDisplayName());
+      applyPersonaImage();
+    }
   } catch {}
 }
 
@@ -1543,13 +1604,9 @@ function findAnchorNode(memory, nodeMap) {
 async function loadMemories() {
   if (!MEMORY_GRAPH_ENABLED) return;
   try {
-    const [candidates, reports, sources, audit] = await Promise.all([
-      fetch(`${API}/document/memory-candidates`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
-      fetch(`${API}/reports`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
-      fetch(`${API}/source-refs`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
-      fetch(`${API}/audit`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
-    ]);
-    const rows = buildBairuiGraphRows(candidates, reports, sources, audit).slice(0, 120);
+    const graphBody = await fetch(`${API}/obsidian/graph`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {});
+    const graph = graphBody.obsidian_graph || {};
+    const rows = buildObsidianGraphRows(graph).slice(0, 180);
     if (!Array.isArray(rows)) return;
 
     const prevPositions = new Map(nodeData.map(n => [n._nid, {
@@ -1572,15 +1629,50 @@ async function loadMemories() {
       };
     });
 
-    const linkSet = new Set();
-    linkData = [];
-    addRandomVisualLinks(linkSet);
+    linkData = buildObsidianGraphLinks(graph.links || [], new Set(nodeData.map(n => n._nid)));
 
     renderGraph(1.1);
   } catch (error) {
     console.warn("[graph] load failed:", error.message);
     setConnectionState("未连接", false);
   }
+}
+
+function buildObsidianGraphRows(graph = {}) {
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  return nodes.map((item, index) => ({
+    id: item.id || `obsidian:${index}`,
+    mem_id: item.mem_id || item.id || `obsidian:${index}`,
+    title: item.title || item.path || "Obsidian note",
+    content: item.content || item.path || "Obsidian vault note",
+    entities: item.entities || ["obsidian:vault", item.unresolved ? "memory:unresolved" : "memory:note"],
+    kind: item.kind || (item.unresolved ? "obsidian_unresolved" : "obsidian_note"),
+    event_type: item.event_type || (item.unresolved ? "obsidian_unresolved" : "obsidian_note"),
+    path: item.path || "",
+    unresolved: Boolean(item.unresolved),
+  }));
+}
+
+function buildObsidianGraphLinks(links = [], nodeIds = new Set()) {
+  const seen = new Set();
+  return links
+    .map((link, index) => {
+      const source = String(link.source || "");
+      const target = String(link.target || "");
+      if (!source || !target || !nodeIds.has(source) || !nodeIds.has(target)) return null;
+      const id = `obsidian:${source}=>${target}:${link.relation || "wikilink"}:${index}`;
+      if (seen.has(id)) return null;
+      seen.add(id);
+      return {
+        source,
+        target,
+        _lid: id,
+        _kind: "obsidian_wikilink",
+        relation: link.relation || "wikilink",
+        label: link.label || "",
+      };
+    })
+    .filter(Boolean);
 }
 
 function buildBairuiGraphRows(candidatesBody = {}, reportsBody = {}, sourcesBody = {}, auditBody = {}) {
@@ -3067,6 +3159,11 @@ function initTTSSettings() {
   const voiceFeedback   = document.getElementById("settings-voice-feedback");
   const voiceThreshSlider = document.getElementById("settings-voice-threshold");
   const voiceThreshVal    = document.getElementById("settings-voice-threshold-val");
+  const personaNameInput = document.getElementById("settings-persona-name");
+  const personaImageInput = document.getElementById("settings-persona-image");
+  const personaUploadBtn = document.getElementById("settings-persona-upload");
+  const personaClearBtn = document.getElementById("settings-persona-clear");
+  const personaFeedback = document.getElementById("settings-persona-feedback");
 
   if (!settingsBtn || !overlay) return;
 
@@ -3200,6 +3297,52 @@ function initTTSSettings() {
     el.textContent = msg;
     el.className = "settings-feedback" + (isError ? " error" : "");
     setTimeout(() => { el.textContent = ""; el.className = "settings-feedback"; }, 3000);
+  }
+
+  function hydratePersonaSettings(persona = {}) {
+    const displayName = normalizePersonaDisplayName(persona.display_name || loadPersonaDisplayName());
+    const imageDataUrl = persona.image_data_url != null ? persona.image_data_url : loadPersonaImage();
+    if (personaNameInput) personaNameInput.value = displayName === DEFAULT_AGENT_NAME ? "" : displayName;
+    setAgentName(displayName);
+    applyPersonaImage(imageDataUrl || "");
+  }
+
+  async function loadPersonaSettings() {
+    try {
+      const res = await fetch(`${API}/persona`, { cache: "no-store", headers: ownerAuthHeaders() });
+      const data = res.ok ? await res.json() : {};
+      const persona = data.persona || {};
+      cachePersona(persona);
+      hydratePersonaSettings(persona);
+    } catch {
+      hydratePersonaSettings();
+    }
+  }
+
+  async function savePersonaSettings({ displayName, imageDataUrl } = {}) {
+    const persona = {
+      display_name: normalizePersonaDisplayName(displayName ?? personaNameInput?.value ?? loadPersonaDisplayName()),
+      image_data_url: imageDataUrl ?? loadPersonaImage(),
+    };
+    cachePersona(persona);
+    hydratePersonaSettings(persona);
+    try {
+      const res = await fetch(`${API}/persona`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+        body: JSON.stringify(persona),
+      });
+      const data = await res.json();
+      if (!res.ok || data.persona_apply?.status !== "saved") {
+        throw new Error(data.persona_apply?.message || data.error || "保存失败");
+      }
+      const saved = data.persona_apply.persona || persona;
+      cachePersona(saved);
+      hydratePersonaSettings(saved);
+      showFeedback(personaFeedback, "已保存到服务器");
+    } catch (error) {
+      showFeedback(personaFeedback, `已本地缓存，服务器保存失败：${error.message}`, true);
+    }
   }
 
   function settingsSafeText(value) {
@@ -3879,9 +4022,42 @@ function initTTSSettings() {
     });
   }
 
+  personaNameInput?.addEventListener("change", () => {
+    savePersonaSettings({ displayName: personaNameInput.value });
+  });
+
+  personaUploadBtn?.addEventListener("click", () => {
+    personaImageInput?.click();
+  });
+
+  personaImageInput?.addEventListener("change", () => {
+    const file = personaImageInput.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showFeedback(personaFeedback, "请选择图片文件", true);
+      return;
+    }
+    if (file.size > 900_000) {
+      showFeedback(personaFeedback, "图片过大，请选择 900KB 以内的图片", true);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      savePersonaSettings({ imageDataUrl: String(reader.result || "") });
+      personaImageInput.value = "";
+    };
+    reader.onerror = () => showFeedback(personaFeedback, "读取图片失败", true);
+    reader.readAsDataURL(file);
+  });
+
+  personaClearBtn?.addEventListener("click", () => {
+    savePersonaSettings({ displayName: DEFAULT_AGENT_NAME, imageDataUrl: "" });
+  });
+
   function openSettings(tab = null) {
     overlay.hidden = false;
     ensureSettingsOverviewTab();
+    loadPersonaSettings();
     loadSettings();
     loadRuntimeSettingsOverview();
     loadVoiceSettings();

@@ -4,7 +4,7 @@ import { createDocPanel } from './doc-panel.js';
 
 const createGraphStage = () => `
 <div class="grid-overlay"></div>
-<svg id="graph" aria-label="bairui 记忆节点图"></svg>
+<svg id="graph" aria-label="bairui Obsidian 双链图"></svg>
 `;
 
 const createPrimaryPanel = () => `
@@ -170,7 +170,7 @@ const createSettingsModal = () => `
 
       <!-- 侧栏导航 -->
       <nav class="settings-nav">
-        <button class="settings-nav-item active" data-tab="appearance" type="button">外观</button>
+        <button class="settings-nav-item active" data-tab="appearance" type="button">个性配置</button>
         <button class="settings-nav-item" data-tab="llm" type="button">模型网关</button>
         <button class="settings-nav-item" data-tab="media" type="button">媒体能力</button>
         <button class="settings-nav-item" data-tab="social" type="button">渠道授权</button>
@@ -183,17 +183,36 @@ const createSettingsModal = () => `
       <!-- 内容区 -->
       <div class="settings-content">
 
-        <!-- ── 外观 tab ── -->
+        <!-- ── 个性配置 tab ── -->
         <div class="settings-tab active" data-tab="appearance">
+          <div class="settings-section">
+            <div class="settings-section-label">智能体个性</div>
+            <p class="settings-hint">这里可以给自己的智能体设置显示名和头像，只影响本机界面展示；产品品牌、服务名和对外标识仍固定为 bairui。</p>
+            <div class="settings-persona-card">
+              <div class="settings-persona-avatar" id="settings-persona-avatar-preview" aria-label="智能体头像预览"></div>
+              <div class="settings-persona-fields">
+                <div class="settings-row">
+                  <label class="settings-label" for="settings-persona-name">智能体显示名</label>
+                  <input class="settings-input" id="settings-persona-name" type="text" maxlength="24" placeholder="给你的智能体起个名字" autocomplete="off">
+                </div>
+                <div class="settings-row-action">
+                  <input id="settings-persona-image" type="file" accept="image/*" hidden>
+                  <button class="settings-save-btn" id="settings-persona-upload" type="button">上传图像</button>
+                  <button class="settings-save-btn secondary" id="settings-persona-clear" type="button">恢复默认</button>
+                  <span class="settings-feedback" id="settings-persona-feedback"></span>
+                </div>
+              </div>
+            </div>
+          </div>
           <div class="settings-section">
             <div class="settings-section-label">主题</div>
             ${createThemeSwitcher()}
           </div>
           <div class="settings-section">
-            <div class="settings-section-label">记忆节点图</div>
-            <p class="settings-hint">开启后在背景显示记忆节点力导向图，会占用额外 CPU/GPU 资源，低配设备建议关闭。修改后需刷新页面生效。</p>
+            <div class="settings-section-label">Obsidian 双链图</div>
+            <p class="settings-hint">这里直接读取长期记忆目录里的 Markdown 笔记，并按 Obsidian 的 [[双链]] 关系生成图谱。未解析到笔记或双链时会显示空图；开启后会占用额外 CPU/GPU 资源，低配设备建议关闭。</p>
             <div class="settings-row">
-              <label class="settings-label" for="settings-memory-graph-toggle">显示记忆节点图</label>
+              <label class="settings-label" for="settings-memory-graph-toggle">显示 Obsidian 双链图</label>
               <input id="settings-memory-graph-toggle" type="checkbox" style="width:auto;flex:none;">
               <span class="settings-feedback" id="settings-memory-graph-feedback" style="margin-left:8px;"></span>
             </div>

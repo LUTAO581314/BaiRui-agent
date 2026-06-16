@@ -160,6 +160,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             {"id": "avatar_status", "method": "GET", "path": "/avatar/status", "purpose": "browser avatar runtime state"},
             {"id": "avatar_manifest", "method": "GET", "path": "/avatar/manifest", "purpose": "browser avatar model manifest"},
             {"id": "codegraph_status", "method": "GET", "path": "/codegraph/status", "purpose": "source structure index state"},
+            {"id": "persona", "method": "GET", "path": "/persona", "purpose": "assistant persona display state"},
             {"id": "platform_heartbeat", "method": "GET", "path": "/platform/heartbeat", "purpose": "platform heartbeat payload"},
         ),
         "screens": (
@@ -209,7 +210,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             {
                 "id": "memory_review",
                 "title": "Memory Review",
-                "read": ("/document/parse/memory-review-pending", "/document/memory-candidates", "/document/memory-reviews"),
+                "read": ("/document/parse/memory-review-pending", "/document/memory-candidates", "/document/memory-reviews", "/obsidian/graph"),
                 "actions": (
                     {"id": "review_memory_candidate", "method": "POST", "path": "/document/parse/review-memory-candidate", "schema": "memory_review_decision"},
                     {"id": "batch_review_memory_candidates", "method": "POST", "path": "/document/parse/memory-review-batch", "schema": "memory_review_batch"},
@@ -218,7 +219,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             {
                 "id": "reports",
                 "title": "Reports",
-                "read": ("/reports", "/document/ingest-reports", "/source-refs"),
+                "read": ("/reports", "/document/ingest-reports", "/source-refs", "/obsidian/graph"),
                 "actions": ({"id": "write_report", "method": "POST", "path": "/obsidian/reports", "schema": "report_write"},),
             },
             {
@@ -255,10 +256,12 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 "id": "runtime_settings",
                 "title": "Settings",
                 "read": (
+                    "/persona",
                     "/memory/status",
                     "/config/status",
                     "/backup/status",
                     "/backup/plan",
+                    "/obsidian/graph",
                     "/voice/asr/status",
                     "/document/parse/status",
                     "/intel/status",
@@ -538,6 +541,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 "endpoints": (
                     {"method": "GET", "path": "/reports"},
                     {"method": "GET", "path": "/document/ingest-reports"},
+                    {"method": "GET", "path": "/obsidian/graph"},
                     {"method": "POST", "path": "/obsidian/reports"},
                 ),
             },
@@ -564,6 +568,15 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     {"method": "GET", "path": "/voice/asr/status"},
                     {"method": "GET", "path": "/avatar/status"},
                     {"method": "GET", "path": "/codegraph/status"},
+                ),
+            },
+            {
+                "id": "personalization",
+                "stability": "stable",
+                "brand_boundary": "product brand remains bairui; persona display state is user-owned",
+                "endpoints": (
+                    {"method": "GET", "path": "/persona"},
+                    {"method": "POST", "path": "/persona"},
                 ),
             },
             {

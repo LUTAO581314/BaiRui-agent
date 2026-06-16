@@ -120,7 +120,9 @@ from .frontend_contract import build_frontend_contract
 from .hotspots import build_hotspots
 from .license import load_license
 from .model_gateway import complete_chat
+from .obsidian_graph import build_obsidian_graph
 from .observability import build_metrics_summary, list_error_logs, record_error_log
+from .persona import load_persona, save_persona
 from .platform import build_platform_heartbeat
 from .runtime_readiness import collect_runtime_readiness
 from .storage import (
@@ -195,6 +197,9 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/version":
             self._send({"service": PUBLIC_SERVICE, "version": __version__})
+            return
+        if self.path == "/persona":
+            self._send({"service": PUBLIC_SERVICE, "persona": load_persona(settings)})
             return
         if self.path in {"/console", "/console/"}:
             self._send_console_asset("index.html")
@@ -324,6 +329,9 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path == "/source-refs":
             self._send({"service": PUBLIC_SERVICE, "source_refs": list_source_refs(settings.data_dir)})
             return
+        if self.path == "/obsidian/graph":
+            self._send({"service": PUBLIC_SERVICE, "obsidian_graph": build_obsidian_graph(settings)})
+            return
         if self.path == "/audit":
             self._send({"service": PUBLIC_SERVICE, "audit": list_audit_events(settings.data_dir)})
             return
@@ -423,6 +431,27 @@ class HermesHandler(BaseHTTPRequestHandler):
             )
             status = 200 if result["status"] in {"saved", "no_changes"} else 409 if result["status"] == "confirmation_required" else 400
             self._send({"service": PUBLIC_SERVICE, "config_apply": result, "config_status": build_config_status(next_settings)}, status=status)
+            return
+
+        if self.path == "/persona":
+            result = save_persona(settings, payload)
+            create_audit_event(
+                settings.data_dir,
+                "persona.apply",
+                actor_type="owner",
+                actor_ref="local_console",
+                resource_type="persona",
+                resource_ref="default",
+                risk_level="low",
+                payload={
+                    "status": result.get("status"),
+                    "brand": "bairui",
+                    "has_image": bool(result.get("persona", {}).get("image_data_url")),
+                    "secret_echo": False,
+                },
+            )
+            status = 200 if result.get("status") == "saved" else 400
+            self._send({"service": PUBLIC_SERVICE, "persona_apply": result}, status=status)
             return
 
         if self.path == "/jobs":

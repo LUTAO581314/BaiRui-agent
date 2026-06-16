@@ -43,8 +43,10 @@ from src.hermes.adapters.sonic import SonicResult, build_docker_command as build
 from src.hermes.adapters.trendradar import build_mcp_command, status as trendradar_status
 from src.hermes.license import load_license, sign_license_payload
 from src.hermes.model_gateway import build_chat_payload, complete_chat
+from src.hermes.obsidian_graph import build_obsidian_graph
 from src.hermes.observability import build_metrics_summary, list_error_logs, record_error_log
 from src.hermes.platform import HEARTBEAT_PROTOCOL_VERSION, build_platform_heartbeat
+from src.hermes.persona import load_persona, save_persona
 from src.hermes.runtime_readiness import collect_runtime_readiness
 from src.hermes.server import HermesHandler, PUBLIC_SERVICE
 from src.hermes.storage import (
@@ -287,6 +289,60 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertTrue(any(result["name"] == "helper" for result in query["results"]))
         self.assertEqual(impact["status"], "completed")
         self.assertIn("does not write long-term memory", status.memory_boundary)
+
+    def test_obsidian_graph_parses_native_wikilinks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vault = root / "vault"
+            (vault / "00-Inbox").mkdir(parents=True)
+            (vault / "00-Inbox" / "Daily.md").write_text(
+                "# Daily\n\nLinks: [[bairui]] [[Long Term Memory|memory]] [[Missing Note]]",
+                encoding="utf-8",
+            )
+            (vault / "bairui.md").write_text("# bairui\n\n[[Long Term Memory]]", encoding="utf-8")
+            (vault / "Long Term Memory.md").write_text("# Long Term Memory\n", encoding="utf-8")
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(vault),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                graph = build_obsidian_graph(load_settings())
+
+        node_ids = {node["id"] for node in graph["nodes"]}
+        link_pairs = {(link["source"], link["target"]) for link in graph["links"]}
+        self.assertEqual(graph["status"], "ready")
+        self.assertIn("obsidian:00-Inbox/Daily", node_ids)
+        self.assertIn("obsidian:bairui", node_ids)
+        self.assertIn("obsidian:Long Term Memory", node_ids)
+        self.assertIn("obsidian:unresolved:Missing Note", node_ids)
+        self.assertIn(("obsidian:00-Inbox/Daily", "obsidian:bairui"), link_pairs)
+        self.assertIn(("obsidian:00-Inbox/Daily", "obsidian:Long Term Memory"), link_pairs)
+
+    def test_persona_persists_display_name_and_image_without_changing_brand(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                result = save_persona(
+                    settings,
+                    {
+                        "display_name": "我的智能体",
+                        "image_data_url": "data:image/png;base64,aGVsbG8=",
+                    },
+                )
+                persona = load_persona(settings)
+
+        self.assertEqual(result["status"], "saved")
+        self.assertEqual(persona["brand"], "bairui")
+        self.assertEqual(persona["display_name"], "我的智能体")
+        self.assertTrue(persona["image_data_url"].startswith("data:image/png;base64,"))
+        self.assertIn("product brand remains bairui", persona["policy"])
 
     def test_cli_codegraph_register_scan_and_query(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -739,6 +795,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                     html_status, html_headers, html_body = _http_get(server.server_port, "/console")
                     js_status, js_headers, js_body = _http_get(server.server_port, "/console/app.js")
                     shell_status, shell_headers, shell_body = _http_get(server.server_port, "/console/app-shell.js")
+                    persona_status, persona_headers, persona_body = _http_get(server.server_port, "/persona")
                     d3_status, d3_headers, d3_body = _http_get(server.server_port, "/console/vendor/d3/d3.min.js")
                     three_status, three_headers, three_body = _http_get(server.server_port, "/console/vendor/three/three.module.js")
                     css_status, css_headers, css_body = _http_get(server.server_port, "/console/styles.css")
@@ -759,6 +816,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(shell_status, 200)
         self.assertIn("text/javascript", shell_headers["content-type"])
         self.assertIn(b"bairui Agent", shell_body)
+        self.assertEqual(persona_status, 200)
+        self.assertIn("application/json", persona_headers["content-type"])
+        self.assertIn(b'"brand": "bairui"', persona_body)
         self.assertEqual(d3_status, 200)
         self.assertIn("text/javascript", d3_headers["content-type"])
         self.assertIn(b"d3", d3_body[:2000])
@@ -813,10 +873,15 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("ownerAuthHeaders", api_js)
         self.assertIn("X-Bairui-Owner-Token", api_js)
         self.assertIn("bairui Agent", shell_js)
+        self.assertIn("个性配置", shell_js)
+        self.assertIn("settings-persona-name", shell_js)
+        self.assertIn("settings-persona-image", shell_js)
+        self.assertIn("Obsidian 双链图", shell_js)
         self.assertIn("/chat", chat_js)
         self.assertIn("发送失败，请检查 bairui 服务、模型网关或 owner token", chat_js)
         self.assertIn("buildBairuiGraphRows", app_js)
-        self.assertIn("/document/memory-candidates", app_js)
+        self.assertIn("buildObsidianGraphRows", app_js)
+        self.assertIn("/obsidian/graph", app_js)
         self.assertIn("/reports", app_js)
         self.assertIn("/source-refs", app_js)
         self.assertIn("/audit", app_js)
@@ -1452,6 +1517,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("bairui Agent", shell_js)
         self.assertIn("向 bairui 发送消息", shell_js)
         self.assertIn("renderBrainUiApp(document.body)", app_js)
+        self.assertIn("buildObsidianGraphRows", app_js)
+        self.assertIn("/obsidian/graph", app_js)
         self.assertIn("ACTIVATION_DISMISSED_KEY", app_js)
         self.assertIn("showActivationOverlay()", app_js)
         self.assertIn("renderActivationOverlay", app_js)
@@ -1522,8 +1589,13 @@ class RuntimeFoundationTests(unittest.TestCase):
 
     def test_memory_review_console_keeps_owner_review_and_source_trace_visible(self):
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
+        contract = build_frontend_contract(load_settings(), "test")
+        memory_screen = next(screen for screen in contract["screens"] if screen["id"] == "memory_review")
 
         self.assertIn("buildBairuiGraphRows", app_js)
+        self.assertIn("buildObsidianGraphRows", app_js)
+        self.assertIn("/obsidian/graph", app_js)
+        self.assertIn("/obsidian/graph", memory_screen["read"])
         self.assertIn("document_memory_candidates", app_js)
         self.assertIn("memory:candidate", app_js)
         self.assertIn("等待主人审核的长期记忆候选", app_js)
@@ -1531,7 +1603,10 @@ class RuntimeFoundationTests(unittest.TestCase):
 
     def test_reports_console_surfaces_detail_sources_and_write_result(self):
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
+        contract = build_frontend_contract(load_settings(), "test")
+        reports_screen = next(screen for screen in contract["screens"] if screen["id"] == "reports")
 
+        self.assertIn("/obsidian/graph", reports_screen["read"])
         self.assertIn("reportsBody.reports", app_js)
         self.assertIn("deliverable:report", app_js)
         self.assertIn("source_refs", app_js)
