@@ -1532,7 +1532,8 @@ body {
 }
 
 /* ── Voice button ── */
-.voice-btn {
+.voice-btn,
+.hotspot-btn {
   margin-left: auto;
   flex-shrink: 0;
   width: 28px;
@@ -1548,8 +1549,17 @@ body {
   cursor: pointer;
   transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
-.voice-btn:hover  { color: var(--ink); background: var(--line); }
+
+.hotspot-btn {
+  margin-left: 0;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.voice-btn:hover,
+.hotspot-btn:hover  { color: var(--ink); background: var(--line); }
 .voice-btn.active { color: var(--cool); border-color: var(--cool); background: rgba(143,182,216,0.08); }
+.hotspot-btn.active { color: var(--warm); border-color: var(--warm); background: rgba(211,152,114,0.08); }
 
 /* ── Video mode button ── */
 .video-btn {
@@ -1572,7 +1582,7 @@ body {
 
 /* ── Settings button ── */
 .settings-btn {
-  margin-left: auto;
+  margin-left: 0;
   flex-shrink: 0;
   width: 28px;
   height: 28px;

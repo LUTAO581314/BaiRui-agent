@@ -108,6 +108,7 @@ from .document_pipeline import (
 )
 from .events import build_sse_frame, list_frontend_events
 from .frontend_contract import build_frontend_contract
+from .hotspots import build_hotspots
 from .license import load_license
 from .model_gateway import complete_chat
 from .observability import build_metrics_summary, list_error_logs, record_error_log
@@ -320,8 +321,10 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path == "/social/wechat-clawbot/qr":
             self._send({"service": PUBLIC_SERVICE, "status": "disabled", "message": "channel authorization is managed by bairui approvals"})
             return
-        if self.path == "/hotspots":
-            self._send({"service": PUBLIC_SERVICE, "hotspots": []})
+        parsed_path = urlparse(self.path)
+        if parsed_path.path == "/hotspots":
+            query = parse_qs(parsed_path.query)
+            self._send(build_hotspots(settings, force_refresh=(query.get("refresh") or [""])[0] == "1"))
             return
         if self.path == "/aivideo/history":
             self._send({"service": PUBLIC_SERVICE, "items": [], "history": []})

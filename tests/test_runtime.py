@@ -33,6 +33,7 @@ from src.hermes.diagnostics import build_diagnostic_bundle
 from src.hermes.document_pipeline import build_document_ingest_session_summary, build_document_workbench_state, create_document_ingest_report, create_document_source_refs, execute_document_workbench_next, generate_document_memory_candidates, index_document_artifacts, list_document_ingest_session_summaries, list_pending_document_memory_reviews, register_document_artifacts, review_document_memory_candidate, review_document_memory_candidates_batch, run_document_ingest, run_document_workbench_until_blocked
 from src.hermes.events import audit_event_to_frontend_event, build_sse_frame, list_frontend_events
 from src.hermes.frontend_contract import build_frontend_contract
+from src.hermes.hotspots import build_hotspots
 from src.hermes.adapters.everos import EverOSResult, build_search_payload, status as everos_status
 from src.hermes.adapters.funasr import build_server_command as build_funasr_server_command, build_transcription_payload as build_funasr_transcription_payload, status as funasr_status
 from src.hermes.adapters.mineru import build_parse_command as build_mineru_parse_command, status as mineru_status
@@ -355,6 +356,48 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(overview["status"], "ready")
         self.assertEqual(overview["scan"]["repo_id"], repo_a_id)
         self.assertEqual(empty["status"], "empty")
+
+    def test_hotspots_uses_trendradar_output_contract(self):
+        payload = build_hotspots(load_settings())
+        self.assertEqual(payload["service"], "bairui")
+        self.assertEqual(payload["source"], "bairui-intelligence")
+        self.assertIn("primary_intelligence", payload["runtimes"])
+        self.assertIn("search_intelligence", payload["runtimes"])
+        self.assertIn("douyin", payload["platforms"])
+        self.assertIn("weibo", payload["platforms"])
+        total = sum(len(items) for items in payload["platforms"].values())
+        self.assertGreater(total, 0)
+        first_platform = next(name for name, items in payload["platforms"].items() if items)
+        first_item = payload["platforms"][first_platform][0]
+        self.assertIn("rank", first_item)
+        self.assertIn("text", first_item)
+        self.assertIn("heat", first_item)
+
+    def test_hotspots_http_supports_query_string_from_frontend(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "SEARXNG_BASE_URL": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, _, body = _http_get(server.server_port, "/hotspots?viewed=1&refresh=1")
+                    payload = json.loads(body.decode("utf-8"))
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["service"], "bairui")
+        self.assertTrue(payload["forceRefresh"])
+        self.assertIn("platforms", payload)
+        self.assertIn("status", payload)
 
     def test_agents_roster_and_round_keep_permissions_visible(self):
         with tempfile.TemporaryDirectory() as tmp:

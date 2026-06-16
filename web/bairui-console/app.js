@@ -4139,6 +4139,9 @@ initHotspot().catch((err) => console.warn('[Hotspot] init failed:', err));
     });
   })();
 
+  const hotspotBtn = document.getElementById("hotspot-btn");
+  hotspotBtn?.addEventListener("click", () => toggleHotspot("header_button"));
+
   videoBtn?.addEventListener("click", toggleVideoPanelVisibility);
   videoExitBtn?.addEventListener("click", closeAndDestroyVideo);
   imageExitBtn?.addEventListener("click", () => setImageModeActive(false));
