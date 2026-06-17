@@ -22,6 +22,14 @@ class ChatResult:
     error: str = ""
 
 
+@dataclass(frozen=True)
+class ModelListResult:
+    status: str
+    base_url: str
+    models: tuple[str, ...]
+    error: str = ""
+
+
 def model_gateway_status(settings: Settings) -> str:
     return "ready" if settings.has_model_gateway else "missing_config"
 
@@ -39,6 +47,45 @@ def build_chat_payload(settings: Settings, prompt: str, system: str = "") -> dic
 
 def _chat_url(base_url: str) -> str:
     return base_url.rstrip("/") + "/chat/completions"
+
+
+def _models_url(base_url: str) -> str:
+    return base_url.rstrip("/") + "/models"
+
+
+def list_models(
+    settings: Settings,
+    payload: dict[str, Any] | None = None,
+    *,
+    opener: Callable[[urllib.request.Request, int], Any] | None = None,
+) -> ModelListResult:
+    payload = payload or {}
+    base_url = str(payload.get("base_url") or settings.model_base_url or "").strip()
+    api_key = str(payload.get("api_key") or settings.model_api_key or "").strip()
+    if not base_url:
+        return ModelListResult(status="missing_config", base_url="", models=(), error="base_url is required")
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(_models_url(base_url), headers=headers, method="GET")
+    open_fn = opener or urllib.request.urlopen
+    try:
+        with open_fn(request, settings.model_timeout_seconds) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        return ModelListResult(status="failed", base_url=base_url, models=(), error=str(exc))
+
+    raw_models = data.get("data", []) if isinstance(data, dict) else []
+    models: list[str] = []
+    for item in raw_models:
+        if isinstance(item, dict):
+            model_id = str(item.get("id") or "").strip()
+        else:
+            model_id = str(item or "").strip()
+        if model_id and model_id not in models:
+            models.append(model_id)
+    return ModelListResult(status="completed", base_url=base_url, models=tuple(models))
 
 
 def complete_chat(

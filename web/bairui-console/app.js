@@ -3342,17 +3342,30 @@ function initTTSSettings() {
           <div class="settings-section-label">首次配置延展</div>
           <p class="settings-hint">这里是激活页的完整版本：可补齐模型网关、访问保护、本地路径和源码图谱路径。高风险项需要输入确认短语。</p>
           <div class="settings-core-form">
-            <label>
+            <label class="settings-core-form-wide">
               <span>模型 Base URL</span>
               <input class="settings-input" id="settings-core-model-baseurl" type="text" placeholder="https://your-model-gateway.example/v1" autocomplete="off">
             </label>
             <label>
-              <span>模型名称</span>
-              <input class="settings-input" id="settings-core-model-name" type="text" placeholder="model-name" autocomplete="off">
-            </label>
-            <label>
               <span>模型 API Key</span>
               <input class="settings-input" id="settings-core-model-key" type="password" placeholder="留空保持原值" autocomplete="new-password">
+            </label>
+            <label>
+              <span>上游模型列表</span>
+              <select class="settings-select" id="settings-core-model-list">
+                <option value="">先填 Base URL 再拉取</option>
+              </select>
+            </label>
+            <label>
+              <span>模型名称</span>
+              <input class="settings-input" id="settings-core-model-name" type="text" placeholder="从上游模型列表选择或手填" autocomplete="off">
+            </label>
+            <label class="settings-core-form-action-label">
+              <span>列表操作</span>
+              <div class="settings-core-form-actions">
+                <button class="settings-save-btn secondary" id="settings-refresh-model-list" type="button">拉取模型列表</button>
+                <span class="settings-feedback" id="settings-model-list-feedback"></span>
+              </div>
             </label>
             <label>
               <span>Owner Token</span>
@@ -3533,7 +3546,9 @@ function initTTSSettings() {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   function settingsRuntimeStatus(payload, key) {
@@ -3740,6 +3755,109 @@ function initTTSSettings() {
   }
 
   document.getElementById("settings-overview-refresh")?.addEventListener("click", loadRuntimeSettingsOverview);
+
+  function fillSettingsModelList(models = [], selected = "") {
+    const select = document.getElementById("settings-core-model-list");
+    if (!select) return;
+    const unique = [...new Set(models.map((item) => String(item || "").trim()).filter(Boolean))];
+    if (!unique.length) {
+      select.innerHTML = `<option value="">未解析到模型</option>`;
+      return;
+    }
+    select.innerHTML = [`<option value="">选择上游模型…</option>`]
+      .concat(unique.map((model) => `<option value="${settingsSafeText(model)}">${settingsSafeText(model)}</option>`))
+      .join("");
+    if (selected && unique.includes(selected)) select.value = selected;
+  }
+
+  function fillGatewayModelList(models = [], selected = "") {
+    const select = document.getElementById("settings-gateway-model-list");
+    if (!select) return;
+    const unique = [...new Set(models.map((item) => String(item || "").trim()).filter(Boolean))];
+    if (!unique.length) {
+      select.innerHTML = `<option value="">未解析到模型</option>`;
+      return;
+    }
+    select.innerHTML = [`<option value="">选择上游模型…</option>`]
+      .concat(unique.map((model) => `<option value="${settingsSafeText(model)}">${settingsSafeText(model)}</option>`))
+      .join("");
+    if (selected && unique.includes(selected)) select.value = selected;
+  }
+
+  async function fetchGatewayModels({ baseUrl, apiKey }) {
+    const res = await fetch(`${API}/model-gateway/models`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+      body: JSON.stringify({ base_url: baseUrl, ...(apiKey ? { api_key: apiKey } : {}) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    const result = data.model_gateway_models || data;
+    if (!res.ok || result.status !== "completed") {
+      throw new Error(result.error || result.message || "解析失败");
+    }
+    return result.models || [];
+  }
+
+  async function refreshSettingsModelList() {
+    const feedback = document.getElementById("settings-model-list-feedback");
+    const button = document.getElementById("settings-refresh-model-list");
+    const baseUrl = document.getElementById("settings-core-model-baseurl")?.value?.trim() || "";
+    const apiKey = document.getElementById("settings-core-model-key")?.value?.trim() || "";
+    const currentModel = document.getElementById("settings-core-model-name")?.value?.trim() || "";
+    if (!baseUrl) {
+      showFeedback(feedback, "请先填写模型 Base URL", true);
+      return;
+    }
+    if (button) button.disabled = true;
+    try {
+      const models = await fetchGatewayModels({ baseUrl, apiKey });
+      fillSettingsModelList(models, currentModel);
+      showFeedback(feedback, `已解析 ${models.length} 个模型`);
+    } catch (error) {
+      fillSettingsModelList([], "");
+      showFeedback(feedback, error?.message || "解析失败", true);
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  document.getElementById("settings-refresh-model-list")?.addEventListener("click", refreshSettingsModelList);
+  document.getElementById("settings-core-model-list")?.addEventListener("change", (event) => {
+    const value = event.target?.value || "";
+    const modelInput = document.getElementById("settings-core-model-name");
+    if (value && modelInput) modelInput.value = value;
+  });
+
+  async function refreshGatewayModelList() {
+    const feedback = document.getElementById("settings-gateway-model-feedback");
+    const button = document.getElementById("settings-refresh-gateway-models");
+    const baseUrl = document.getElementById("settings-custom-baseurl")?.value?.trim() || "";
+    const apiKey = document.getElementById("settings-llm-key")?.value?.trim() || "";
+    const currentModel = document.getElementById("settings-custom-model")?.value?.trim() || "";
+    if (!baseUrl) {
+      showFeedback(feedback, "请先填写 Base URL", true);
+      return;
+    }
+    if (button) button.disabled = true;
+    try {
+      const models = await fetchGatewayModels({ baseUrl, apiKey });
+      fillGatewayModelList(models, currentModel);
+      showFeedback(feedback, `已解析 ${models.length} 个模型`);
+    } catch (error) {
+      fillGatewayModelList([], "");
+      showFeedback(feedback, error?.message || "解析失败", true);
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  document.getElementById("settings-refresh-gateway-models")?.addEventListener("click", refreshGatewayModelList);
+  document.getElementById("settings-gateway-model-list")?.addEventListener("change", (event) => {
+    const value = event.target?.value || "";
+    const modelInput = document.getElementById("settings-custom-model");
+    if (value && modelInput) modelInput.value = value;
+  });
+
   document.getElementById("settings-save-core-config")?.addEventListener("click", async () => {
     const feedback = document.getElementById("settings-core-config-feedback");
     const saveBtn = document.getElementById("settings-save-core-config");

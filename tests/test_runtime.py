@@ -42,7 +42,7 @@ from src.hermes.adapters.searxng import build_docker_command as build_searxng_do
 from src.hermes.adapters.sonic import SonicResult, build_docker_command as build_sonic_docker_command, build_query_payload as build_sonic_query_payload, status as sonic_status
 from src.hermes.adapters.trendradar import build_mcp_command, status as trendradar_status
 from src.hermes.license import load_license, sign_license_payload
-from src.hermes.model_gateway import build_chat_payload, complete_chat
+from src.hermes.model_gateway import build_chat_payload, complete_chat, list_models
 from src.hermes.obsidian_graph import build_obsidian_graph
 from src.hermes.observability import build_metrics_summary, list_error_logs, record_error_log
 from src.hermes.platform import HEARTBEAT_PROTOCOL_VERSION, build_platform_heartbeat
@@ -1106,6 +1106,48 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertNotIn("http-local-secret", raw)
         self.assertEqual(payload["config_status"]["items"][0]["fields"]["api_key"], "configured")
 
+    def test_model_gateway_models_http_endpoint_is_secret_safe(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps({"data": [{"id": "model-a"}, {"id": "model-b"}]}).encode("utf-8")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    with patch("src.hermes.model_gateway.urllib.request.urlopen", return_value=FakeResponse()):
+                        status, _, body = _http_post(
+                            server.server_port,
+                            "/model-gateway/models",
+                            {"base_url": "https://models.example.test/v1", "api_key": "temporary-secret"},
+                        )
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        payload = json.loads(body.decode("utf-8"))
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["model_gateway_models"]["status"], "completed")
+        self.assertEqual(payload["model_gateway_models"]["models"], ["model-a", "model-b"])
+        self.assertFalse(payload["secret_echo"])
+        self.assertNotIn("temporary-secret", raw)
+
     def test_config_apply_http_endpoint_requires_danger_confirmation_and_audits_safely(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1694,6 +1736,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/config/status", settings_screen["read"])
         self.assertIn("/backup/status", settings_screen["read"])
         self.assertIn("/backup/plan", settings_screen["read"])
+        self.assertIn("/model-gateway/models", {action["path"] for action in settings_screen["actions"]})
         self.assertIn("ownerAuthHeaders", api_js)
         self.assertIn("X-Bairui-Owner-Token", api_js)
         self.assertIn("设置", shell_js)
@@ -1701,9 +1744,14 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("完整网关配置", shell_js)
         self.assertIn("settings-custom-baseurl", shell_js)
         self.assertIn("settings-custom-model", shell_js)
+        self.assertIn("settings-gateway-model-list", shell_js)
+        self.assertIn("settings-refresh-gateway-models", shell_js)
         self.assertIn("settings-llm-secret-state", shell_js)
         self.assertIn("settings-llm-timeout-state", shell_js)
         self.assertIn("settings-llm-endpoint-state", shell_js)
+        self.assertIn("settings-core-model-list", app_js)
+        self.assertIn("settings-refresh-model-list", app_js)
+        self.assertIn("/model-gateway/models", app_js)
         self.assertIn("settings-overview", app_js)
         self.assertIn("完整配置中心", app_js)
         for label in (
@@ -1737,6 +1785,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("MODEL_GATEWAY_TEMPLATES", app_js)
         self.assertIn("model_base_url", app_js)
         self.assertIn("/config/status", app_js)
+        self.assertIn(".settings-core-form .settings-input", styles := Path("web/bairui-console/styles.css").read_text(encoding="utf-8"))
+        self.assertIn("width: 100%", styles)
         self.assertIn("settings-core-owner-token", app_js)
         self.assertIn("saveOwnerAuthToken", api_js)
         self.assertIn("/config/apply", app_js)
@@ -3126,6 +3176,37 @@ class RuntimeFoundationTests(unittest.TestCase):
         payload = build_chat_payload(settings, "hello", "be brief")
         self.assertEqual(payload["messages"][0]["role"], "system")
         self.assertEqual(payload["messages"][1]["role"], "user")
+
+    def test_model_gateway_lists_openai_compatible_models(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps({"data": [{"id": "bairui-main"}, {"id": "bairui-fast"}]}).encode("utf-8")
+
+        seen = {}
+
+        def fake_open(request, timeout):
+            seen["url"] = request.full_url
+            seen["authorization"] = request.headers.get("Authorization")
+            seen["timeout"] = timeout
+            return FakeResponse()
+
+        settings = load_settings()
+        result = list_models(
+            settings,
+            {"base_url": "https://models.example.test/v1", "api_key": "secret-key"},
+            opener=fake_open,
+        )
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.models, ("bairui-main", "bairui-fast"))
+        self.assertEqual(seen["url"], "https://models.example.test/v1/models")
+        self.assertEqual(seen["authorization"], "Bearer secret-key")
 
     def test_database_status_without_url_is_missing_config(self):
         settings = load_settings()

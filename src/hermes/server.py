@@ -119,7 +119,7 @@ from .events import build_sse_frame, list_frontend_events
 from .frontend_contract import build_frontend_contract
 from .hotspots import build_hotspots
 from .license import load_license
-from .model_gateway import complete_chat
+from .model_gateway import complete_chat, list_models
 from .obsidian_graph import build_obsidian_graph
 from .observability import build_metrics_summary, list_error_logs, record_error_log
 from .persona import load_persona, save_persona
@@ -408,6 +408,12 @@ class HermesHandler(BaseHTTPRequestHandler):
         payload = self._read_json()
 
         if not self._require_owner(settings, permission="write_api"):
+            return
+
+        if self.path == "/model-gateway/models":
+            result = list_models(settings, payload)
+            status = 200 if result.status == "completed" else 400 if result.status == "missing_config" else 502
+            self._send({"service": PUBLIC_SERVICE, "model_gateway_models": asdict(result), "secret_echo": False}, status=status)
             return
 
         if self.path == "/config/apply":

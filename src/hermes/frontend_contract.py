@@ -274,6 +274,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 ),
                 "actions": (
                     {"id": "apply_local_config", "method": "POST", "path": "/config/apply", "schema": "config_apply"},
+                    {"id": "list_model_gateway_models", "method": "POST", "path": "/model-gateway/models", "schema": "model_gateway_models"},
                     {"id": "run_database_migration", "method": "POST", "path": "/admin/migrate", "schema": "database_migration"},
                 ),
             },

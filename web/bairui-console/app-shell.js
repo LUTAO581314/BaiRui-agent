@@ -255,8 +255,18 @@ const createSettingsModal = () => `
               <input class="settings-input" id="settings-custom-model" type="text" placeholder="例如 bairui-main-model / qwen-plus / gpt-4.1-mini" autocomplete="off">
             </div>
             <div class="settings-row">
+              <label class="settings-label" for="settings-gateway-model-list">模型列表</label>
+              <select class="settings-select" id="settings-gateway-model-list">
+                <option value="">先填 Base URL 再拉取</option>
+              </select>
+            </div>
+            <div class="settings-row">
               <label class="settings-label" for="settings-llm-key">API Key</label>
               <input class="settings-input" id="settings-llm-key" type="password" placeholder="只写入服务器，不回显；已配置时可留空" autocomplete="new-password">
+            </div>
+            <div class="settings-row-action">
+              <button class="settings-save-btn secondary" id="settings-refresh-gateway-models" type="button">拉取模型列表</button>
+              <span class="settings-feedback" id="settings-gateway-model-feedback"></span>
             </div>
             <div class="settings-config-row">
               <span class="settings-config-type">Secret</span>
