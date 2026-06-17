@@ -429,6 +429,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("rank", first_item)
         self.assertIn("text", first_item)
         self.assertIn("heat", first_item)
+        self.assertIn("url", first_item)
 
     def test_hotspots_http_supports_query_string_from_frontend(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -455,6 +456,15 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertTrue(payload["forceRefresh"])
         self.assertIn("platforms", payload)
         self.assertIn("status", payload)
+
+    def test_hotspot_console_renders_clickable_news_links(self):
+        hotspot_js = Path("web/bairui-console/hotspot.js").read_text(encoding="utf-8")
+        styles = Path("web/bairui-console/styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("hs-item-link", hotspot_js)
+        self.assertIn('target="_blank"', hotspot_js)
+        self.assertIn("item?.url || item?.link || ''", hotspot_js)
+        self.assertIn(".hs-item-link", styles)
 
     def test_agents_roster_and_round_keep_permissions_visible(self):
         with tempfile.TemporaryDirectory() as tmp:

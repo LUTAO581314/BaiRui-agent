@@ -138,7 +138,7 @@ function renderList(listId, items, style = 'heat') {
     </li>`;
     return;
   }
-  ul.innerHTML = items.map(({ rank, text, heat, trend, isNew }) => {
+  ul.innerHTML = items.map(({ rank, text, heat, trend, isNew, url }) => {
     const rankCls = rank <= 3 ? `hs-rank-top${rank}` : '';
     const trendIcon = TREND_ICONS[trend] || '';
     const trendCls  = TREND_CLASSES[trend] || '';
@@ -146,9 +146,13 @@ function renderList(listId, items, style = 'heat') {
     const heatLabel = style === 'heat'
       ? `<span class="hs-heat">${heat}</span>`
       : `<span class="hs-label-badge">${heat}</span>`;
+    const safeText = escapeHtml(text);
+    const titleHtml = url
+      ? `<a class="hs-item-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${safeText}</a>${newBadge}`
+      : `${safeText}${newBadge}`;
     return `<li class="hs-item">
       <span class="hs-rank ${rankCls}">${rank}</span>
-      <span class="hs-item-text">${text}${newBadge}</span>
+      <span class="hs-item-text">${titleHtml}</span>
       ${heatLabel}
       <span class="hs-trend ${trendCls}">${trendIcon}</span>
     </li>`;
@@ -177,7 +181,17 @@ function normalizeHotspotItem(item, idx) {
     heat: item?.heat || '',
     trend: item?.trend || 'same',
     isNew: !!item?.isNew,
+    url: item?.url || item?.link || '',
   };
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function setText(id, text) {
