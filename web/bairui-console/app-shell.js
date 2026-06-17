@@ -168,17 +168,7 @@ const createSettingsModal = () => `
     </div>
     <div class="settings-body">
 
-      <!-- 侧栏导航 -->
-      <nav class="settings-nav">
-        <button class="settings-nav-item active" data-tab="appearance" type="button">个性配置</button>
-        <button class="settings-nav-item" data-tab="llm" type="button">模型网关</button>
-        <button class="settings-nav-item" data-tab="media" type="button">媒体能力</button>
-        <button class="settings-nav-item" data-tab="social" type="button">渠道授权</button>
-        <button class="settings-nav-item" data-tab="voice" type="button">语音识别</button>
-        <button class="settings-nav-item" data-tab="web-search" type="button">上网搜索</button>
-        <button class="settings-nav-item" data-tab="security" type="button">安全沙箱</button>
-        <button class="settings-nav-item" data-tab="update" type="button">更新</button>
-      </nav>
+      <nav class="settings-nav" aria-label="设置导航"></nav>
 
       <!-- 内容区 -->
       <div class="settings-content">

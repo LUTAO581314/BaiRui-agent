@@ -3207,6 +3207,7 @@ function initTTSSettings() {
   };
   const completeSettingsTabs = [
     { id: "system", label: "系统总览", existing: true },
+    { id: "appearance", label: "个性配置", existing: true },
     { id: "llm", label: "模型网关", existing: true },
     {
       id: "agents",
@@ -3249,6 +3250,7 @@ function initTTSSettings() {
       actions: ["刷新热点", "切换情报面板", "检查情报 runtime"],
     },
     { id: "web-search", label: "搜索与爬虫", existing: true },
+    { id: "media", label: "媒体能力", existing: true },
     {
       id: "local-index",
       label: "本地索引",
@@ -3306,21 +3308,7 @@ function initTTSSettings() {
   function ensureSettingsOverviewTab() {
     const nav = overlay.querySelector(".settings-nav");
     const content = overlay.querySelector(".settings-content");
-    if (!nav || !content || nav.querySelector('[data-tab="system"]')) return;
-    const existingLabels = {
-      appearance: "个性配置",
-      llm: "模型网关",
-      media: "媒体能力",
-      social: "渠道授权",
-      voice: "语音能力",
-      "web-search": "搜索与爬虫",
-      security: "安全与权限",
-      update: "更新",
-    };
-    Object.entries(existingLabels).forEach(([id, label]) => {
-      const item = nav.querySelector(`[data-tab="${id}"]`);
-      if (item) item.textContent = label;
-    });
+    if (!nav || !content || content.querySelector('.settings-tab[data-tab="system"]')) return;
     nav.innerHTML = completeSettingsTabs.map((tab, index) => `
       <button class="settings-nav-item ${index === 0 ? "active" : ""}" data-tab="${tab.id}" type="button">${tab.label}</button>
     `).join("");
@@ -3435,7 +3423,8 @@ function initTTSSettings() {
     completeSettingsTabs
       .filter(tab => !tab.existing)
       .forEach(tab => content.insertAdjacentHTML("beforeend", renderCompleteSettingsTab(tab)));
-    content.querySelector('[data-tab="appearance"]')?.classList.remove("active");
+    content.querySelectorAll(".settings-tab").forEach(tab => tab.classList.remove("active"));
+    content.querySelector('[data-tab="system"]')?.classList.add("active");
   }
 
   function renderCompleteSettingsTab(tab) {

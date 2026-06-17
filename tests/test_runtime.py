@@ -1665,7 +1665,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         popup_js = Path("web/bairui-console/wechat-popup.js").read_text(encoding="utf-8")
         server_py = Path("src/hermes/server.py").read_text(encoding="utf-8")
 
-        self.assertIn("渠道授权", shell_js)
+        self.assertIn("渠道授权", app_js)
         self.assertIn("渠道总控", shell_js)
         self.assertIn("social-channels-enabled", shell_js)
         self.assertIn("social-targets-json", shell_js)
@@ -1756,6 +1756,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("完整配置中心", app_js)
         for label in (
             "系统总览",
+            "个性配置",
             "模型网关",
             "多智能体",
             "记忆系统",
@@ -1763,6 +1764,7 @@ class RuntimeFoundationTests(unittest.TestCase):
             "报告与来源",
             "情报雷达",
             "搜索与爬虫",
+            "媒体能力",
             "本地索引",
             "源码图谱",
             "Avatar",
@@ -1776,6 +1778,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         ):
             self.assertIn(label, app_js)
         self.assertIn("completeSettingsTabs", app_js)
+        self.assertIn('<nav class="settings-nav" aria-label="设置导航"></nav>', shell_js)
+        self.assertNotIn('data-tab="appearance" type="button">个性配置', shell_js)
+        self.assertNotIn('data-tab="media" type="button">媒体能力', shell_js)
         self.assertIn("loadCompleteSettingsSurface", app_js)
         self.assertIn("/diagnostics/bundle", app_js)
         self.assertIn("/obsidian/graph", app_js)
