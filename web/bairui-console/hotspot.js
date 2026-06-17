@@ -21,14 +21,14 @@ const hotspotLists = {
 
 // 实时事件流卡片
 const MOCK_FEED = [
-  { time:'19:25', cat:'自然灾害', catColor:'#e05c5c', title:'四川宜宾县发生6.0级地震', desc:'震源深度10公里，暂无人员伤亡报告，救援力量已巡查到达震源周边', loc:'中国·四川', img:'' },
-  { time:'19:24', cat:'科技',     catColor:'#5c9ee0', title:'神舟十八号发射任务圆满成功', desc:'载人飞船与空间站组合体成功对接，状态良好。', loc:'酒泉卫星发射中心', img:'' },
-  { time:'19:23', cat:'财经',     catColor:'#c97d30', title:'特斯拉全球召回超110万辆汽车', desc:'涉及安全带及软件问题，特斯拉免费修复。', loc:'全球', img:'' },
-  { time:'19:22', cat:'体育',     catColor:'#4eaa6e', title:'巴黎奥运圣火抵达马赛港', desc:'开幕式倒计时启动，法国全境传递沿线盛况空前，7月26日开幕。', loc:'法国·马赛', img:'' },
-  { time:'19:21', cat:'社会',     catColor:'#9b6bc4', title:'台风"玛莉亚"逼近东南沿海', desc:'预计26日凌晨在浙江登陆，多地发布台风橙色预警，船只回港避险。', loc:'中国·东南沿海', img:'' },
-  { time:'19:19', cat:'科技',     catColor:'#5c9ee0', title:'华为发布全新 AI 芯片', desc:'性能较上代提升60%，将首批搭载于旗舰产品线，引发行业广泛关注。', loc:'中国·深圳', img:'' },
-  { time:'19:18', cat:'政策',     catColor:'#6bbfbf', title:'欧盟正式通过 AI 监管法案', desc:'《人工智能法案》生效，将对高风险AI系统实施强制合规审查。', loc:'比利时·布鲁塞尔', img:'' },
-  { time:'19:17', cat:'旅游',     catColor:'#c4a030', title:'多地景区迎来客流高峰', desc:'暑期旅游热度持续攀升，热门景区单日接待游客超历史纪录。', loc:'中国多地', img:'' },
+  { time:'19:25', cat:'自然灾害', catColor:'#e05c5c', title:'四川宜宾县发生6.0级地震', desc:'震源深度10公里，暂无人员伤亡报告，救援力量已巡查到达震源周边', loc:'中国·四川', img:'', url:'https://www.google.com/search?q=%E5%9B%9B%E5%B7%9D%E5%AE%9C%E5%AE%BE%E5%8E%BF%E5%8F%91%E7%94%9F6.0%E7%BA%A7%E5%9C%B0%E9%9C%87' },
+  { time:'19:24', cat:'科技',     catColor:'#5c9ee0', title:'神舟十八号发射任务圆满成功', desc:'载人飞船与空间站组合体成功对接，状态良好。', loc:'酒泉卫星发射中心', img:'', url:'https://www.google.com/search?q=%E7%A5%9E%E8%88%9F%E5%8D%81%E5%85%AB%E5%8F%B7%E5%8F%91%E5%B0%84%E4%BB%BB%E5%8A%A1%E5%9C%86%E6%BB%A1%E6%88%90%E5%8A%9F' },
+  { time:'19:23', cat:'财经',     catColor:'#c97d30', title:'特斯拉全球召回超110万辆汽车', desc:'涉及安全带及软件问题，特斯拉免费修复。', loc:'全球', img:'', url:'https://www.google.com/search?q=%E7%89%B9%E6%96%AF%E6%8B%89%E5%85%A8%E7%90%83%E5%8F%AC%E5%9B%9E%E8%B6%85110%E4%B8%87%E8%BE%86%E6%B1%BD%E8%BD%A6' },
+  { time:'19:22', cat:'体育',     catColor:'#4eaa6e', title:'巴黎奥运圣火抵达马赛港', desc:'开幕式倒计时启动，法国全境传递沿线盛况空前，7月26日开幕。', loc:'法国·马赛', img:'', url:'https://www.google.com/search?q=%E5%B7%B4%E9%BB%8E%E5%A5%A5%E8%BF%90%E5%9C%A3%E7%81%AB%E6%8A%B5%E8%BE%BE%E9%A9%AC%E8%B5%9B%E6%B8%AF' },
+  { time:'19:21', cat:'社会',     catColor:'#9b6bc4', title:'台风"玛莉亚"逼近东南沿海', desc:'预计26日凌晨在浙江登陆，多地发布台风橙色预警，船只回港避险。', loc:'中国·东南沿海', img:'', url:'https://www.google.com/search?q=%E5%8F%B0%E9%A3%8E%E7%8E%9B%E8%8E%89%E4%BA%9A%E9%80%BC%E8%BF%91%E4%B8%9C%E5%8D%97%E6%B2%BF%E6%B5%B7' },
+  { time:'19:19', cat:'科技',     catColor:'#5c9ee0', title:'华为发布全新 AI 芯片', desc:'性能较上代提升60%，将首批搭载于旗舰产品线，引发行业广泛关注。', loc:'中国·深圳', img:'', url:'https://www.google.com/search?q=%E5%8D%8E%E4%B8%BA%E5%8F%91%E5%B8%83%E5%85%A8%E6%96%B0+AI+%E8%8A%AF%E7%89%87' },
+  { time:'19:18', cat:'政策',     catColor:'#6bbfbf', title:'欧盟正式通过 AI 监管法案', desc:'《人工智能法案》生效，将对高风险AI系统实施强制合规审查。', loc:'比利时·布鲁塞尔', img:'', url:'https://www.google.com/search?q=%E6%AC%A7%E7%9B%9F%E6%AD%A3%E5%BC%8F%E9%80%9A%E8%BF%87+AI+%E7%9B%91%E7%AE%A1%E6%B3%95%E6%A1%88' },
+  { time:'19:17', cat:'旅游',     catColor:'#c4a030', title:'多地景区迎来客流高峰', desc:'暑期旅游热度持续攀升，热门景区单日接待游客超历史纪录。', loc:'中国多地', img:'', url:'https://www.google.com/search?q=%E5%A4%9A%E5%9C%B0%E6%99%AF%E5%8C%BA%E8%BF%8E%E6%9D%A5%E5%AE%A2%E6%B5%81%E9%AB%98%E5%B3%B0' },
 ];
 
 // 底部跑马灯文字
@@ -272,16 +272,30 @@ function renderFeed() {
   if (!track) return;
   track.innerHTML = MOCK_FEED.map((item) => {
     const color = item.catColor || CAT_COLORS[item.cat] || '#8fb6d8';
-    return `<div class="hs-feed-card">
+    const title = escapeHtml(item.title);
+    const desc = escapeHtml(item.desc);
+    const loc = escapeHtml(item.loc);
+    const url = escapeHtml(item.url || '');
+    const titleHtml = url
+      ? `<a class="hs-feed-link" href="${url}" target="_blank" rel="noopener noreferrer">${title}</a>`
+      : title;
+    return `<div class="hs-feed-card"${url ? ` data-link="${url}"` : ''}>
       <div class="hs-feed-card-top">
         <span class="hs-feed-time">${item.time}</span>
         <span class="hs-feed-cat" style="background:${color}22;color:${color};border-color:${color}44">${item.cat}</span>
       </div>
-      <div class="hs-feed-title">${item.title}</div>
-      <div class="hs-feed-desc">${item.desc}</div>
-      <div class="hs-feed-loc">📍 ${item.loc}</div>
+      <div class="hs-feed-title">${titleHtml}</div>
+      <div class="hs-feed-desc">${desc}</div>
+      <div class="hs-feed-loc">📍 ${loc}</div>
     </div>`;
   }).join('');
+  track.querySelectorAll('.hs-feed-card[data-link]').forEach((card) => {
+    card.addEventListener('click', (event) => {
+      if (event.target.closest('a')) return;
+      const url = card.getAttribute('data-link');
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    });
+  });
 }
 
 function scrollFeedTo(idx) {

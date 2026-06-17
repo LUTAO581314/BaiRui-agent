@@ -465,6 +465,10 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn('target="_blank"', hotspot_js)
         self.assertIn("item?.url || item?.link || ''", hotspot_js)
         self.assertIn(".hs-item-link", styles)
+        self.assertIn("hs-feed-link", hotspot_js)
+        self.assertIn("data-link", hotspot_js)
+        self.assertIn("window.open(url, '_blank', 'noopener,noreferrer')", hotspot_js)
+        self.assertIn(".hs-feed-link", styles)
 
     def test_agents_roster_and_round_keep_permissions_visible(self):
         with tempfile.TemporaryDirectory() as tmp:
