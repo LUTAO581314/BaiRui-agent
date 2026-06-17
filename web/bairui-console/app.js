@@ -31,7 +31,7 @@ const SAFETY_BOUNDARY = {
   long_term_memory_auto_write: false,
 };
 const MEMORY_GRAPH_STORAGE_KEY = "bairui-memory-graph-enabled";
-const MEMORY_GRAPH_ENABLED = localStorage.getItem(MEMORY_GRAPH_STORAGE_KEY) !== "false";
+let MEMORY_GRAPH_ENABLED = localStorage.getItem(MEMORY_GRAPH_STORAGE_KEY) !== "false";
 
 const themeSwitcher = document.getElementById("theme-switcher");
 const resetViewBtn = document.getElementById("reset-view-btn");
@@ -1604,9 +1604,28 @@ function findAnchorNode(memory, nodeMap) {
 async function loadMemories() {
   if (!MEMORY_GRAPH_ENABLED) return;
   try {
-    const graphBody = await fetch(`${API}/obsidian/graph`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {});
+    const readJson = (path) => fetch(`${API}${path}`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {});
+    const postJson = (path, body = {}) => fetch(`${API}${path}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+      body: JSON.stringify(body),
+    }).then(r => r.ok ? r.json() : {});
+    const [memoryPendingBody, reportsBody, sourceRefsBody, auditBody, graphBody] = await Promise.all([
+      postJson("/document/parse/memory-review-pending", {}),
+      readJson("/reports"),
+      readJson("/source-refs"),
+      readJson("/audit"),
+      readJson("/obsidian/graph"),
+    ]);
     const graph = graphBody.obsidian_graph || {};
-    const rows = buildObsidianGraphRows(graph).slice(0, 180);
+    const rows = buildBairuiGraphRows(memoryPendingBody, reportsBody, sourceRefsBody, auditBody).slice(0, 180);
+    const syncStatus = graph.status === "ready"
+      ? ` · Obsidian 已同步 ${graph.note_count || 0} notes / ${graph.link_count || 0} links`
+      : graph.status === "empty"
+        ? " · Obsidian 同步仓为空"
+        : " · Obsidian 同步待检查";
+    setConnectionState(`记忆图谱 ${rows.length} 节点${syncStatus}`, graph.status === "ready");
     if (!Array.isArray(rows)) return;
 
     const prevPositions = new Map(nodeData.map(n => [n._nid, {
@@ -1629,12 +1648,15 @@ async function loadMemories() {
       };
     });
 
-    linkData = buildObsidianGraphLinks(graph.links || [], new Set(nodeData.map(n => n._nid)));
+    linkData = [];
 
     renderGraph(1.1);
   } catch (error) {
     console.warn("[graph] load failed:", error.message);
-    setConnectionState("未连接", false);
+    nodeData = buildBairuiGraphRows();
+    linkData = [];
+    renderGraph(1.1);
+    setConnectionState("Obsidian 图谱读取失败，显示内核图", false);
   }
 }
 
@@ -4440,8 +4462,9 @@ function initTTSSettings() {
     memoryGraphToggle.checked = localStorage.getItem(MEMORY_GRAPH_STORAGE_KEY) !== "false";
     memoryGraphToggle.addEventListener("change", () => {
       localStorage.setItem(MEMORY_GRAPH_STORAGE_KEY, String(memoryGraphToggle.checked));
+      MEMORY_GRAPH_ENABLED = memoryGraphToggle.checked;
       if (memoryGraphFeedback) {
-        memoryGraphFeedback.textContent = "下次刷新页面后生效";
+        memoryGraphFeedback.textContent = memoryGraphToggle.checked ? "已开启记忆图谱，刷新后重新载入" : "已关闭记忆图谱，刷新后隐藏";
         memoryGraphFeedback.className = "settings-feedback";
         setTimeout(() => { memoryGraphFeedback.textContent = ""; }, 3000);
       }

@@ -199,10 +199,10 @@ const createSettingsModal = () => `
             ${createThemeSwitcher()}
           </div>
           <div class="settings-section">
-            <div class="settings-section-label">Obsidian 双链图</div>
-            <p class="settings-hint">这里直接读取长期记忆目录里的 Markdown 笔记，并按 Obsidian 的 [[双链]] 关系生成图谱。未解析到笔记或双链时会显示空图；开启后会占用额外 CPU/GPU 资源，低配设备建议关闭。</p>
+            <div class="settings-section-label">记忆图谱</div>
+            <p class="settings-hint">前端主视图使用 bairui 记忆图谱，长期记忆和报告会继续同步到 Obsidian。这里控制的是前端图谱显示，不再直接渲染 Obsidian 原生双链结果。</p>
             <div class="settings-row">
-              <label class="settings-label" for="settings-memory-graph-toggle">显示 Obsidian 双链图</label>
+              <label class="settings-label" for="settings-memory-graph-toggle">显示记忆图谱</label>
               <input id="settings-memory-graph-toggle" type="checkbox" style="width:auto;flex:none;">
               <span class="settings-feedback" id="settings-memory-graph-feedback" style="margin-left:8px;"></span>
             </div>
