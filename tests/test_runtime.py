@@ -2466,15 +2466,15 @@ class RuntimeFoundationTests(unittest.TestCase):
     def test_wechat_official_webhook_get_and_post(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "data"
-            token = "wechat-official-placeholder"
+            verify_phrase = "wechat-official-checkword"
             timestamp = str(int(__import__("time").time()))
             nonce = "abc123"
-            signature = hashlib.sha1("".join(sorted([token, timestamp, nonce])).encode("utf-8")).hexdigest()
+            signature = hashlib.sha1("".join(sorted([verify_phrase, timestamp, nonce])).encode("utf-8")).hexdigest()
             env = {
                 "HERMES_DATA_DIR": str(data_dir),
                 "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
                 "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
-                "WECHAT_OFFICIAL_TOKEN": token,
+                "WECHAT_OFFICIAL_TOKEN": verify_phrase,
             }
             with patch.dict(os.environ, env, clear=False):
                 server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
