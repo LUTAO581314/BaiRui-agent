@@ -394,10 +394,14 @@ function activationStepMeta(step, state = {}) {
     evidence("Source refs", countPayloadItems(state.source_refs, ["source_refs"]));
     repair.push("没有报告时先在文档工作台跑一次摄取流程，来源引用会同步显示。");
   } else if (id === "channels") {
+    const diagnostics = state.channels_diagnostics?.channel_diagnostics || [];
+    const deliverable = diagnostics.filter((item) => item.channel_type !== "personal_chat");
+    const ready = deliverable.filter((item) => ["ready", "approval_required"].includes(String(item.status || "").toLowerCase()));
     evidence("Channels", payloadStatus(state.channels_status, ["channels"]));
     evidence("Targets", countPayloadItems(state.channels_targets, ["channel_targets"]));
+    evidence("Deliverable", `${ready.length}/${deliverable.length || 0}`);
     evidence("Approvals", countPayloadItems(state.channels_approvals, ["channel_approvals"]));
-    repair.push("渠道只生成审批记录，不会自动外发；配置目标后仍需主人确认。");
+    repair.push("至少打通一个真实外部渠道，再进入客户试点；缺字段或缺 webhook 时先去设置页补齐。");
   } else if (id === "avatar") {
     evidence("Avatar", payloadStatus(state.avatar_status, ["avatar"]));
     evidence("Manifest", state.avatar_manifest?.avatar_manifest?.models?.length || 0);
@@ -553,6 +557,9 @@ function renderActivationOverlay(contract = {}, state = {}) {
   const platformStatus = state.ready?.platform || "missing_config";
   const modelBaseUrl = activationConfigField(state.config_status, "model_gateway", "base_url");
   const modelName = activationConfigField(state.config_status, "model_gateway", "model");
+  const channelConfig = (setupPlan.required_config || []).find((item) => item.id === "social_channels") || {};
+  const channelDiagnostics = state.channels_diagnostics?.channel_diagnostics || [];
+  const channelReadyCount = channelDiagnostics.filter((item) => ["ready", "approval_required"].includes(String(item.status || "").toLowerCase())).length;
 
   overlay.innerHTML = `
     <div class="activation-core-bg" aria-hidden="true">
@@ -663,6 +670,11 @@ function renderActivationOverlay(contract = {}, state = {}) {
                 <span>Platform</span>
                 <strong>${platformStatus}</strong>
                 <small>server id / license visibility</small>
+              </div>
+              <div class="activation-evidence-card ${activationStatusClass(channelConfig.status || "unknown")}">
+                <span>Channels</span>
+                <strong>${escapeActivationHtml(channelConfig.status || "unknown")}</strong>
+                <small>${channelReadyCount} deliverable targets ready</small>
               </div>
             </div>
             <div class="activation-safety">
@@ -821,7 +833,7 @@ async function showActivationOverlay({ force = false } = {}) {
     const [
       contract, setupPlan, health, ready, runtime, capabilities, configStatus, license, platformHeartbeat,
       documentParse, memoryPending, reports, ingestReports, sourceRefs, channelsStatus,
-      channelsTargets, channelsApprovals, avatarStatus, avatarManifest, codegraphStatus,
+      channelsDiagnostics, channelsTargets, channelsApprovals, avatarStatus, avatarManifest, codegraphStatus,
     ] = await Promise.all([
       readJson("/frontend/contract"),
       readJson("/activation/setup-plan"),
@@ -838,6 +850,7 @@ async function showActivationOverlay({ force = false } = {}) {
       readJson("/document/ingest-reports"),
       readJson("/source-refs"),
       readJson("/channels/status"),
+      readJson("/channels/diagnostics"),
       readJson("/channels/targets"),
       readJson("/channels/approvals"),
       readJson("/avatar/status"),
@@ -859,6 +872,7 @@ async function showActivationOverlay({ force = false } = {}) {
       ingest_reports: ingestReports,
       source_refs: sourceRefs,
       channels_status: channelsStatus,
+      channels_diagnostics: channelsDiagnostics,
       channels_targets: channelsTargets,
       channels_approvals: channelsApprovals,
       avatar_status: avatarStatus,
@@ -4029,16 +4043,18 @@ function initTTSSettings() {
 
   async function loadSocialSettings() {
     try {
-      const [statusBody, targetsBody, diagnosticsBody, approvalsBody] = await Promise.all([
+      const [statusBody, targetsBody, diagnosticsBody, approvalsBody, configBody] = await Promise.all([
         fetch(`${API}/channels/status`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
         fetch(`${API}/channels/targets`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
         fetch(`${API}/channels/diagnostics`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
         fetch(`${API}/channels/approvals`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+        fetch(`${API}/config/status`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
       ]);
       const channels = statusBody.channels || {};
       const targets = targetsBody.channel_targets || channels.configured_targets || [];
       const diagnostics = diagnosticsBody.channel_diagnostics || [];
       const approvals = approvalsBody.channel_approvals || [];
+      const channelConfig = (configBody.config_status?.items || []).find((item) => item.id === "channel_targets") || {};
       if (socialChannelsEnabled) socialChannelsEnabled.checked = Boolean(channels.enabled);
       if (socialTargetsJson && !socialTargetsJson.value.trim()) {
         socialTargetsJson.value = JSON.stringify(targets, null, 2);
@@ -4051,6 +4067,10 @@ function initTTSSettings() {
       if (diagList) diagList.innerHTML = renderChannelDiagnostics(diagnostics);
       const approvalList = document.getElementById("social-approval-list");
       if (approvalList) approvalList.innerHTML = renderChannelApprovals(approvals);
+      const platformList = document.getElementById("social-platform-status-list");
+      if (platformList) platformList.innerHTML = renderChannelPlatformStatus(diagnostics);
+      const webhookList = document.getElementById("social-webhook-list");
+      if (webhookList) webhookList.innerHTML = renderChannelWebhookStatus(channelConfig.fields?.webhooks || {});
     } catch {}
   }
 
@@ -4085,6 +4105,47 @@ function initTTSSettings() {
           <small>${settingsSafeText(item.media_kind || "text")} · ${settingsSafeText(item.message_preview || item.reason || "")}</small>
         </div>
         <span>${settingsSafeText(item.review_status || item.status || "pending")}</span>
+      </div>
+    `).join("");
+  }
+
+  function renderChannelPlatformStatus(diagnostics = []) {
+    if (!diagnostics.length) return `<div class="settings-overview-empty">暂无渠道平台状态。</div>`;
+    const grouped = new Map();
+    diagnostics.forEach((item) => {
+      const key = String(item.channel_type || "unknown");
+      const current = grouped.get(key) || { status: "unknown", blockers: [], warnings: [], count: 0 };
+      current.count += 1;
+      current.blockers.push(...(item.blockers || []));
+      current.warnings.push(...(item.warnings || []));
+      if (["missing_config", "blocked"].includes(String(item.status || "").toLowerCase())) current.status = "missing_config";
+      else if (current.status === "unknown") current.status = item.status || "unknown";
+      grouped.set(key, current);
+    });
+    return Array.from(grouped.entries()).map(([channelType, item]) => {
+      const detail = [`${item.count} targets`, ...Array.from(new Set(item.blockers.concat(item.warnings)))].filter(Boolean).join(" · ");
+      return `
+        <div class="settings-overview-item ${settingsStatusClass(item.status)}">
+          <div>
+            <strong>${settingsSafeText(channelType)}</strong>
+            <small>${settingsSafeText(detail || "无附加说明")}</small>
+          </div>
+          <span>${settingsSafeText(item.status || "unknown")}</span>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderChannelWebhookStatus(webhooks = {}) {
+    const entries = Object.entries(webhooks || {});
+    if (!entries.length) return `<div class="settings-overview-empty">暂无 webhook 地址。</div>`;
+    return entries.map(([name, path]) => `
+      <div class="settings-overview-item is-ready">
+        <div>
+          <strong>${settingsSafeText(name)}</strong>
+          <small>${settingsSafeText(path)}</small>
+        </div>
+        <span>ready</span>
       </div>
     `).join("");
   }

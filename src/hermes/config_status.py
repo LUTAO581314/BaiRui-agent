@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .channels import channel_status
+from .channels import channel_status, diagnose_channel_targets
 from .config import Settings
 from .config_apply import PATH_SCOPE_POLICY
 
@@ -50,7 +50,17 @@ def build_config_status(settings: Settings) -> dict[str, Any]:
             "Channel targets",
             channel_status(settings).status,
             "Outbound channel targets are approval-controlled; configuration never means automatic send.",
-            {"target_count": channel_status(settings).configured_target_count, "will_send": False},
+            {
+                "target_count": channel_status(settings).configured_target_count,
+                "deliverable_target_count": sum(1 for item in diagnose_channel_targets(settings) if item.channel_type != "personal_chat"),
+                "enabled": channel_status(settings).enabled,
+                "will_send": False,
+                "webhooks": {
+                    "feishu": "/social/feishu/webhook",
+                    "wechat_official": "/social/wechat/official",
+                    "wecom": "/social/wecom/webhook",
+                },
+            },
         ),
         _item(
             "avatar_assets",
@@ -143,6 +153,15 @@ def _build_checklist(settings: Settings, items: list[dict[str, Any]], blockers: 
         "BAIRUI_OWNER_TOKEN=<recommended-local-owner-token>",
         "BAIRUI_LICENSE_SECRET=<optional-license-value>",
         "BAIRUI_CHANNEL_TARGETS_JSON=<optional-owner-reviewed-channel-targets-json>",
+        "FEISHU_APP_ID=<optional-feishu-app-id>",
+        "FEISHU_APP_SECRET=<optional-feishu-app-secret>",
+        "FEISHU_VERIFICATION_TOKEN=<optional-feishu-verify-token>",
+        "WECHAT_OFFICIAL_APP_ID=<optional-wechat-app-id>",
+        "WECHAT_OFFICIAL_APP_SECRET=<optional-wechat-app-secret>",
+        "WECHAT_OFFICIAL_TOKEN=<optional-wechat-verify-token>",
+        "WECOM_BOT_KEY=<optional-wecom-bot-key>",
+        "WECOM_INCOMING_TOKEN=<optional-wecom-incoming-bearer>",
+        "DISCORD_BOT_TOKEN=<optional-discord-bot-token>",
     ]
     commands = [
         "python -m src.hermes config-status",
@@ -164,7 +183,7 @@ def _build_checklist(settings: Settings, items: list[dict[str, Any]], blockers: 
         _checklist_step("documents", "Prepare document output", _path_status(settings.mineru_output_dir), _path_value(settings.mineru_output_dir)),
         _checklist_step("avatar", "Prepare Avatar assets", _path_status(settings.avatar_assets_dir), _path_value(settings.avatar_assets_dir)),
         _checklist_step("path_scope", "Keep local paths in the bairui scope", "required", PATH_SCOPE_POLICY),
-        _checklist_step("channels", "Confirm channel approval boundary", channel_status(settings).status, "Configured targets create approval records only; will_send=false until a future sender is explicitly approved."),
+        _checklist_step("channels", "Configure channel delivery and webhook callbacks", channel_status(settings).status, "Set channel targets, platform credentials, and webhook callback URLs before customer-facing delivery tests."),
         _checklist_step("database", "Optional PostgreSQL", "configured" if settings.has_database else "optional", "JSONL remains available for product beta; PostgreSQL URL is reported only as configured or missing."),
         _checklist_step("owner_gate", "Recommended owner token gate", "configured" if settings.owner_token else "recommended", "Set BAIRUI_OWNER_TOKEN before exposing the console beyond trusted local development. All POST write APIs require it when configured; token value is never returned."),
         _checklist_step("license", "Optional license gate", "configured" if settings.license_secret else "optional", "License secret is reported only as configured or missing."),

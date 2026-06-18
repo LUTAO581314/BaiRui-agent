@@ -397,6 +397,12 @@ const createSettingsModal = () => `
               <input class="settings-input" id="social-wecom-token" type="password" placeholder="留空保持原值…" autocomplete="new-password">
             </div>
             <p class="settings-hint">这些字段只在 target JSON 指向对应 channel_type 时才真正生效；未启用的渠道会被诊断面板标成 blocked。</p>
+            <div class="settings-overview-list" id="social-platform-status-list" style="margin-top:12px;">
+              <div class="settings-overview-empty">正在读取渠道平台状态…</div>
+            </div>
+            <div class="settings-overview-list" id="social-webhook-list" style="margin-top:12px;">
+              <div class="settings-overview-empty">正在读取 webhook 地址…</div>
+            </div>
           </div>
           <div class="settings-section">
             <div class="settings-section-label">诊断与审批</div>
