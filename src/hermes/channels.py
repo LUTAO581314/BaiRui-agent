@@ -14,6 +14,7 @@ from .storage import (
     list_channel_approval_requests,
     list_channel_approval_reviews,
 )
+from .social_bridge import dispatch_channel_target, is_deliverable_target
 
 
 SUPPORTED_MEDIA_KINDS = ("text", "image", "video", "file")
@@ -80,6 +81,9 @@ class ChannelApprovalReviewResult:
     will_send: bool
     reason: str
     review_id: str
+    delivery_status: str = "not_sent"
+    delivery_reason: str = ""
+    external_message_id: str = ""
 
 
 def channel_status(settings: Settings) -> ChannelStatus:
@@ -136,6 +140,11 @@ def diagnose_channel_targets(settings: Settings) -> tuple[ChannelTargetDiagnosti
             blockers.append("missing_channel_type")
         if not supports:
             blockers.append("missing_supported_media")
+        if is_deliverable_target(target):
+            missing_credentials = _missing_credentials_for_target(channel_type, settings)
+            blockers.extend(missing_credentials)
+        else:
+            warnings.append("approval_only_target")
         if not requires_owner_confirmation:
             warnings.append("owner_confirmation_disabled")
         target_status = "ready" if enabled and not blockers else "missing_config"
@@ -289,12 +298,41 @@ def review_channel_approval(settings: Settings, payload: dict[str, Any]) -> Chan
             review_id="",
         )
 
+    request = requests[request_id]
+    targets = {str(target.get("id", "")): target for target in channel_targets(settings)}
+    target = targets.get(str(request.get("target_id", "")).strip(), {})
+    will_send = False
+    reason = "review_recorded_without_external_dispatch"
+    delivery_status = "not_sent"
+    delivery_reason = ""
+    external_message_id = ""
+
+    if decision == "approve" and target and is_deliverable_target(target):
+        dispatch = dispatch_channel_target(
+            settings,
+            target,
+            {
+                "text": str(request.get("message_preview", "")).strip(),
+                "media_kind": str(request.get("media_kind", "text")).strip() or "text",
+                "attachment_path": str(request.get("attachment_path", "")).strip(),
+            },
+        )
+        delivery_status = dispatch.delivery_status
+        delivery_reason = dispatch.delivery_reason
+        external_message_id = dispatch.external_message_id
+        will_send = dispatch.will_send
+        reason = dispatch.status if dispatch.status != "dispatched" else "approved_and_dispatched"
+
     review = create_channel_approval_review(
         settings.data_dir,
         request_id=request_id,
         decision=decision,
         reviewer_ref=reviewer_ref,
         note=note,
+        will_send=will_send,
+        delivery_status=delivery_status,
+        delivery_reason=delivery_reason,
+        external_message_id=external_message_id,
     )
     return ChannelApprovalReviewResult(
         status="reviewed",
@@ -302,9 +340,12 @@ def review_channel_approval(settings: Settings, payload: dict[str, Any]) -> Chan
         decision=decision,
         reviewer_ref=reviewer_ref,
         note=note,
-        will_send=False,
-        reason="review_recorded_without_external_dispatch",
+        will_send=will_send,
+        reason=reason,
         review_id=review.id,
+        delivery_status=delivery_status,
+        delivery_reason=delivery_reason,
+        external_message_id=external_message_id,
     )
 
 
@@ -352,3 +393,30 @@ def _load_configured_targets() -> list[dict[str, Any]]:
             }
         )
     return targets
+
+
+def _missing_credentials_for_target(channel_type: str, settings: Settings) -> list[str]:
+    channel_type = channel_type.strip().lower()
+    if channel_type == "discord" and not settings.discord_bot_token.strip():
+        return ["missing_discord_bot_token"]
+    if channel_type == "feishu":
+        missing = []
+        if not settings.feishu_app_id.strip():
+            missing.append("missing_feishu_app_id")
+        if not settings.feishu_app_secret.strip():
+            missing.append("missing_feishu_app_secret")
+        if not settings.feishu_verification_token.strip():
+            missing.append("missing_feishu_verification_token")
+        return missing
+    if channel_type == "wechat-official":
+        missing = []
+        if not settings.wechat_official_app_id.strip():
+            missing.append("missing_wechat_official_app_id")
+        if not settings.wechat_official_app_secret.strip():
+            missing.append("missing_wechat_official_app_secret")
+        if not settings.wechat_official_token.strip():
+            missing.append("missing_wechat_official_token")
+        return missing
+    if channel_type == "wecom-webhook" and not settings.wecom_bot_key.strip():
+        return ["missing_wecom_bot_key"]
+    return []

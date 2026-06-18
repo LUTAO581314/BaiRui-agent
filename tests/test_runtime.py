@@ -3,6 +3,7 @@ import os
 import tempfile
 import threading
 import unittest
+import hashlib
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -20,6 +21,7 @@ from src.hermes.channels import (
     plan_channel_send,
     review_channel_approval,
 )
+from src.hermes.social_bridge import SocialDispatchResult
 from src.hermes.codegraph import codegraph_impact, codegraph_overview, codegraph_status, query_codegraph, register_codegraph_repo, scan_codegraph_repo
 from src.hermes.cli import build_parser, run
 from src.hermes.config import load_settings, local_config_path
@@ -2286,6 +2288,80 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(reviews[-1]["decision"], "approve")
         self.assertEqual(reviews[-1]["will_send"], False)
 
+    def test_channel_approval_review_dispatches_deliverable_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "BAIRUI_CHANNEL_TARGETS_JSON": json.dumps(
+                    [
+                        {
+                            "id": "wecom:webhook:test-key",
+                            "label": "WeCom Trial",
+                            "channel_type": "wecom-webhook",
+                            "supports": ["text"],
+                            "requires_owner_confirmation": True,
+                        }
+                    ]
+                ),
+                "WECOM_BOT_KEY": "test-key",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                plan = plan_channel_send(
+                    settings,
+                    {"target_id": "wecom:webhook:test-key", "text": "approval queue item", "media_kind": "text"},
+                )
+                fake = SocialDispatchResult(
+                    status="dispatched",
+                    will_send=True,
+                    delivery_status="sent",
+                    delivery_reason="",
+                    external_message_id="msg-1",
+                    platform="wecom-webhook",
+                    raw={"ok": True},
+                )
+                with patch("src.hermes.channels.dispatch_channel_target", return_value=fake) as dispatch_mock:
+                    review = review_channel_approval(
+                        settings,
+                        {"request_id": plan.approval_request_id, "decision": "approve", "reviewer_ref": "owner", "note": "ok"},
+                    )
+                reviews = list_channel_approval_reviews(data_dir)
+        self.assertEqual(review.status, "reviewed")
+        self.assertTrue(review.will_send)
+        self.assertEqual(review.reason, "approved_and_dispatched")
+        self.assertEqual(review.delivery_status, "sent")
+        self.assertEqual(review.external_message_id, "msg-1")
+        self.assertEqual(reviews[-1]["external_message_id"], "msg-1")
+        dispatch_mock.assert_called_once()
+
+    def test_channel_diagnostics_report_missing_social_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "BAIRUI_CHANNEL_TARGETS_JSON": json.dumps(
+                    [
+                        {
+                            "id": "feishu:open_id:user-1",
+                            "label": "Feishu User",
+                            "channel_type": "feishu",
+                            "supports": ["text"],
+                            "requires_owner_confirmation": True,
+                        }
+                    ]
+                ),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                diagnostics = diagnose_channel_targets(load_settings())
+        self.assertEqual(diagnostics[0].status, "missing_config")
+        self.assertIn("missing_feishu_app_id", diagnostics[0].blockers)
+
     def test_channel_approval_reviews_http_endpoint_lists_review_records(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = {
@@ -2323,6 +2399,123 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(reviews[-1]["request_id"], request_id)
         self.assertEqual(reviews[-1]["decision"], "reject")
         self.assertFalse(reviews[-1]["will_send"])
+
+    def test_feishu_webhook_records_social_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "FEISHU_VERIFICATION_TOKEN": "verify-me",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, _, _ = _http_post(
+                        server.server_port,
+                        "/social/feishu/webhook",
+                        {
+                            "token": "verify-me",
+                            "header": {"event_type": "im.message.receive_v1"},
+                            "event": {
+                                "sender": {"sender_id": {"open_id": "ou_1"}},
+                                "message": {"message_id": "mid_1", "chat_id": "chat_1", "content": json.dumps({"text": "hello"})},
+                            },
+                        },
+                    )
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+                audit = list_audit_events(data_dir)
+        self.assertEqual(status, 200)
+        self.assertEqual(audit[-1]["action"], "social.message_received")
+        self.assertEqual(audit[-1]["payload"]["platform"], "feishu")
+
+    def test_wecom_webhook_records_social_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "WECOM_INCOMING_TOKEN": "incoming-token",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, _, _ = _http_post(
+                        server.server_port,
+                        "/social/wecom/webhook",
+                        {"from_id": "wecom:webhook:user", "text": {"content": "ping"}},
+                        headers={"Authorization": "Bearer incoming-token"},
+                    )
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+                audit = list_audit_events(data_dir)
+        self.assertEqual(status, 200)
+        self.assertEqual(audit[-1]["payload"]["platform"], "wecom-webhook")
+
+    def test_wechat_official_webhook_get_and_post(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            token = "wechat-token"
+            timestamp = str(int(__import__("time").time()))
+            nonce = "abc123"
+            signature = hashlib.sha1("".join(sorted([token, timestamp, nonce])).encode("utf-8")).hexdigest()
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "WECHAT_OFFICIAL_TOKEN": token,
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    get_status, _, get_body = _http_get(
+                        server.server_port,
+                        f"/social/wechat/official?signature={signature}&timestamp={timestamp}&nonce={nonce}&echostr=hello",
+                    )
+                    xml_body = (
+                        "<xml>"
+                        "<ToUserName><![CDATA[toUser]]></ToUserName>"
+                        "<FromUserName><![CDATA[fromUser]]></FromUserName>"
+                        "<CreateTime>1348831860</CreateTime>"
+                        "<MsgType><![CDATA[text]]></MsgType>"
+                        "<Content><![CDATA[this is a test]]></Content>"
+                        "</xml>"
+                    ).encode("utf-8")
+                    connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+                    try:
+                        connection.request(
+                            "POST",
+                            f"/social/wechat/official?signature={signature}&timestamp={timestamp}&nonce={nonce}",
+                            body=xml_body,
+                            headers={"Content-Type": "application/xml"},
+                        )
+                        response = connection.getresponse()
+                        post_status = response.status
+                        response.read()
+                    finally:
+                        connection.close()
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+                audit = list_audit_events(data_dir)
+        self.assertEqual(get_status, 200)
+        self.assertEqual(get_body.decode("utf-8"), "hello")
+        self.assertEqual(post_status, 200)
+        self.assertEqual(audit[-1]["payload"]["platform"], "wechat-official")
 
     def test_channel_approval_review_rejects_duplicate_review(self):
         with tempfile.TemporaryDirectory() as tmp:

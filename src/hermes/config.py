@@ -70,6 +70,15 @@ class Settings:
     codegraph_root: Path
     codegraph_max_file_bytes: int
     owner_token: str
+    discord_bot_token: str
+    feishu_verification_token: str
+    feishu_app_id: str
+    feishu_app_secret: str
+    wechat_official_token: str
+    wechat_official_app_id: str
+    wechat_official_app_secret: str
+    wecom_incoming_token: str
+    wecom_bot_key: str
 
     @property
     def has_database(self) -> bool:
@@ -150,6 +159,15 @@ def load_settings() -> Settings:
         codegraph_root=Path(env("BAIRUI_CODEGRAPH_ROOT", "./data/codegraph")),
         codegraph_max_file_bytes=int(env("BAIRUI_CODEGRAPH_MAX_FILE_BYTES", "300000")),
         owner_token=env("BAIRUI_OWNER_TOKEN", ""),
+        discord_bot_token=env("DISCORD_BOT_TOKEN", ""),
+        feishu_verification_token=env("FEISHU_VERIFICATION_TOKEN", ""),
+        feishu_app_id=env("FEISHU_APP_ID", ""),
+        feishu_app_secret=env("FEISHU_APP_SECRET", ""),
+        wechat_official_token=env("WECHAT_OFFICIAL_TOKEN", ""),
+        wechat_official_app_id=env("WECHAT_OFFICIAL_APP_ID", ""),
+        wechat_official_app_secret=env("WECHAT_OFFICIAL_APP_SECRET", ""),
+        wecom_incoming_token=env("WECOM_INCOMING_TOKEN", ""),
+        wecom_bot_key=env("WECOM_BOT_KEY", ""),
     )
 
 

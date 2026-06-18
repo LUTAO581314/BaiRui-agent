@@ -21,9 +21,31 @@ FIELD_TO_ENV = {
     "codegraph_root": "BAIRUI_CODEGRAPH_ROOT",
     "database_url": "HERMES_DATABASE_URL",
     "owner_token": "BAIRUI_OWNER_TOKEN",
+    "feishu_verification_token": "FEISHU_VERIFICATION_TOKEN",
+    "feishu_app_id": "FEISHU_APP_ID",
+    "feishu_app_secret": "FEISHU_APP_SECRET",
+    "wechat_official_token": "WECHAT_OFFICIAL_TOKEN",
+    "wechat_official_app_id": "WECHAT_OFFICIAL_APP_ID",
+    "wechat_official_app_secret": "WECHAT_OFFICIAL_APP_SECRET",
+    "wecom_incoming_token": "WECOM_INCOMING_TOKEN",
+    "wecom_bot_key": "WECOM_BOT_KEY",
+    "discord_bot_token": "DISCORD_BOT_TOKEN",
 }
 
-SECRET_FIELDS = {"model_api_key", "database_url", "owner_token"}
+SECRET_FIELDS = {
+    "model_api_key",
+    "database_url",
+    "owner_token",
+    "feishu_verification_token",
+    "feishu_app_id",
+    "feishu_app_secret",
+    "wechat_official_token",
+    "wechat_official_app_id",
+    "wechat_official_app_secret",
+    "wecom_incoming_token",
+    "wecom_bot_key",
+    "discord_bot_token",
+}
 PATH_FIELDS = {"document_output_dir", "memory_vault_dir", "avatar_assets_dir", "codegraph_root"}
 HIGH_RISK_FIELDS = {"database_url", "owner_token", "memory_vault_dir", "channel_enabled", "channel_targets_json", "codegraph_root"}
 DANGEROUS_CONFIRMATION_PHRASE = "APPLY BAIRUI CONFIG"

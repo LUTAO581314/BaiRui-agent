@@ -8,6 +8,7 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
+from xml.etree import ElementTree
 
 from . import __version__
 from .agents import (
@@ -338,10 +339,13 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path == "/settings/tts":
             self._send({"service": PUBLIC_SERVICE, "tts": {"configured": False, "provider": "missing_config"}, "voices": []})
             return
+        parsed_path = urlparse(self.path)
         if self.path == "/social/wechat-clawbot/qr":
             self._send({"service": PUBLIC_SERVICE, "status": "disabled", "message": "channel authorization is managed by bairui approvals"})
             return
-        parsed_path = urlparse(self.path)
+        if parsed_path.path == "/social/wechat/official":
+            self._handle_social_wechat_official_get(settings, parsed_path)
+            return
         if parsed_path.path == "/hotspots":
             query = parse_qs(parsed_path.query)
             self._send(build_hotspots(settings, force_refresh=(query.get("refresh") or [""])[0] == "1"))
@@ -405,6 +409,20 @@ class HermesHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         settings = load_settings()
         ensure_runtime_dirs(settings)
+        parsed_path = urlparse(self.path)
+
+        if parsed_path.path == "/social/feishu/webhook":
+            payload = self._read_json()
+            self._handle_social_feishu_webhook(settings, payload)
+            return
+        if parsed_path.path == "/social/wecom/webhook":
+            payload = self._read_json()
+            self._handle_social_wecom_webhook(settings, payload)
+            return
+        if parsed_path.path == "/social/wechat/official":
+            self._handle_social_wechat_official_post(settings)
+            return
+
         payload = self._read_json()
 
         if not self._require_owner(settings, permission="write_api"):
@@ -639,7 +657,6 @@ class HermesHandler(BaseHTTPRequestHandler):
                 status = 409
             self._send({"service": PUBLIC_SERVICE, "channel_approval_review": channel_payload(result)}, status=status)
             return
-
         if self.path == "/memory/ingest":
             text = str(payload.get("text", ""))
             if not text.strip():
@@ -1211,6 +1228,155 @@ class HermesHandler(BaseHTTPRequestHandler):
         )
         return False
 
+    def _record_social_message(self, settings: Any, *, platform: str, from_id: str, content: str, metadata: dict[str, Any] | None = None) -> None:
+        text = str(content or "").strip()
+        if not from_id.strip() or not text:
+            return
+        create_audit_event(
+            settings.data_dir,
+            "social.message_received",
+            actor_type="external_user",
+            actor_ref=from_id,
+            resource_type="social_channel",
+            resource_ref=platform,
+            risk_level="medium",
+            payload={"platform": platform, "from_id": from_id, "content": text, "metadata": metadata or {}},
+        )
+
+    def _handle_social_feishu_webhook(self, settings: Any, payload: dict[str, Any]) -> None:
+        expected_token = settings.feishu_verification_token.strip()
+        if not expected_token:
+            self._send({"ok": False, "error": "FEISHU_VERIFICATION_TOKEN not configured"}, status=503)
+            return
+        if payload.get("challenge"):
+            if str(payload.get("token", "")) != expected_token:
+                self._send({"ok": False, "error": "invalid token"}, status=403)
+                return
+            self._send({"challenge": payload.get("challenge")}, status=200)
+            return
+        if str(payload.get("token", "")) != expected_token:
+            self._send({"ok": False, "error": "invalid token"}, status=403)
+            return
+        event = payload.get("event", {}) if isinstance(payload.get("event"), dict) else {}
+        message = event.get("message", {}) if isinstance(event.get("message"), dict) else {}
+        content = ""
+        if message.get("content"):
+            try:
+                parsed_content = json.loads(str(message.get("content")))
+                content = str(parsed_content.get("text") or parsed_content.get("content") or "")
+            except json.JSONDecodeError:
+                content = str(message.get("content") or "")
+        sender = event.get("sender", {}) if isinstance(event.get("sender"), dict) else {}
+        sender_id = sender.get("sender_id", {}) if isinstance(sender.get("sender_id"), dict) else {}
+        open_id = str(sender_id.get("open_id") or sender_id.get("user_id") or "")
+        chat_id = str(message.get("chat_id") or "")
+        from_id = f"feishu:open_id:{open_id}" if open_id else (f"feishu:chat_id:{chat_id}" if chat_id else "")
+        self._record_social_message(
+            settings,
+            platform="feishu",
+            from_id=from_id,
+            content=content,
+            metadata={"chat_id": chat_id, "message_id": message.get("message_id", "")},
+        )
+        self._send({"ok": True}, status=200)
+
+    def _handle_social_wecom_webhook(self, settings: Any, payload: dict[str, Any]) -> None:
+        expected_token = settings.wecom_incoming_token.strip()
+        if not expected_token:
+            self._send({"ok": False, "error": "WECOM_INCOMING_TOKEN not configured"}, status=503)
+            return
+        provided = self.headers.get("Authorization", "").replace("Bearer ", "").replace("bearer ", "").strip()
+        if provided != expected_token:
+            self._send({"ok": False, "error": "invalid token"}, status=403)
+            return
+        content = str(((payload.get("text") or {}) if isinstance(payload.get("text"), dict) else {}).get("content") or payload.get("content") or "")
+        from_id = str(payload.get("from_id") or "wecom:webhook:default")
+        self._record_social_message(settings, platform="wecom-webhook", from_id=from_id, content=content, metadata={})
+        self._send({"ok": True}, status=200)
+
+    def _handle_social_wechat_official_get(self, settings: Any, parsed_path: Any) -> None:
+        token = settings.wechat_official_token.strip()
+        if not token:
+            body = b"WECHAT_OFFICIAL_TOKEN not configured"
+            self.send_response(503)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        params = parse_qs(parsed_path.query)
+        if not _verify_wechat_signature(token, params):
+            body = b"forbidden"
+            self.send_response(403)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        body = str((params.get("echostr") or [""])[0]).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_social_wechat_official_post(self, settings: Any) -> None:
+        token = settings.wechat_official_token.strip()
+        parsed_path = urlparse(self.path)
+        params = parse_qs(parsed_path.query)
+        if not token:
+            body = b"WECHAT_OFFICIAL_TOKEN not configured"
+            self.send_response(503)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if not _verify_wechat_signature(token, params):
+            body = b"forbidden"
+            self.send_response(403)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        raw = self.rfile.read(length) if length > 0 else b""
+        try:
+            xml_root = ElementTree.fromstring(raw.decode("utf-8"))
+        except ElementTree.ParseError:
+            body = b"invalid xml"
+            self.send_response(400)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        values = {child.tag: child.text or "" for child in xml_root}
+        from_user = str(values.get("FromUserName", ""))
+        to_user = str(values.get("ToUserName", ""))
+        content = str(values.get("Content") or f"[{values.get('MsgType', 'unknown')} message]")
+        if from_user:
+            self._record_social_message(
+                settings,
+                platform="wechat-official",
+                from_id=f"wechat:official:{from_user}",
+                content=content,
+                metadata={"msg_type": values.get("MsgType", ""), "to_user": to_user},
+            )
+        reply = (
+            f"<xml><ToUserName><![CDATA[{_escape_xml(from_user)}]]></ToUserName>"
+            f"<FromUserName><![CDATA[{_escape_xml(to_user)}]]></FromUserName>"
+            f"<CreateTime>{int(__import__('time').time())}</CreateTime>"
+            "<MsgType><![CDATA[text]]></MsgType>"
+            "<Content><![CDATA[已收到，我会尽快回复。]]></Content></xml>"
+        ).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/xml; charset=utf-8")
+        self.send_header("Content-Length", str(len(reply)))
+        self.end_headers()
+        self.wfile.write(reply)
+
 
 def build_activation_setup_plan(settings: Any) -> dict[str, Any]:
     """Return a customer-safe first-use setup plan for the console Activation wizard."""
@@ -1413,6 +1579,34 @@ def _payload_status(payload: dict[str, Any]) -> str:
         if isinstance(value, dict) and value.get("status"):
             return str(value.get("status"))
     return str(payload.get("status") or "unknown")
+
+
+def _verify_wechat_signature(token: str, params: dict[str, list[str]]) -> bool:
+    signature = str((params.get("signature") or [""])[0])
+    timestamp = str((params.get("timestamp") or [""])[0])
+    nonce = str((params.get("nonce") or [""])[0])
+    if not signature or not timestamp or not nonce:
+        return False
+    try:
+        ts_ms = int(timestamp) * 1000
+    except ValueError:
+        return False
+    from time import time
+    if abs(int(time() * 1000) - ts_ms) > 5 * 60 * 1000:
+        return False
+    digest = __import__("hashlib").sha1("".join(sorted([token, timestamp, nonce])).encode("utf-8")).hexdigest()
+    return digest == signature
+
+
+def _escape_xml(value: str) -> str:
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
 
 
 def serve(settings: Any | None = None) -> None:
