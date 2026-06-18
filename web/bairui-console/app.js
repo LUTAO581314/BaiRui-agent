@@ -640,10 +640,17 @@ function renderActivationOverlay(contract = {}, state = {}) {
 
             <div class="activation-inline-subsection">
               <div>
-                <strong>能力模块不在首次激活里强制配置</strong>
-                <small>能力模块会使用模型网关做分析，但数据源 URL、搜索 Key、爬虫/索引服务地址都应在设置页单独配置。</small>
+                <strong>能力模块和渠道都在设置页继续完成</strong>
+                <small>文档、情报、搜索、语音与渠道收发都会使用模型网关做分析，但各自的数据源 URL、Key、Webhook 和 target 仍应在设置页单独配置。</small>
               </div>
               <button class="activation-secondary activation-open-settings-inline" id="activation-open-capabilities-settings-btn" type="button">打开设置页配置能力</button>
+            </div>
+            <div class="activation-inline-subsection">
+              <div>
+                <strong>渠道首次测试这样做</strong>
+                <small>先在设置页 Social 打开渠道内核，再填 target JSON、平台密钥和 webhook；返回激活页看到 Channels 变成 ready 或 approval_required 后，再进入控制台做第一条测试。</small>
+              </div>
+              <button class="activation-secondary activation-open-settings-inline" id="activation-open-social-settings-btn" type="button">打开 Social 配置渠道</button>
             </div>
           </div>
 
@@ -796,6 +803,11 @@ function renderActivationOverlay(contract = {}, state = {}) {
     try { localStorage.setItem(ACTIVATION_DISMISSED_KEY, "1"); } catch {}
     overlay.remove();
     openSettingsRef?.("system");
+  });
+  overlay.querySelector("#activation-open-social-settings-btn")?.addEventListener("click", () => {
+    try { localStorage.setItem(ACTIVATION_DISMISSED_KEY, "1"); } catch {}
+    overlay.remove();
+    openSettingsRef?.("social");
   });
   overlay.querySelectorAll(".activation-mode-card").forEach((card) => {
     card.addEventListener("click", () => {
