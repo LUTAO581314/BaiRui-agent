@@ -2407,7 +2407,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                 "HERMES_DATA_DIR": str(data_dir),
                 "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
                 "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
-                "FEISHU_VERIFICATION_TOKEN": "verify-me",
+                "FEISHU_VERIFICATION_TOKEN": "feishu-verify-placeholder",
             }
             with patch.dict(os.environ, env, clear=False):
                 server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
@@ -2418,7 +2418,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                         server.server_port,
                         "/social/feishu/webhook",
                         {
-                            "token": "verify-me",
+                            "token": "feishu-verify-placeholder",
                             "header": {"event_type": "im.message.receive_v1"},
                             "event": {
                                 "sender": {"sender_id": {"open_id": "ou_1"}},
@@ -2442,7 +2442,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                 "HERMES_DATA_DIR": str(data_dir),
                 "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
                 "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
-                "WECOM_INCOMING_TOKEN": "incoming-token",
+                "WECOM_INCOMING_TOKEN": "wecom-incoming-placeholder",
             }
             with patch.dict(os.environ, env, clear=False):
                 server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
@@ -2453,7 +2453,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                         server.server_port,
                         "/social/wecom/webhook",
                         {"from_id": "wecom:webhook:user", "text": {"content": "ping"}},
-                        headers={"Authorization": "Bearer incoming-token"},
+                        headers={"Authorization": "Bearer wecom-incoming-placeholder"},
                     )
                 finally:
                     server.shutdown()
@@ -2466,7 +2466,7 @@ class RuntimeFoundationTests(unittest.TestCase):
     def test_wechat_official_webhook_get_and_post(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "data"
-            token = "wechat-token"
+            token = "wechat-official-placeholder"
             timestamp = str(int(__import__("time").time()))
             nonce = "abc123"
             signature = hashlib.sha1("".join(sorted([token, timestamp, nonce])).encode("utf-8")).hexdigest()
