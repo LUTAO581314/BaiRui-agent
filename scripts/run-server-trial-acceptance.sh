@@ -42,8 +42,7 @@ if [[ -z "$PWSH_BIN" ]]; then
   PWSH_BIN="$(find_command pwsh powershell.exe powershell || true)"
 fi
 if [[ -z "$PWSH_BIN" ]]; then
-  echo "pwsh or powershell is required for server trial acceptance." >&2
-  exit 1
+  echo "pwsh or powershell was not found; PowerShell-only steps will be skipped with repair guidance." >&2
 fi
 
 json_escape() {
@@ -149,11 +148,15 @@ fi
 
 mkdir -p artifacts
 
-preflight_cmd=("$PWSH_BIN" -NoLogo -NoProfile -File scripts/check-server-prereqs.ps1 -Mode "$MODE" -OutputPath artifacts/server-prereq-check.json)
-if [[ "$MODE" == "domain" ]]; then
-  preflight_cmd+=(-Domain "$DOMAIN")
+if [[ -z "$PWSH_BIN" ]]; then
+  skip_step "preflight" "Server prerequisite preflight" "Install pwsh/powershell or run scripts/check-server-prereqs.ps1 from an operator machine."
+else
+  preflight_cmd=("$PWSH_BIN" -NoLogo -NoProfile -File scripts/check-server-prereqs.ps1 -Mode "$MODE" -OutputPath artifacts/server-prereq-check.json)
+  if [[ "$MODE" == "domain" ]]; then
+    preflight_cmd+=(-Domain "$DOMAIN")
+  fi
+  run_step "preflight" "Server prerequisite preflight" "artifacts/server-prereq-check.json" "Fix failed prerequisite checks before deploying." 0 "${preflight_cmd[@]}"
 fi
-run_step "preflight" "Server prerequisite preflight" "artifacts/server-prereq-check.json" "Fix failed prerequisite checks before deploying." 0 "${preflight_cmd[@]}"
 
 if [[ "$SKIP_DEPLOY" == "1" ]]; then
   skip_step "deploy" "Usable deployment" "Run deploy-usable.sh on the target server."
@@ -164,6 +167,8 @@ fi
 
 if [[ "$SKIP_SERVER_VERIFICATION" == "1" ]]; then
   skip_step "server_verification" "Post-deployment server verification" "Run verify-server-deployment.ps1 against the target server before customer handoff."
+elif [[ -z "$PWSH_BIN" ]]; then
+  skip_step "server_verification" "Post-deployment server verification" "Install pwsh/powershell or run verify-server-deployment.ps1 from an operator machine."
 else
   verify_cmd=("$PWSH_BIN" -NoLogo -NoProfile -File scripts/verify-server-deployment.ps1 -BaseUrl "$BASE_URL" -ReadinessFile "$READINESS_FILE" -OutputPath artifacts/server-deployment-verification.json -RequireReady)
   if [[ "$REQUIRE_POSTGRES" == "1" ]]; then
@@ -173,35 +178,51 @@ else
 fi
 
 if [[ "$SKIP_POSTGRES" == "1" ]]; then
-  skip_step "postgres_verification" "PostgreSQL production verification" "Run verify-postgres-production.ps1 -RequireDatabase -RunMigration on the target database."
+  skip_step "postgres_verification" "PostgreSQL production verification" "Run verify-postgres-production.ps1 -RequireDatabase -RunMigration or verify-postgres-production.sh --require-database --run-migration on the target database."
 else
-  postgres_cmd=("$PWSH_BIN" -NoLogo -NoProfile -File scripts/verify-postgres-production.ps1 -OutputPath artifacts/postgres-production-verification.json)
+  if [[ -n "$PWSH_BIN" ]]; then
+    postgres_cmd=("$PWSH_BIN" -NoLogo -NoProfile -File scripts/verify-postgres-production.ps1 -OutputPath artifacts/postgres-production-verification.json)
+  else
+    postgres_cmd=(bash scripts/verify-postgres-production.sh --output-path artifacts/postgres-production-verification.json)
+  fi
   allow_postgres_blocked="1"
   if [[ "$REQUIRE_POSTGRES" == "1" ]]; then
-    postgres_cmd+=(-RequireDatabase -RunMigration)
+    if [[ -n "$PWSH_BIN" ]]; then
+      postgres_cmd+=(-RequireDatabase -RunMigration)
+    else
+      postgres_cmd+=(--require-database --run-migration)
+    fi
     allow_postgres_blocked="0"
   fi
   run_step "postgres_verification" "PostgreSQL production verification" "artifacts/postgres-production-verification.json" "Fix migration, backup, restore guardrail, or database visibility evidence." "$allow_postgres_blocked" "${postgres_cmd[@]}"
 fi
 
-go_cmd=("$PWSH_BIN" -NoLogo -NoProfile -File scripts/commercial-go-no-go.ps1 -OutputPath artifacts/commercial-go-no-go.json)
-if [[ "$SKIP_DEPLOY" != "1" && "$SKIP_SERVER_VERIFICATION" != "1" ]]; then
-  go_cmd+=(-RequireServerEvidence)
-fi
-if [[ "$REQUIRE_POSTGRES" == "1" && "$SKIP_POSTGRES" != "1" ]]; then
-  go_cmd+=(-RequirePostgresEvidence)
-fi
 allow_go_blocked="0"
 if [[ "$SKIP_DEPLOY" == "1" || "$SKIP_SERVER_VERIFICATION" == "1" || "$SKIP_POSTGRES" == "1" || "$REQUIRE_POSTGRES" != "1" ]]; then
   allow_go_blocked="1"
 fi
-run_step "commercial_go_no_go" "Commercial Go/No-Go" "artifacts/commercial-go-no-go.json" "Resolve failed or blocked final gate checks before customer handoff." "$allow_go_blocked" "${go_cmd[@]}"
-
-bundle_cmd=("$PWSH_BIN" -NoLogo -NoProfile -File scripts/export-commercial-handoff-bundle.ps1 -OutputDir artifacts/commercial-handoff-bundle)
-if [[ "$INCLUDE_DOCS" == "1" ]]; then
-  bundle_cmd+=(-IncludeDocs)
+if [[ -z "$PWSH_BIN" ]]; then
+  skip_step "commercial_go_no_go" "Commercial Go/No-Go" "Install pwsh/powershell for commercial-go-no-go.ps1, or run commercial-go-no-go.sh manually after evidence exists."
+else
+  go_cmd=("$PWSH_BIN" -NoLogo -NoProfile -File scripts/commercial-go-no-go.ps1 -OutputPath artifacts/commercial-go-no-go.json)
+  if [[ "$SKIP_DEPLOY" != "1" && "$SKIP_SERVER_VERIFICATION" != "1" ]]; then
+    go_cmd+=(-RequireServerEvidence)
+  fi
+  if [[ "$REQUIRE_POSTGRES" == "1" && "$SKIP_POSTGRES" != "1" ]]; then
+    go_cmd+=(-RequirePostgresEvidence)
+  fi
+  run_step "commercial_go_no_go" "Commercial Go/No-Go" "artifacts/commercial-go-no-go.json" "Resolve failed or blocked final gate checks before customer handoff." "$allow_go_blocked" "${go_cmd[@]}"
 fi
-run_step "handoff_bundle" "Commercial handoff bundle" "artifacts/commercial-handoff-bundle/manifest.json" "Attach the bundle manifest and selected report JSON to the operator handoff." 0 "${bundle_cmd[@]}"
+
+if [[ -z "$PWSH_BIN" ]]; then
+  skip_step "handoff_bundle" "Commercial handoff bundle" "Install pwsh/powershell or run export-commercial-handoff-bundle.ps1 from an operator machine."
+else
+  bundle_cmd=("$PWSH_BIN" -NoLogo -NoProfile -File scripts/export-commercial-handoff-bundle.ps1 -OutputDir artifacts/commercial-handoff-bundle)
+  if [[ "$INCLUDE_DOCS" == "1" ]]; then
+    bundle_cmd+=(-IncludeDocs)
+  fi
+  run_step "handoff_bundle" "Commercial handoff bundle" "artifacts/commercial-handoff-bundle/manifest.json" "Attach the bundle manifest and selected report JSON to the operator handoff." 0 "${bundle_cmd[@]}"
+fi
 
 "$PYTHON_BIN" - "$OUTPUT_PATH" "$FAILURE_SUMMARY_PATH" "$EXECUTION_PLAN_PATH" "$MODE" "$DOMAIN" "$BASE_URL" "$READINESS_FILE" "$REQUIRE_POSTGRES" "$SKIP_DEPLOY" "$SKIP_SERVER_VERIFICATION" "$SKIP_POSTGRES" "${step_json_files[@]}" <<'PY'
 import json

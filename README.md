@@ -219,6 +219,9 @@ server, run it with `-RequireDatabase -RunMigration` to prove the configured
 PostgreSQL database is ready. It writes
 `artifacts\postgres-production-verification.json` and
 `artifacts\postgres-production-failure-summary.md`.
+On Linux servers without PowerShell, run `REQUIRE_DATABASE=1 RUN_MIGRATION=1
+bash scripts/verify-postgres-production.sh` for the same secret-safe database,
+backup, and restore-guardrail evidence.
 
 Use `scripts/commercial-go-no-go.ps1` as the Windows final commercial trial
 gate, or `scripts/commercial-go-no-go.sh` on Linux servers where PowerShell is

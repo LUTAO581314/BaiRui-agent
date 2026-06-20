@@ -42,6 +42,7 @@ Operator shortcut for the real Enterprise WeCom receipt:
 Linux equivalent:
 
 ```bash
+REQUIRE_DATABASE=1 RUN_MIGRATION=1 bash scripts/verify-postgres-production.sh
 BOT_KEY="<enterprise-wecom-bot-key>" TEXT="bairui commercial channel trial" bash scripts/run-wecom-channel-trial.sh
 ```
 

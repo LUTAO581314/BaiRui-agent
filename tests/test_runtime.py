@@ -5109,6 +5109,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("scripts/check-server-prereqs.ps1", assets)
         self.assertIn("scripts/verify-server-deployment.ps1", assets)
         self.assertIn("scripts/verify-postgres-production.ps1", assets)
+        self.assertIn("scripts/verify-postgres-production.sh", assets)
         self.assertIn("scripts/run-wecom-channel-trial.ps1", assets)
         self.assertIn("scripts/run-wecom-channel-trial.sh", assets)
         self.assertIn("scripts/commercial-go-no-go.ps1", assets)
@@ -5190,6 +5191,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("deploy-usable.sh", bash_script)
         self.assertIn("verify-server-deployment.ps1", bash_script)
         self.assertIn("verify-postgres-production.ps1", bash_script)
+        self.assertIn("verify-postgres-production.sh", bash_script)
+        self.assertIn("PowerShell-only steps will be skipped", bash_script)
+        self.assertIn("commercial-go-no-go.sh manually", bash_script)
         self.assertIn("commercial-go-no-go.ps1", bash_script)
         self.assertIn("export-commercial-handoff-bundle.ps1", bash_script)
 
@@ -5202,6 +5206,7 @@ class RuntimeFoundationTests(unittest.TestCase):
 
     def test_postgres_production_verifier_covers_migration_backup_restore_and_secret_safety(self):
         script = Path("scripts/verify-postgres-production.ps1").read_text(encoding="utf-8")
+        bash_script = Path("scripts/verify-postgres-production.sh").read_text(encoding="utf-8")
         readme = Path("README.md").read_text(encoding="utf-8")
         deploy_doc = Path("docs/12-one-click-deployment.md").read_text(encoding="utf-8")
         handoff = Path("docs/29-commercial-trial-handoff-pack.md").read_text(encoding="utf-8")
@@ -5225,11 +5230,28 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("RunMigration", script)
         self.assertIn("RequireDatabase", script)
         self.assertIn("bairui PostgreSQL production verification failed", script)
+        self.assertIn("postgres-production-verification.json", bash_script)
+        self.assertIn("postgres-production-failure-summary.md", bash_script)
+        self.assertIn("schema_core_tables", bash_script)
+        self.assertIn("PostgreSQL migration command", bash_script)
+        self.assertIn("Secret-safe backup plan", bash_script)
+        self.assertIn("Restore guardrail and confirmation", bash_script)
+        self.assertIn("Settings database visibility", bash_script)
+        self.assertIn("Database secret redaction", bash_script)
+        self.assertIn("RESTORE BAIRUI POSTGRES", bash_script)
+        self.assertIn("pg_dump", bash_script)
+        self.assertIn("pg_restore", bash_script)
+        self.assertIn("$HERMES_DATABASE_URL", bash_script)
+        self.assertIn("RUN_MIGRATION", bash_script)
+        self.assertIn("REQUIRE_DATABASE", bash_script)
+        self.assertIn("secret_echo", bash_script)
 
         for doc in (readme, deploy_doc, handoff, server_report, postgres_report):
             self.assertIn("verify-postgres-production.ps1", doc)
             self.assertIn("postgres-production-verification.json", doc)
             self.assertIn("postgres-production-failure-summary.md", doc)
+        for doc in (readme, handoff):
+            self.assertIn("verify-postgres-production.sh", doc)
 
         self.assertIn("RESTORE BAIRUI POSTGRES", postgres_report)
         self.assertIn("destructive=true", postgres_report)

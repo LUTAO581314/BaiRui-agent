@@ -109,6 +109,7 @@ python -m src.hermes channels receipts
 Linux server equivalent when PowerShell is not installed:
 
 ```bash
+REQUIRE_DATABASE=1 RUN_MIGRATION=1 bash scripts/verify-postgres-production.sh
 BOT_KEY="<enterprise-wecom-bot-key>" TEXT="bairui commercial channel trial" bash scripts/run-wecom-channel-trial.sh
 REQUIRE_SERVER_EVIDENCE=1 REQUIRE_POSTGRES_EVIDENCE=1 REQUIRE_WECOM_TRIAL=1 bash scripts/commercial-go-no-go.sh
 ```
@@ -148,6 +149,7 @@ REQUIRE_SERVER_EVIDENCE=1 REQUIRE_POSTGRES_EVIDENCE=1 REQUIRE_WECOM_TRIAL=1 bash
 `PostgreSQL unavailable`
 
 - Fix: verify the target server, credentials, driver, and migration state.
+- Linux evidence: run `REQUIRE_DATABASE=1 RUN_MIGRATION=1 bash scripts/verify-postgres-production.sh`.
 
 ## 6. Commercial Trial Checklist
 
