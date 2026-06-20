@@ -5,10 +5,10 @@ import { ownerAuthHeaders } from "./api-client.js";
 export function friendlyChannelLabel(channel) {
   if (!channel) return "";
   const c = String(channel).toUpperCase();
-  if (c === "WECHAT_CLAWBOT" || c === "WECHAT_OFFICIAL" || c === "WECHAT") return "WeChat";
-  if (c === "WECOM") return "WeCom";
-  if (c === "DISCORD") return "Discord";
-  if (c === "FEISHU") return "Feishu";
+  if (c === "WECHAT_CLAWBOT" || c === "WECHAT_OFFICIAL" || c === "WECHAT") return "扫码通道";
+  if (c === "WECOM") return "企业群";
+  if (c === "DISCORD") return "海外群组";
+  if (c === "FEISHU") return "协作应用";
   return "";
 }
 
@@ -19,6 +19,7 @@ export function initChat({
   getAgentName,
   defaultInputPlaceholder,
   onUserMessage = null,
+  onProcessEvent = null,
   openSettings = null,
 } = {}) {
   const chatHistory = document.getElementById("chat-history");
@@ -238,16 +239,19 @@ export function initChat({
     // If onUserMessage returns a string, use it as the backend payload; if it returns false, skip the backend call
     const override = onUserMessage?.(content);
     addMsg("user", content, { label: label || undefined });
+    onProcessEvent?.("message_received", { content, channel: channel || "console" });
     openChat();
     scheduleClose(1000);
     if (override === false) return;
 
     try {
       const backendText = (typeof override === "string") ? override : content;
+      onProcessEvent?.("memory_context", { detail: "读取本轮可用记忆、能力和安全边界" });
       const payload = {
         system: "You are bairui, an industrial agent console assistant. Answer concisely in Chinese unless the user asks otherwise.",
         prompt: backendText,
       };
+      onProcessEvent?.("model_call", { detail: "调用模型网关生成回答" });
       const resp = await fetch(`${apiBase}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
@@ -263,10 +267,16 @@ export function initChat({
       }
       const body = await resp.json();
       const chat = body.chat || {};
-      addMsg("bairui", chat.content || chat.error || chat.status || "bairui 已收到。", { pending: false });
+      const answer = String(chat.content || "").trim();
+      const diagnostic = chat.error
+        ? `模型网关返回错误：${chat.error}`
+        : `模型网关没有返回可展示正文（status=${chat.status || "unknown"}）。请检查模型名、上游兼容性或响应解析。`;
+      addMsg("bairui", answer || diagnostic, { pending: false });
+      onProcessEvent?.("message_completed", { status: chat.status || "unknown", model: chat.model || "", provider: chat.provider || "", hasContent: Boolean(answer) });
       openChat(true);
     } catch (error) {
       console.warn("[send]", error.message);
+      onProcessEvent?.("message_failed", { error: error.message });
       addMsg("bairui", "发送失败，请检查 bairui 服务、模型网关或 owner token。");
       openChat(true);
     }

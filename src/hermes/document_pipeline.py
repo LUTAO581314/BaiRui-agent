@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 
 from .adapters.everos import add_memory as everos_add_memory, build_add_payload as build_everos_add_payload
@@ -199,6 +199,162 @@ class DocumentIngestSessionList:
     sessions: tuple[DocumentIngestSessionListItem, ...]
 
 
+def run_document_memory_trial(
+    settings: Settings,
+    *,
+    text: str = "",
+    title: str = "bairui document memory trial",
+    decision: str = "reject",
+    reviewer_ref: str = "owner",
+    timeout_seconds: int = 60,
+    max_steps: int = 10,
+) -> dict[str, object]:
+    """Run a safe local document/memory trial without requiring external parsers."""
+
+    import uuid
+
+    trial_text = text.strip() or (
+        "bairui document memory closure trial. "
+        "Customer cares about document ingest, memory review, source references, graph sync, and commercial readiness."
+    )
+    upload_dir = settings.data_dir / "document-trials"
+    output_dir = settings.mineru_output_dir / "trials" / uuid.uuid4().hex
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    input_path = upload_dir / f"document-memory-trial-{uuid.uuid4().hex}.txt"
+    input_path.write_text(trial_text, encoding="utf-8")
+    ingest = _create_document_memory_trial_ingest(settings, title, input_path, output_dir)
+
+    first_run = run_document_workbench_until_blocked(
+        settings,
+        ingest.id,
+        timeout_seconds=timeout_seconds,
+        max_steps=max_steps,
+    )
+    review_queue = list_pending_document_memory_reviews(settings, ingest_id=ingest.id)
+    candidate_ids = tuple(str(candidate.get("id", "")) for candidate in review_queue.candidates)
+    review_batch = None
+    if candidate_ids:
+        review_batch = review_document_memory_candidates_batch(
+            settings,
+            candidate_ids,
+            decision=decision,
+            reviewer_ref=reviewer_ref,
+            note="document-memory-trial",
+            resume_after_review=True,
+            timeout_seconds=timeout_seconds,
+            max_steps=max_steps,
+        )
+    summary = build_document_ingest_session_summary(settings, ingest.id)
+    final_state = summary.workbench
+    completed = (
+        summary.current_stage == "done"
+        and final_state.pipeline.get("memory_candidates") == "completed"
+        and final_state.pipeline.get("memory_reviews") == "completed"
+        and final_state.pipeline.get("source_refs") == "completed"
+        and final_state.pipeline.get("obsidian_report") == "completed"
+    )
+    graph_evidence = _document_memory_trial_graph_evidence(settings, summary, final_state)
+    status = "completed" if completed else "needs_review" if candidate_ids and review_batch is None else "blocked"
+    return {
+        "status": status,
+        "ingest_id": ingest.id,
+        "title": title,
+        "decision": decision,
+        "first_run": _jsonable(first_run),
+        "review_queue": _jsonable(review_queue),
+        "review_batch": _jsonable(review_batch),
+        "summary": _jsonable(summary),
+        "evidence": {
+            "current_stage": summary.current_stage,
+            "progress_percent": summary.progress_percent,
+            "pipeline": final_state.pipeline,
+            "candidate_count": final_state.counts.get("memory_candidates", 0),
+            "review_count": final_state.counts.get("memory_reviews", 0),
+            "source_ref_count": final_state.counts.get("source_refs", 0),
+            "report_count": final_state.counts.get("ingest_reports", 0),
+            "report_path": summary.report.get("path", "") if summary.report else "",
+            "obsidian_graph": graph_evidence,
+            "secret_echo": False,
+        },
+        "next_step": "Document memory loop completed." if completed else "Open the document workbench, review pending memory candidates, and rerun the trial.",
+    }
+
+
+def _document_memory_trial_graph_evidence(settings: Settings, summary: DocumentIngestSessionSummary, final_state: DocumentWorkbenchState) -> dict[str, object]:
+    from .obsidian_graph import build_obsidian_graph
+
+    graph = build_obsidian_graph(settings)
+    nodes = graph.get("nodes", []) if isinstance(graph, dict) else []
+    node_paths = {str(node.get("path", "")).replace("\\", "/") for node in nodes if isinstance(node, dict)}
+    report_path = str(summary.report.get("path", "") if summary.report else "").replace("\\", "/")
+    try:
+        report_relative = Path(report_path).resolve(strict=False).relative_to(settings.obsidian_vault_dir.resolve(strict=False)).as_posix()
+    except (OSError, ValueError):
+        report_relative = report_path
+    review_note_paths: list[str] = []
+    vault_root = settings.obsidian_vault_dir.resolve(strict=False)
+    for review in final_state.memory_reviews:
+        review_id = str(review.get("id", ""))
+        candidate_id = str(review.get("candidate_id", ""))
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            path = str(node.get("path", "")).replace("\\", "/")
+            if not path:
+                continue
+            full_path = vault_root / path
+            note_text = ""
+            try:
+                note_text = full_path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                note_text = ""
+            if (
+                review_id
+                and (
+                    review_id in path
+                    or review_id[:8] in path
+                    or f"review_id: {review_id}" in note_text
+                    or f"review_id: \"{review_id}\"" in note_text
+                )
+            ):
+                review_note_paths.append(path)
+                continue
+            if candidate_id and (f"candidate_id: {candidate_id}" in note_text or f"candidate_id: \"{candidate_id}\"" in note_text):
+                review_note_paths.append(path)
+    return {
+        "status": graph.get("status", "unknown") if isinstance(graph, dict) else "unknown",
+        "note_count": graph.get("note_count", 0) if isinstance(graph, dict) else 0,
+        "link_count": graph.get("link_count", 0) if isinstance(graph, dict) else 0,
+        "report_node_present": bool(report_relative and report_relative in node_paths),
+        "review_note_count": len(set(review_note_paths)),
+        "review_note_paths": sorted(set(review_note_paths))[:12],
+        "secret_echo": False,
+    }
+
+
+def _jsonable(value):
+    if is_dataclass(value):
+        return _jsonable(asdict(value))
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value
+
+
+def _create_document_memory_trial_ingest(settings: Settings, title: str, input_path: Path, output_dir: Path):
+    from .storage import create_document_ingest
+
+    return create_document_ingest(
+        settings.data_dir,
+        title=title,
+        input_path=str(input_path),
+        output_dir=str(output_dir),
+        parser_command=("bairui-internal-text-parser", str(input_path), str(output_dir), input_path.name),
+    )
+
+
 def run_document_ingest(data_dir: Path, ingest_id: str, *, timeout_seconds: int) -> DocumentPipelineResult:
     ingest = _find_ingest(data_dir, ingest_id)
     if ingest is None:
@@ -216,6 +372,8 @@ def run_document_ingest(data_dir: Path, ingest_id: str, *, timeout_seconds: int)
             error="parser_command is empty",
         )
         return DocumentPipelineResult(status="failed", detail="parser_command is empty", ingest=ingest, run=run)
+    if command[0] == "bairui-internal-text-parser":
+        return _run_internal_text_ingest(data_dir, ingest, command)
 
     cwd = str(Path.cwd())
     started_at = utc_now()
@@ -271,6 +429,54 @@ def run_document_ingest(data_dir: Path, ingest_id: str, *, timeout_seconds: int)
             finished_at=utc_now(),
         )
         return DocumentPipelineResult(status="timeout", detail=f"command timed out after {timeout_seconds}s", ingest=ingest, run=run)
+
+
+def _run_internal_text_ingest(data_dir: Path, ingest: dict[str, object], command: tuple[str, ...]) -> DocumentPipelineResult:
+    ingest_id = str(ingest.get("id", ""))
+    input_path = Path(str(command[1] if len(command) > 1 else ingest.get("input_path", "")))
+    output_dir = Path(str(command[2] if len(command) > 2 else ingest.get("output_dir", "")))
+    output_name = str(command[3] if len(command) > 3 else input_path.name).strip() or input_path.name
+    started_at = utc_now()
+    try:
+        if not input_path.exists() or not input_path.is_file():
+            raise FileNotFoundError(f"input file not found: {input_path}")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        suffix = input_path.suffix.lower()
+        if suffix in {".md", ".markdown"}:
+            target_suffix = ".md"
+        elif suffix in {".json", ".jsonl"}:
+            target_suffix = ".json"
+        else:
+            target_suffix = ".txt"
+        safe_name = re.sub(r"[^A-Za-z0-9._\-\u4e00-\u9fff]+", "-", Path(output_name).stem).strip(".-") or "document"
+        output_path = output_dir / f"{safe_name[:80]}{target_suffix}"
+        output_path.write_bytes(input_path.read_bytes())
+        run = create_document_ingest_run(
+            data_dir,
+            ingest_id=ingest_id,
+            status="completed",
+            command=command,
+            cwd=str(Path.cwd()),
+            exit_code=0,
+            stdout=f"internal text parser wrote {output_path}",
+            stderr="",
+            started_at=started_at,
+            finished_at=utc_now(),
+        )
+        return DocumentPipelineResult(status="completed", detail="internal text parser completed", ingest=ingest, run=run)
+    except Exception as exc:
+        run = create_document_ingest_run(
+            data_dir,
+            ingest_id=ingest_id,
+            status="failed",
+            command=command,
+            cwd=str(Path.cwd()),
+            exit_code=None,
+            error=str(exc),
+            started_at=started_at,
+            finished_at=utc_now(),
+        )
+        return DocumentPipelineResult(status="failed", detail="internal text parser failed", ingest=ingest, run=run)
 
 
 def register_document_artifacts(data_dir: Path, ingest_id: str) -> DocumentArtifactRegistrationResult:
@@ -364,6 +570,25 @@ def index_document_artifacts(
             error="no text artifacts registered for this ingest",
         )
         return DocumentIndexResult(status="skipped", detail="no text artifacts registered for this ingest", ingest=ingest, run=run)
+    if not settings.sonic_host or not settings.sonic_password:
+        run = create_document_index_run(
+            settings.data_dir,
+            ingest_id=ingest_id,
+            status="skipped",
+            provider="sonic",
+            collection=collection,
+            bucket=bucket,
+            indexed_count=0,
+            skipped_count=len(text_artifacts) + skipped_count,
+            failed_count=0,
+            error="Sonic optional local index is missing_config; continuing document memory workflow",
+        )
+        return DocumentIndexResult(
+            status="skipped",
+            detail="local index skipped because Sonic is not configured",
+            ingest=ingest,
+            run=run,
+        )
 
     results: list[dict[str, object]] = []
     indexed_count = 0
@@ -515,7 +740,7 @@ def review_document_memory_candidate(
             obsidian_note=None,
         )
 
-    normalized_decision = decision.strip().lower()
+    normalized_decision = _normalize_memory_review_decision(decision)
     if normalized_decision not in {"approve", "reject"}:
         return DocumentMemoryReviewResult(
             status="invalid_decision",
@@ -633,7 +858,7 @@ def review_document_memory_candidates_batch(
     timeout_seconds: int = 60,
     max_steps: int = 10,
 ) -> DocumentMemoryReviewBatchResult:
-    normalized_decision = decision.strip().lower()
+    normalized_decision = _normalize_memory_review_decision(decision)
     if normalized_decision not in {"approve", "reject"}:
         return DocumentMemoryReviewBatchResult(
             status="invalid_decision",
@@ -1125,6 +1350,15 @@ def run_document_workbench_until_blocked(
     )
 
 
+def _normalize_memory_review_decision(decision: str) -> str:
+    value = decision.strip().lower()
+    if value == "approved":
+        return "approve"
+    if value == "rejected":
+        return "reject"
+    return value
+
+
 def list_document_ingest_runs_for_ingest(data_dir: Path, ingest_id: str) -> list[dict[str, object]]:
     from .storage import list_document_ingest_runs
 
@@ -1308,12 +1542,17 @@ def _sonic_result_summary(artifact: dict[str, object], result: SonicResult) -> d
 def _extract_candidate_texts(path: Path, artifact_type: str) -> list[tuple[str, str]]:
     text = _read_indexable_text(path, artifact_type)
     chunks: list[tuple[str, str]] = []
+    fallback: str | None = None
     for paragraph in _split_candidate_paragraphs(text):
         normalized = " ".join(paragraph.split())
+        if fallback is None and _looks_like_reviewable_text(normalized):
+            fallback = normalized
         if _looks_like_memory_candidate(normalized):
             chunks.append((normalized[:1200], "document paragraph contains durable factual context"))
         if len(chunks) >= 5:
             break
+    if not chunks and fallback:
+        chunks.append((fallback[:1200], "document text is reviewable and requires owner decision before durable memory"))
     return chunks
 
 
@@ -1346,6 +1585,18 @@ def _looks_like_memory_candidate(text: str) -> bool:
         "mineru",
     )
     return any(marker in lowered or marker in text for marker in durable_markers)
+
+
+def _looks_like_reviewable_text(text: str) -> bool:
+    if len(text) < 20:
+        return False
+    if len(text) > 4000:
+        return False
+    if not any(ch.isalnum() or "\u4e00" <= ch <= "\u9fff" for ch in text):
+        return False
+    if sum(1 for ch in text if ch == "?") / max(1, len(text)) > 0.65:
+        return False
+    return True
 
 
 def _find_memory_candidate(data_dir: Path, candidate_id: str) -> dict[str, object] | None:

@@ -79,6 +79,8 @@ class Settings:
     wechat_official_app_secret: str
     wecom_incoming_token: str
     wecom_bot_key: str
+    qq_napcat_base_url: str
+    qq_napcat_token: str
 
     @property
     def has_database(self) -> bool:
@@ -95,13 +97,15 @@ def load_settings() -> Settings:
     local_overrides = _load_local_config(Path(data_dir_value))
 
     def env(name: str, default: str = "") -> str:
+        override = local_overrides.get(name)
+        if override not in {None, ""}:
+            return str(override)
         value = os.getenv(name)
         if value:
             return value
-        override = local_overrides.get(name)
-        if override is None:
-            return default
-        return str(override)
+        if override is not None:
+            return str(override)
+        return default
 
     return Settings(
         product_name=env("BAIRUI_PRODUCT_NAME", os.getenv("MOXI_PRODUCT_NAME", "bairui Agent OS")),
@@ -115,10 +119,10 @@ def load_settings() -> Settings:
         data_dir=Path(env("HERMES_DATA_DIR", data_dir_value)),
         log_dir=Path(env("HERMES_LOG_DIR", "./logs/hermes")),
         obsidian_vault_dir=Path(env("HERMES_OBSIDIAN_VAULT_DIR", "./obsidian-vault")),
-        license_file=Path(env("MOXI_LICENSE_FILE", "./license/moxi-license.json")),
+        license_file=Path(env("BAIRUI_LICENSE_FILE", os.getenv("MOXI_LICENSE_FILE", "./license/bairui-license.json"))),
         license_secret=env("BAIRUI_LICENSE_SECRET", ""),
-        platform_base_url=env("MOXI_PLATFORM_BASE_URL", ""),
-        server_id=env("MOXI_SERVER_ID", ""),
+        platform_base_url=env("BAIRUI_PLATFORM_BASE_URL", os.getenv("MOXI_PLATFORM_BASE_URL", "")),
+        server_id=env("BAIRUI_SERVER_ID", os.getenv("MOXI_SERVER_ID", "")),
         vendor_dir=root / "vendor" / "runtimes",
         model_base_url=env("BAIRUI_MODEL_BASE_URL", ""),
         model_api_key=env("BAIRUI_MODEL_API_KEY", ""),
@@ -127,13 +131,13 @@ def load_settings() -> Settings:
         everos_base_url=env("EVEROS_BASE_URL", ""),
         everos_memory_root=Path(env("EVEROS_MEMORY_ROOT", "./data/everos")),
         everos_timeout_seconds=int(env("EVEROS_TIMEOUT_SECONDS", "30")),
-        trendradar_project_root=Path(os.environ["TRENDRADAR_PROJECT_ROOT"]) if os.getenv("TRENDRADAR_PROJECT_ROOT") else None,
-        trendradar_mcp_url=os.getenv("TRENDRADAR_MCP_URL", ""),
-        trendradar_timeout_seconds=int(os.getenv("TRENDRADAR_TIMEOUT_SECONDS", "30")),
-        mirofish_project_root=Path(os.environ["MIROFISH_PROJECT_ROOT"]) if os.getenv("MIROFISH_PROJECT_ROOT") else None,
-        mirofish_backend_base_url=os.getenv("MIROFISH_BACKEND_BASE_URL", ""),
-        mirofish_frontend_base_url=os.getenv("MIROFISH_FRONTEND_BASE_URL", ""),
-        mirofish_timeout_seconds=int(os.getenv("MIROFISH_TIMEOUT_SECONDS", "30")),
+        trendradar_project_root=Path(env("TRENDRADAR_PROJECT_ROOT")) if env("TRENDRADAR_PROJECT_ROOT") else None,
+        trendradar_mcp_url=env("TRENDRADAR_MCP_URL", ""),
+        trendradar_timeout_seconds=int(env("TRENDRADAR_TIMEOUT_SECONDS", "30")),
+        mirofish_project_root=Path(env("MIROFISH_PROJECT_ROOT")) if env("MIROFISH_PROJECT_ROOT") else None,
+        mirofish_backend_base_url=env("MIROFISH_BACKEND_BASE_URL", ""),
+        mirofish_frontend_base_url=env("MIROFISH_FRONTEND_BASE_URL", ""),
+        mirofish_timeout_seconds=int(env("MIROFISH_TIMEOUT_SECONDS", "30")),
         searxng_base_url=env("SEARXNG_BASE_URL", ""),
         searxng_public_base_url=env("SEARXNG_PUBLIC_BASE_URL", ""),
         searxng_timeout_seconds=int(env("SEARXNG_TIMEOUT_SECONDS", "30")),
@@ -141,12 +145,12 @@ def load_settings() -> Settings:
         sonic_port=int(env("SONIC_PORT", "1491")),
         sonic_password=env("SONIC_PASSWORD", ""),
         sonic_timeout_seconds=int(env("SONIC_TIMEOUT_SECONDS", "10")),
-        funasr_project_root=Path(os.environ["FUNASR_PROJECT_ROOT"]) if os.getenv("FUNASR_PROJECT_ROOT") else None,
-        funasr_base_url=os.getenv("FUNASR_BASE_URL", ""),
-        funasr_public_base_url=os.getenv("FUNASR_PUBLIC_BASE_URL", ""),
-        funasr_model=os.getenv("FUNASR_MODEL", "fun-asr-nano"),
-        funasr_timeout_seconds=int(os.getenv("FUNASR_TIMEOUT_SECONDS", "120")),
-        mineru_project_root=Path(os.environ["MINERU_PROJECT_ROOT"]) if os.getenv("MINERU_PROJECT_ROOT") else None,
+        funasr_project_root=Path(env("FUNASR_PROJECT_ROOT")) if env("FUNASR_PROJECT_ROOT") else None,
+        funasr_base_url=env("FUNASR_BASE_URL", ""),
+        funasr_public_base_url=env("FUNASR_PUBLIC_BASE_URL", ""),
+        funasr_model=env("FUNASR_MODEL", "fun-asr-nano"),
+        funasr_timeout_seconds=int(env("FUNASR_TIMEOUT_SECONDS", "120")),
+        mineru_project_root=Path(env("MINERU_PROJECT_ROOT")) if env("MINERU_PROJECT_ROOT") else None,
         mineru_output_dir=Path(env("MINERU_OUTPUT_DIR", "./data/mineru-output")),
         mineru_backend=env("MINERU_BACKEND", "pipeline"),
         mineru_device=env("MINERU_DEVICE", "cpu"),
@@ -168,6 +172,8 @@ def load_settings() -> Settings:
         wechat_official_app_secret=env("WECHAT_OFFICIAL_APP_SECRET", ""),
         wecom_incoming_token=env("WECOM_INCOMING_TOKEN", ""),
         wecom_bot_key=env("WECOM_BOT_KEY", ""),
+        qq_napcat_base_url=env("QQ_NAPCAT_BASE_URL", ""),
+        qq_napcat_token=env("QQ_NAPCAT_TOKEN", ""),
     )
 
 

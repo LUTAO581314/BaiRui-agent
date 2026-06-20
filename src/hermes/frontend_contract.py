@@ -107,8 +107,8 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 "id": "document_runtime",
                 "title": "Document Runtime",
                 "read": ("/document/parse/status",),
-                "action": {"id": "create_ingest_plan", "method": "POST", "path": "/document/parse/ingest-plan"},
-                "complete_when": "document parser status and ingest-plan form are usable",
+                "action": {"id": "upload_document", "method": "POST", "path": "/document/parse/upload"},
+                "complete_when": "document parser status, upload form, and ingest-plan form are usable",
                 "blocking": False,
             },
             {
@@ -129,9 +129,9 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             {
                 "id": "channels",
                 "title": "Channels",
-                "read": ("/channels/status", "/channels/targets", "/channels/approvals"),
-                "action": {"id": "plan_channel_send", "method": "POST", "path": "/channels/send"},
-                "complete_when": "channel targets and approval queue render; outbound sends remain owner-reviewed",
+                "read": ("/channels/status", "/channels/targets", "/channels/approvals", "/channels/approvals/reviews", "/channels/receipts", "/delivery/status"),
+                "action": {"id": "wecom_trial", "method": "POST", "path": "/channels/wecom-trial"},
+                "complete_when": "channel targets, approval queue, receipts, and delivery gate render; outbound sends remain owner-reviewed",
                 "blocking": False,
             },
             {
@@ -154,6 +154,8 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
         "status_sources": (
             {"id": "health", "method": "GET", "path": "/health", "purpose": "service liveness"},
             {"id": "ready", "method": "GET", "path": "/ready", "purpose": "deployment readiness"},
+            {"id": "delivery_status", "method": "GET", "path": "/delivery/status", "purpose": "commercial trial delivery gate"},
+            {"id": "deployment_checklist", "method": "GET", "path": "/deployment/checklist", "purpose": "operator-safe activation and deployment checklist"},
             {"id": "capabilities", "method": "GET", "path": "/capabilities", "purpose": "capability list"},
             {"id": "config_status", "method": "GET", "path": "/config/status", "purpose": "safe configuration diagnostics"},
             {"id": "runtime_readiness", "method": "GET", "path": "/runtime/readiness", "purpose": "runtime blockers and warnings"},
@@ -167,7 +169,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
             {
                 "id": "activation",
                 "title": "Activation",
-                "read": ("/frontend/contract", "/health", "/ready", "/runtime/readiness", "/license", "/platform/heartbeat"),
+                "read": ("/frontend/contract", "/health", "/ready", "/runtime/readiness", "/license", "/platform/heartbeat", "/deployment/checklist"),
                 "actions": ({"id": "send_chat_probe", "method": "POST", "path": "/chat"},),
                 "uses": ("activation_flow",),
             },
@@ -200,9 +202,11 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 "title": "Documents",
                 "read": ("/document/parse/session-list", "/document/parse/session-summary"),
                 "actions": (
+                    {"id": "upload_document", "method": "POST", "path": "/document/parse/upload", "schema": "document_upload"},
                     {"id": "create_ingest_plan", "method": "POST", "path": "/document/parse/ingest-plan", "schema": "document_ingest_plan"},
                     {"id": "advance_next_step", "method": "POST", "path": "/document/parse/workbench-next", "schema": "document_workbench_step"},
                     {"id": "advance_until_blocked", "method": "POST", "path": "/document/parse/workbench-run-until-blocked", "schema": "document_workbench_run"},
+                    {"id": "memory_trial", "method": "POST", "path": "/document/parse/memory-trial", "schema": "document_memory_trial"},
                     {"id": "create_source_refs", "method": "POST", "path": "/document/parse/source-refs", "schema": "document_workbench_step"},
                     {"id": "create_ingest_report", "method": "POST", "path": "/document/parse/ingest-report", "schema": "document_workbench_step"},
                 ),
@@ -231,11 +235,14 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                     "/channels/diagnostics",
                     "/channels/approvals",
                     "/channels/approvals/reviews",
+                    "/channels/receipts",
+                    "/delivery/status",
                     "/events",
                 ),
                 "actions": (
                     {"id": "apply_channel_config", "method": "POST", "path": "/config/apply", "schema": "config_apply"},
                     {"id": "plan_channel_send", "method": "POST", "path": "/channels/send", "schema": "channel_send"},
+                    {"id": "wecom_trial", "method": "POST", "path": "/channels/wecom-trial", "schema": "wecom_trial"},
                     {
                         "id": "review_channel_approval",
                         "method": "POST",
@@ -275,6 +282,7 @@ def build_frontend_contract(settings: Settings, version: str) -> dict[str, objec
                 "actions": (
                     {"id": "apply_local_config", "method": "POST", "path": "/config/apply", "schema": "config_apply"},
                     {"id": "list_model_gateway_models", "method": "POST", "path": "/model-gateway/models", "schema": "model_gateway_models"},
+                    {"id": "probe_model_gateway", "method": "POST", "path": "/model-gateway/probe", "schema": "model_gateway_probe"},
                     {"id": "run_database_migration", "method": "POST", "path": "/admin/migrate", "schema": "database_migration"},
                 ),
             },

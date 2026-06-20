@@ -192,9 +192,11 @@ Actions:
 - `POST /channels/send`
 - `POST /channels/approvals/review`
 
-Frontend rule: this is an approval queue, not a sender. Even after review, the
-backend records `will_send=false`. The UI must not show sent/success delivery
-states.
+Frontend rule: generic channel drafts stay approval-first and must not imply
+external delivery until a reviewed dispatch result exists. The Enterprise WeCom
+commercial trial is the first real-send path: after explicit owner approval it
+may record `will_send=true`, `delivery_status=sent`, `external_message_id`, and
+a secret-safe receipt.
 
 ### Settings
 
@@ -390,6 +392,7 @@ python -m src.hermes channels status
 python -m src.hermes channels targets
 python -m src.hermes channels diagnostics
 python -m src.hermes channels approvals --pending
+python -m src.hermes channels receipts
 python -m src.hermes channels plan-send --target-id owner_review --text "Review this update"
 python -m src.hermes channels review-approval --request-id <request_id> --decision approve
 python -m src.hermes document parse session-list --limit 50
@@ -445,4 +448,3 @@ After this freeze:
 - existing form field names should not be changed without updating this file,
   `/frontend/contract`, tests, and frontend code together;
 - customer-visible copy must remain `bairui` only.
-

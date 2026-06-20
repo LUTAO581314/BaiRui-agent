@@ -129,6 +129,25 @@ async function sendClawbot({ userId }, message) {
   return sendClawbotMessage(userId, message)
 }
 
+async function sendQQNapCat(target, content) {
+  const baseUrl = env('QQ_NAPCAT_BASE_URL').replace(/\/+$/, '')
+  const token = env('QQ_NAPCAT_TOKEN')
+  if (!baseUrl) return { ok: false, skipped: true, reason: 'QQ_NAPCAT_BASE_URL not configured' }
+  const endpoint = target.messageType === 'group' ? 'send_group_msg' : 'send_private_msg'
+  const body = target.messageType === 'group'
+    ? { group_id: target.groupId, message: content }
+    : { user_id: target.userId, message: content }
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  const res = await requestJson(`${baseUrl}/${endpoint}`, {
+    method: 'POST',
+    headers,
+    body,
+  })
+  if (!res.ok) throw new Error(`QQ NapCat send failed HTTP ${res.status}: ${res.text}`)
+  if (res.data?.status === 'failed' || res.data?.retcode > 0) throw new Error(`QQ NapCat send failed: ${res.text}`)
+  return { ok: true, platform: 'qq-napcat', messageId: res.data?.data?.message_id || res.data?.message_id || null }
+}
+
 export async function dispatchSocialMessage(targetId, payload) {
   const target = parseSocialTarget(targetId)
   if (!target) return null
@@ -144,6 +163,8 @@ export async function dispatchSocialMessage(targetId, payload) {
       return rejectUnsupportedMedia('wecom-webhook', message) || await sendWeComWebhook(target, message.text)
     case 'wechat-clawbot':
       return sendClawbot(target, message)
+    case 'qq-napcat':
+      return rejectUnsupportedMedia('qq-napcat', message) || await sendQQNapCat(target, message.text)
     default:
       return null
   }

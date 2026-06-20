@@ -101,7 +101,16 @@ Use this when the package is installed on a real server or domain host.
 .\scripts\deploy-usable.ps1 -Mode domain -Domain bairui.example.com
 .\scripts\verify-server-deployment.ps1 -BaseUrl https://bairui.example.com -RequireReady -RequirePostgreSQL
 .\scripts\verify-postgres-production.ps1 -RequireDatabase -RunMigration
-.\scripts\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence
+python -m src.hermes channels wecom-trial --text "bairui commercial channel trial"
+python -m src.hermes channels wecom-trial --text "bairui commercial channel trial" --approve
+python -m src.hermes channels receipts
+.\scripts\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence -RequireWeComTrial
+```
+
+Linux server equivalent when PowerShell is not installed:
+
+```bash
+REQUIRE_SERVER_EVIDENCE=1 REQUIRE_POSTGRES_EVIDENCE=1 REQUIRE_WECOM_TRIAL=1 bash scripts/commercial-go-no-go.sh
 ```
 
 4. Export the operator handoff bundle:
@@ -124,6 +133,12 @@ Use this when the package is installed on a real server or domain host.
 
 - Fix: open Settings, fill the missing field, then refresh checks.
 
+`missing_wecom_bot_key` or `target_not_found` for `wecom:webhook:`
+
+- Fix: set `WECOM_BOT_KEY` in Settings or the protected server environment.
+- Verify: run `python -m src.hermes channels wecom-trial --text "bairui channel trial"` first. It should create an approval without sending.
+- Final trial: run `python -m src.hermes channels wecom-trial --text "bairui channel trial" --approve` only after the owner is ready to send a real Enterprise WeCom group message.
+
 `outside the allowed bairui path scope`
 
 - Fix: move the path under the allowed workspace or `~/bairui` / `~/.bairui`.
@@ -141,6 +156,8 @@ Go only when all items are true:
 - Settings can save and verify configuration.
 - Owner-token gating is visible.
 - PostgreSQL migration and backup plan are visible.
+- Enterprise WeCom channel trial is verified when real external sending is part
+  of the customer pilot.
 - Documents -> Memory Review -> Reports -> Channels -> Events can be shown in order.
 - Events can export diagnostics and the handoff pack.
 - Customer UI shows only `bairui`.
@@ -241,6 +258,10 @@ python -m src.hermes errors
 python -m src.hermes backup status
 python -m src.hermes backup plan
 python -m src.hermes config-status
+python -m src.hermes deployment-checklist --format markdown
+python -m src.hermes delivery-status
+python -m src.hermes channels wecom-trial --text "bairui channel trial"
+python -m src.hermes channels receipts
 python -m src.hermes events
 ```
 
@@ -251,6 +272,8 @@ Console support actions:
 - Events: load metrics.
 - Events: export diagnostics.
 - Channels: inspect disabled, approval-required, and missing-config targets.
+- Channels: run `python -m src.hermes channels wecom-trial --text "bairui channel trial"` to create a governed enterprise group approval without dispatch.
+- Channels: run the same command with `--approve` only for a real external-send acceptance check.
 
 Diagnostics are redacted before export. They summarize counts, readiness,
 configuration status, metrics, recent errors, and audit events without echoing
@@ -349,6 +372,15 @@ Go only when all items are true:
 - Owner-token gating is enabled and tested for the trial environment.
 - `python -m src.hermes admin-session` reports owner-token status without
   returning the token value.
+- `python -m src.hermes delivery-status` is ready, or its only blocker is a
+  consciously deferred external channel trial.
+- `python -m src.hermes deployment-checklist --format markdown` has no required
+  blocker and is attached to the operator handoff.
+- `python -m src.hermes channels wecom-trial --text "bairui channel trial"
+  --approve` has passed when the customer pilot requires a real enterprise
+  group send.
+- `artifacts/wecom-receipt.json` or `python -m src.hermes channels receipts`
+  proves the real Enterprise WeCom send was archived without secret echo.
 - Risky config fields require `APPLY BAIRUI CONFIG`.
 - Demo evidence shows `will_send=false` and no automatic long-term memory write.
 - Deployment writes `data/readiness.json`.

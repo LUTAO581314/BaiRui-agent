@@ -11,6 +11,7 @@ from .config_apply import PATH_SCOPE_POLICY
 def build_config_status(settings: Settings) -> dict[str, Any]:
     """Return operator-safe configuration diagnostics without secret values."""
 
+    channel_state = channel_status(settings)
     items = [
         _item(
             "model_gateway",
@@ -48,18 +49,23 @@ def build_config_status(settings: Settings) -> dict[str, Any]:
         _item(
             "channel_targets",
             "Channel targets",
-            channel_status(settings).status,
+            channel_state.status,
             "Outbound channel targets are approval-controlled; configuration never means automatic send.",
             {
-                "target_count": channel_status(settings).configured_target_count,
-                "deliverable_target_count": sum(1 for item in diagnose_channel_targets(settings) if item.channel_type != "personal_chat"),
-                "enabled": channel_status(settings).enabled,
+                "target_count": channel_state.configured_target_count,
+                "deliverable_target_count": channel_state.deliverable_target_count,
+                "enabled": channel_state.enabled,
                 "will_send": False,
+                "commercial_trial_ready": channel_state.enabled and channel_state.deliverable_target_count > 0,
+                "warnings": list(channel_state.warnings),
                 "webhooks": {
                     "feishu": "/social/feishu/webhook",
                     "wechat_official": "/social/wechat/official",
                     "wecom": "/social/wecom/webhook",
+                    "qq_napcat": "external NapCat HTTP/WebSocket runtime",
                 },
+                "qq_napcat_base_url": _configured_value(settings.qq_napcat_base_url),
+                "qq_napcat_token": _secret_state(settings.qq_napcat_token),
             },
         ),
         _item(
@@ -105,15 +111,23 @@ def build_config_status(settings: Settings) -> dict[str, Any]:
     required = {"model_gateway", "data_dir", "memory_vault", "codegraph_root"}
     blockers = [item for item in items if item["id"] in required and item["status"] in {"missing_config", "blocked", "error"}]
     status = "blocked" if blockers else "partial" if any(item["status"] == "missing_config" for item in items) else "ready"
+    commercial_trial = _commercial_trial_status(settings, channel_state)
     checklist = _build_checklist(settings, items, blockers)
     return {
         "status": status,
         "secret_policy": "secrets are reported only as configured or missing; values are never returned",
         "items": items,
         "blockers": [f"{item['id']}: {item['detail']}" for item in blockers],
+        "commercial_trial": commercial_trial,
         "next_step": "Configure missing required items, then refresh Settings before running a customer demo.",
         "checklist": checklist,
     }
+
+
+def build_deployment_checklist(settings: Settings) -> dict[str, Any]:
+    """Return the operator checklist as a first-class secret-safe payload."""
+
+    return build_config_status(settings)["checklist"]
 
 
 def _item(id: str, label: str, status: str, detail: str, fields: dict[str, Any]) -> dict[str, Any]:
@@ -134,6 +148,36 @@ def _secret_state(value: str) -> str:
 
 def _configured_value(value: str) -> str:
     return str(value or "").strip() or "missing_config"
+
+
+def _commercial_trial_status(settings: Settings, channel_state: Any) -> dict[str, Any]:
+    checks = [
+        {
+            "id": "owner_gate",
+            "label": "Owner token gate",
+            "status": "ready" if settings.owner_token.strip() else "blocked",
+            "detail": "Set BAIRUI_OWNER_TOKEN before exposing the console on a server or public domain.",
+        },
+        {
+            "id": "model_gateway",
+            "label": "Model gateway",
+            "status": "ready" if settings.has_model_gateway else "blocked",
+            "detail": "Set model base URL, API key, and model name before a customer trial.",
+        },
+        {
+            "id": "deliverable_channel",
+            "label": "Deliverable channel",
+            "status": "ready" if channel_state.enabled and channel_state.deliverable_target_count > 0 else "blocked",
+            "detail": "Configure at least one real outbound target such as the enterprise group Bot Key.",
+        },
+    ]
+    blockers = [check["id"] for check in checks if check["status"] != "ready"]
+    return {
+        "status": "ready" if not blockers else "blocked",
+        "blockers": blockers,
+        "checks": checks,
+        "secret_echo": False,
+    }
 
 
 def _build_checklist(settings: Settings, items: list[dict[str, Any]], blockers: list[dict[str, Any]]) -> dict[str, Any]:
@@ -161,6 +205,8 @@ def _build_checklist(settings: Settings, items: list[dict[str, Any]], blockers: 
         "WECHAT_OFFICIAL_TOKEN=<optional-wechat-verify-token>",
         "WECOM_BOT_KEY=<optional-wecom-bot-key>",
         "WECOM_INCOMING_TOKEN=<optional-wecom-incoming-bearer>",
+        "QQ_NAPCAT_BASE_URL=<optional-qq-napcat-base-url>",
+        "QQ_NAPCAT_TOKEN=<optional-qq-napcat-token>",
         "DISCORD_BOT_TOKEN=<optional-discord-bot-token>",
     ]
     commands = [

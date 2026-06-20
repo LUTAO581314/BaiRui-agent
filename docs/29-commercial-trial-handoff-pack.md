@@ -27,6 +27,8 @@ Required safety evidence:
 - secret fields are write-only and never echoed;
 - dangerous changes require `APPLY BAIRUI CONFIG`;
 - channel drafts show `will_send=false`;
+- real Enterprise WeCom channel trial uses `channels wecom-trial --approve`
+  and records a receipt before the pilot is marked externally deliverable;
 - memory candidates require explicit approval;
 - public product copy shows only `bairui`.
 
@@ -128,6 +130,13 @@ Linux server equivalent:
 MODE=domain DOMAIN=bairui.example.com BASE_URL=https://bairui.example.com REQUIRE_POSTGRES=1 INCLUDE_DOCS=1 bash scripts/run-server-trial-acceptance.sh
 ```
 
+If the Linux server does not have PowerShell installed, use the native Bash
+commercial gate:
+
+```bash
+REQUIRE_SERVER_EVIDENCE=1 REQUIRE_POSTGRES_EVIDENCE=1 REQUIRE_WECOM_TRIAL=1 bash scripts/commercial-go-no-go.sh
+```
+
 Then validate the production database:
 
 ```powershell
@@ -137,7 +146,10 @@ Then validate the production database:
 Finally run Go/No-Go with required server evidence:
 
 ```powershell
-.\scripts\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence
+python -m src.hermes channels wecom-trial --text "bairui commercial channel trial"
+python -m src.hermes channels wecom-trial --text "bairui commercial channel trial" --approve
+python -m src.hermes channels receipts
+.\scripts\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence -RequireWeComTrial
 ```
 
 Export the operator handoff bundle:
@@ -155,6 +167,9 @@ Verify:
 - `GET /metrics`
 - `GET /errors`
 - `GET /diagnostics/bundle`
+- `python -m src.hermes delivery-status`
+- `python -m src.hermes channels wecom-trial --text "bairui channel trial"`
+- `python -m src.hermes channels wecom-trial --text "bairui channel trial" --approve`
 - `artifacts/server-prereq-check.json`
 - `artifacts/server-trial-acceptance.json`
 - `artifacts/server-trial-failure-summary.md`
@@ -163,6 +178,9 @@ Verify:
 - `artifacts/server-deployment-verification.json`
 - `artifacts/postgres-production-verification.json`
 - `artifacts/postgres-production-failure-summary.md`
+- `artifacts/delivery-status.json`
+- `artifacts/wecom-trial.json`
+- `artifacts/wecom-receipt.json`
 - `artifacts/commercial-go-no-go.json`
 - `artifacts/commercial-handoff-bundle/manifest.json`
 
@@ -186,6 +204,15 @@ all work on the target server.
 
 - Fix: use Activation and Settings to identify the missing runtime or path.
 - Evidence: `/runtime/readiness` and Settings configuration profile.
+
+Enterprise WeCom trial blocked
+
+- Fix: configure `WECOM_BOT_KEY` in Settings or the protected server
+  environment. Do not put the Bot Key into target JSON.
+- Evidence: `python -m src.hermes channels wecom-trial --text "bairui channel trial"`
+  creates an approval without external send.
+- Final evidence: rerun with `--approve`, confirm the group received the
+  message, and keep the recorded `delivery_status` / `external_message_id`.
 
 Path scope error
 
@@ -211,6 +238,9 @@ Go only when every item is true:
 - Owner-token write gate is visible and tested.
 - PostgreSQL migration and backup plan are visible.
 - PostgreSQL production verification report is saved.
+- `python -m src.hermes delivery-status` is ready for the target server.
+- Enterprise WeCom external-send trial has passed when the pilot includes real
+  outbound social delivery.
 - Events can load metrics, errors, and diagnostics.
 - Server prerequisite report is saved for the operator.
 - Server trial acceptance report is saved for the operator when the runner is

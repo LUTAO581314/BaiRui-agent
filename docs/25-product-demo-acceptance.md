@@ -46,6 +46,8 @@ Safety gates that must stay true:
 - `no_external_send=true`
 - `no_auto_memory_write=true`
 - channel plan and review both keep `will_send=false`
+- Enterprise WeCom commercial trial is verified separately and may record
+  `will_send=true` only after explicit owner approval and receipt archival.
 - memory flow keeps `will_write_long_term_memory=false`
 - promotion idempotency is `event_id + target`
 - owner token values are never echoed in acceptance output

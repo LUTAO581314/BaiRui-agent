@@ -3,6 +3,9 @@ from __future__ import annotations
 import hmac
 import json
 import mimetypes
+import subprocess
+import base64
+import re
 from dataclasses import asdict
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -80,8 +83,10 @@ from .channels import (
     diagnose_channel_targets,
     list_channel_approvals,
     list_channel_approval_reviews,
+    list_channel_delivery_receipts,
     plan_channel_send,
     review_channel_approval,
+    run_wecom_trial,
 )
 from .codegraph import (
     as_payload as codegraph_payload,
@@ -95,10 +100,11 @@ from .codegraph import (
 )
 from .config import ensure_runtime_dirs, load_settings
 from .config_apply import apply_local_config
-from .config_status import build_config_status
+from .config_status import build_config_status, build_deployment_checklist
 from .db import database_status, run_migrations
 from .demo import seed_demo_data
 from .demo_flow import run_demo_flow
+from .delivery_status import build_delivery_status
 from .diagnostics import build_diagnostic_bundle
 from .document_pipeline import (
     build_document_ingest_session_summary,
@@ -113,6 +119,7 @@ from .document_pipeline import (
     register_document_artifacts,
     review_document_memory_candidate,
     review_document_memory_candidates_batch,
+    run_document_memory_trial,
     run_document_workbench_until_blocked,
     run_document_ingest,
 )
@@ -120,12 +127,14 @@ from .events import build_sse_frame, list_frontend_events
 from .frontend_contract import build_frontend_contract
 from .hotspots import build_hotspots
 from .license import load_license
-from .model_gateway import complete_chat, list_models
+from .model_gateway import complete_chat, list_models, probe_model_gateway
 from .obsidian_graph import build_obsidian_graph
 from .observability import build_metrics_summary, list_error_logs, record_error_log
 from .persona import load_persona, save_persona
 from .platform import build_platform_heartbeat
 from .runtime_readiness import collect_runtime_readiness
+from .runtime_installer import list_runtime_installations, start_runtime_installation
+from .tts_runtime import as_payload as tts_payload, list_tts_voices, load_tts_settings, synthesize_tts_bytes, tts_status
 from .storage import (
     create_audit_event,
     create_document_ingest,
@@ -146,6 +155,28 @@ from .storage import (
 
 
 PUBLIC_SERVICE = "bairui"
+DOCUMENT_UPLOAD_MAX_BYTES = 25 * 1024 * 1024
+DOCUMENT_UPLOAD_ALLOWED_SUFFIXES = {
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".ppt",
+    ".pptx",
+    ".xls",
+    ".xlsx",
+    ".md",
+    ".markdown",
+    ".txt",
+    ".csv",
+    ".json",
+}
+DOCUMENT_UPLOAD_INTERNAL_TEXT_SUFFIXES = {
+    ".md",
+    ".markdown",
+    ".txt",
+    ".csv",
+    ".json",
+}
 DELIVERY_DOCS = {
     "27-commercial-trial-delivery-quickstart.md",
     "29-commercial-trial-handoff-pack.md",
@@ -157,6 +188,113 @@ DELIVERY_DOCS = {
 
 def _json_bytes(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+
+
+def _save_document_upload_and_plan(settings: Any, payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    filename = _safe_upload_filename(str(payload.get("filename", "")))
+    if not filename:
+        return {"status": "invalid_request", "message": "filename is required"}, 400
+    suffix = Path(filename).suffix.lower()
+    if suffix not in DOCUMENT_UPLOAD_ALLOWED_SUFFIXES:
+        return {
+            "status": "unsupported_file_type",
+            "message": f"unsupported document type: {suffix or 'none'}",
+            "allowed_suffixes": sorted(DOCUMENT_UPLOAD_ALLOWED_SUFFIXES),
+        }, 415
+    raw_base64 = str(payload.get("file_base64", "")).strip()
+    if not raw_base64:
+        return {"status": "invalid_request", "message": "file_base64 is required"}, 400
+    if raw_base64.lower().startswith("data:") and "," in raw_base64:
+        raw_base64 = raw_base64.split(",", 1)[1]
+    try:
+        content = base64.b64decode(raw_base64, validate=True)
+    except Exception:
+        return {"status": "invalid_request", "message": "file_base64 is invalid"}, 400
+    if not content:
+        return {"status": "invalid_request", "message": "uploaded file is empty"}, 400
+    if len(content) > DOCUMENT_UPLOAD_MAX_BYTES:
+        return {
+            "status": "too_large",
+            "message": f"uploaded file exceeds {DOCUMENT_UPLOAD_MAX_BYTES} bytes",
+            "size_bytes": len(content),
+            "max_bytes": DOCUMENT_UPLOAD_MAX_BYTES,
+        }, 413
+
+    upload_dir = settings.data_dir / "document-uploads"
+    output_root = settings.mineru_output_dir / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    output_root.mkdir(parents=True, exist_ok=True)
+    import uuid
+
+    upload_id = uuid.uuid4().hex
+    upload_path = upload_dir / f"{Path(filename).stem[:80]}-{upload_id}{suffix}"
+    upload_path.write_bytes(content)
+    output_dir = output_root / upload_id
+
+    if suffix in DOCUMENT_UPLOAD_INTERNAL_TEXT_SUFFIXES:
+        command = ("bairui-internal-text-parser", str(upload_path), str(output_dir), filename)
+        parse_payload = {
+            "status": "ready",
+            "command": command,
+            "cwd": str(Path.cwd()),
+            "detail": "Lightweight text document will be parsed inside bairui without requiring the external document parser runtime.",
+        }
+    else:
+        plan = build_mineru_parse_command(
+            settings,
+            input_path=str(upload_path),
+            output_dir=str(output_dir),
+            backend=str(payload.get("backend", "")),
+            language=str(payload.get("language", "")),
+            source=str(payload.get("source", "upload")),
+            device=str(payload.get("device", "")),
+        )
+        command = plan.command
+        parse_payload = mineru_payload(plan)
+    ingest = create_document_ingest(
+        settings.data_dir,
+        title=str(payload.get("title", "")) or Path(filename).stem,
+        input_path=str(upload_path),
+        output_dir=str(output_dir),
+        parser_command=command,
+    )
+    create_audit_event(
+        settings.data_dir,
+        "document.upload_saved",
+        actor_type="owner",
+        actor_ref="console",
+        resource_type="document_ingest",
+        resource_ref=ingest.id,
+        risk_level="medium",
+        payload={
+            "filename": filename,
+            "upload_path": str(upload_path),
+            "size_bytes": len(content),
+            "mime_type": str(payload.get("mime_type", "")),
+        },
+    )
+    return {
+        "status": "planned",
+        "detail": "document uploaded and ingest plan created",
+        "filename": filename,
+        "upload_path": str(upload_path),
+        "size_bytes": len(content),
+        "document_ingest": ingest.__dict__,
+        "document_parse": parse_payload,
+    }, 201
+
+
+def _safe_upload_filename(value: str) -> str:
+    name = Path(value.replace("\\", "/")).name.strip()
+    if not name or name in {".", ".."}:
+        return ""
+    stem = Path(name).stem
+    suffix = Path(name).suffix
+    safe_stem = re.sub(r"[^A-Za-z0-9._\-\u4e00-\u9fff]+", "-", stem).strip(".-")
+    if not safe_stem:
+        safe_stem = "document"
+    safe_suffix = re.sub(r"[^A-Za-z0-9.]+", "", suffix)[:16]
+    return f"{safe_stem[:100]}{safe_suffix.lower()}"
 
 
 class HermesHandler(BaseHTTPRequestHandler):
@@ -202,11 +340,12 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path == "/persona":
             self._send({"service": PUBLIC_SERVICE, "persona": load_persona(settings)})
             return
-        if self.path in {"/console", "/console/"}:
+        parsed_path = urlparse(self.path).path
+        if parsed_path in {"/console", "/console/"}:
             self._send_console_asset("index.html")
             return
-        if self.path.startswith("/console/"):
-            self._send_console_asset(self.path.removeprefix("/console/"))
+        if parsed_path.startswith("/console/"):
+            self._send_console_asset(parsed_path.removeprefix("/console/"))
             return
         if self.path.startswith("/docs/"):
             self._send_delivery_doc(self.path.removeprefix("/docs/"))
@@ -223,6 +362,12 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path == "/config/status":
             self._send({"service": PUBLIC_SERVICE, "config_status": build_config_status(settings)})
             return
+        if self.path == "/deployment/checklist":
+            self._send({"service": PUBLIC_SERVICE, "deployment_checklist": build_deployment_checklist(settings)})
+            return
+        if self.path == "/delivery/status":
+            self._send({"service": PUBLIC_SERVICE, "delivery_status": build_delivery_status(settings)})
+            return
         if self.path == "/backup/status":
             self._send({"service": PUBLIC_SERVICE, "backup": backup_payload(settings)})
             return
@@ -234,6 +379,9 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/runtime/readiness":
             self._send({"service": PUBLIC_SERVICE, "runtime_readiness": collect_runtime_readiness(settings)})
+            return
+        if self.path == "/runtime/installations":
+            self._send({"service": PUBLIC_SERVICE, "runtime_installations": list(list_runtime_installations(settings))})
             return
         if self.path == "/diagnostics/bundle":
             self._send({"service": PUBLIC_SERVICE, "diagnostic_bundle": build_diagnostic_bundle(settings)})
@@ -337,7 +485,25 @@ class HermesHandler(BaseHTTPRequestHandler):
             self._send({"service": PUBLIC_SERVICE, "audit": list_audit_events(settings.data_dir)})
             return
         if self.path == "/settings/tts":
-            self._send({"service": PUBLIC_SERVICE, "tts": {"configured": False, "provider": "missing_config"}, "voices": []})
+            self._send({"service": PUBLIC_SERVICE, "tts": load_tts_settings(settings), "voices": list_tts_voices(), "tts_runtime": tts_payload(tts_status(settings))})
+            return
+        if self.path == "/settings/voice":
+            voice_status = funasr_status(settings)
+            self._send(
+                {
+                    "service": PUBLIC_SERVICE,
+                    "voice": {
+                        "configured": bool(settings.funasr_base_url.strip()),
+                        "voiceProvider": "funasr",
+                        "funasrBaseURL": settings.funasr_base_url or "missing_config",
+                        "status": voice_status.status,
+                        "reachable": voice_status.reachable,
+                        "runtimeEngine": voice_status.runtime_engine,
+                        "runtimeModel": voice_status.runtime_model,
+                        "detail": voice_status.detail,
+                    },
+                }
+            )
             return
         parsed_path = urlparse(self.path)
         if self.path == "/social/wechat-clawbot/qr":
@@ -370,6 +536,9 @@ class HermesHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/channels/approvals/reviews":
             self._send({"service": PUBLIC_SERVICE, "channel_approval_reviews": list_channel_approval_reviews(settings.data_dir)})
+            return
+        if self.path == "/channels/receipts":
+            self._send({"service": PUBLIC_SERVICE, "channel_receipts": list(list_channel_delivery_receipts(settings))})
             return
         if self.path == "/memory/status":
             self._send({"service": PUBLIC_SERVICE, "memory": as_payload(everos_status(settings))})
@@ -433,6 +602,11 @@ class HermesHandler(BaseHTTPRequestHandler):
             status = 200 if result.status == "completed" else 400 if result.status == "missing_config" else 502
             self._send({"service": PUBLIC_SERVICE, "model_gateway_models": asdict(result), "secret_echo": False}, status=status)
             return
+        if self.path == "/model-gateway/probe":
+            result = probe_model_gateway(settings, payload)
+            status = 200 if result.status == "ready" else 400 if result.status == "missing_config" else 502
+            self._send({"service": PUBLIC_SERVICE, "model_gateway_probe": asdict(result), "secret_echo": False}, status=status)
+            return
 
         if self.path == "/config/apply":
             result = apply_local_config(settings, payload)
@@ -455,6 +629,16 @@ class HermesHandler(BaseHTTPRequestHandler):
             )
             status = 200 if result["status"] in {"saved", "no_changes"} else 409 if result["status"] == "confirmation_required" else 400
             self._send({"service": PUBLIC_SERVICE, "config_apply": result, "config_status": build_config_status(next_settings)}, status=status)
+            return
+
+        if self.path == "/runtime/installations/start":
+            result = start_runtime_installation(
+                settings,
+                str(payload.get("runtime_id", "")),
+                confirmation=str(payload.get("confirmation", "")),
+            )
+            status = 202 if result["status"] == "started" else 409 if result["status"] == "confirmation_required" else 400
+            self._send({"service": PUBLIC_SERVICE, **result}, status=status)
             return
 
         if self.path == "/persona":
@@ -657,6 +841,18 @@ class HermesHandler(BaseHTTPRequestHandler):
                 status = 409
             self._send({"service": PUBLIC_SERVICE, "channel_approval_review": channel_payload(result)}, status=status)
             return
+
+        if self.path == "/channels/wecom-trial":
+            result = run_wecom_trial(settings, payload)
+            review = result.get("review") or {}
+            plan = result.get("plan") or {}
+            status = 202 if plan.get("status") == "approval_required" and not review else 200
+            if review:
+                status = 200 if review.get("status") == "reviewed" and review.get("will_send") else 503
+            elif plan.get("status") != "approval_required":
+                status = 503
+            self._send({"service": PUBLIC_SERVICE, "wecom_trial": result}, status=status)
+            return
         if self.path == "/memory/ingest":
             text = str(payload.get("text", ""))
             if not text.strip():
@@ -792,6 +988,175 @@ class HermesHandler(BaseHTTPRequestHandler):
             )
             self._send({"service": PUBLIC_SERVICE, "voice_asr": funasr_payload(result)}, status=200 if result.status == "completed" else 503)
             return
+        if self.path == "/voice/asr/upload":
+            audio_b64 = str(payload.get("audio_base64", ""))
+            mime_type = str(payload.get("mime_type", "audio/webm"))
+            if not audio_b64.strip():
+                self._send({"error": "invalid_request", "message": "audio_base64 is required"}, status=400)
+                return
+            try:
+                import base64
+
+                audio_base64_value = audio_b64.strip()
+                if "," in audio_base64_value and audio_base64_value.lower().startswith("data:"):
+                    audio_base64_value = audio_base64_value.split(",", 1)[1]
+                audio_bytes = base64.b64decode(audio_base64_value)
+            except Exception:
+                self._send({"error": "invalid_request", "message": "audio_base64 is invalid"}, status=400)
+                return
+            if len(audio_bytes) < 512:
+                self._send(
+                    {
+                        "service": PUBLIC_SERVICE,
+                        "voice_asr": {
+                            "status": "no_speech",
+                            "endpoint": "/voice/asr/upload",
+                            "payload": {"mime_type": mime_type, "bytes": len(audio_bytes)},
+                            "error": "",
+                        },
+                        "text": "",
+                    },
+                    status=200,
+                )
+                return
+            suffix = ".webm"
+            if "wav" in mime_type:
+                suffix = ".wav"
+            elif "mp3" in mime_type or "mpeg" in mime_type:
+                suffix = ".mp3"
+            upload_dir = settings.data_dir / "voice-uploads"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            import uuid
+
+            upload_path = upload_dir / f"voice-upload-{uuid.uuid4().hex}{suffix}"
+            upload_path.write_bytes(audio_bytes)
+            transcribe_path = upload_path
+            if suffix in {".webm", ".ogg", ".mp4", ".m4a"}:
+                converted_path = upload_dir / f"{upload_path.stem}.wav"
+                try:
+                    subprocess.run(
+                        [
+                            "ffmpeg",
+                            "-y",
+                            "-i",
+                            str(upload_path),
+                            "-ac",
+                            "1",
+                            "-ar",
+                            "16000",
+                            str(converted_path),
+                        ],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.PIPE,
+                    )
+                    transcribe_path = converted_path
+                except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+                    error_detail = getattr(exc, "stderr", b"")
+                    message = error_detail.decode("utf-8", errors="ignore").strip() or str(exc)
+                    if len(audio_bytes) < 2048:
+                        self._send(
+                            {
+                                "service": PUBLIC_SERVICE,
+                                "voice_asr": {
+                                    "status": "no_speech",
+                                    "endpoint": "/voice/asr/upload",
+                                    "payload": {"mime_type": mime_type, "bytes": len(audio_bytes)},
+                                    "error": "",
+                                },
+                                "text": "",
+                                "upload_path": str(upload_path),
+                            },
+                            status=200,
+                        )
+                        return
+                    self._send(
+                        {
+                            "service": PUBLIC_SERVICE,
+                            "voice_asr": {
+                                "status": "conversion_error",
+                                "endpoint": "/voice/asr/upload",
+                                "payload": {"mime_type": mime_type},
+                                "error": message,
+                            },
+                            "text": "",
+                            "upload_path": str(upload_path),
+                        },
+                        status=503,
+                    )
+                    return
+            result = funasr_transcribe(
+                settings,
+                build_funasr_transcription_payload(
+                    audio_path=str(transcribe_path),
+                    model=str(payload.get("model", "")),
+                    language=str(payload.get("language", "")),
+                    prompt=str(payload.get("prompt", "")),
+                    response_format=str(payload.get("response_format", "json")),
+                ),
+            )
+            text = ""
+            if result.response and isinstance(result.response, dict):
+                text = str(result.response.get("text") or result.response.get("transcript") or "").strip()
+            self._send(
+                {
+                    "service": PUBLIC_SERVICE,
+                    "voice_asr": funasr_payload(result),
+                    "text": text,
+                    "upload_path": str(upload_path),
+                },
+                status=200 if result.status == "completed" else 503,
+            )
+            return
+
+        if self.path == "/settings/tts":
+            result = apply_local_config(
+                settings,
+                {
+                    "values": {
+                        "tts_provider": str(payload.get("ttsProvider", "")),
+                        "tts_voice_id": str(payload.get("ttsVoiceId", "")),
+                        "openai_tts_base_url": str(payload.get("openaiTtsBaseURL", "")),
+                    }
+                },
+            )
+            self._send({"service": PUBLIC_SERVICE, "tts_apply": result, "tts": load_tts_settings(load_settings()), "voices": list_tts_voices()}, status=200 if result["status"] in {"saved", "no_changes"} else 400)
+            return
+
+        if self.path == "/settings/voice":
+            result = apply_local_config(
+                settings,
+                {
+                    "values": {
+                        "funasr_base_url": str(payload.get("funasrBaseURL", payload.get("baseURL", ""))),
+                        "voice_provider": str(payload.get("voiceProvider", "funasr")),
+                    }
+                },
+            )
+            self._send({"service": PUBLIC_SERVICE, "voice_apply": result, "voice": {"configured": True, "voiceProvider": "funasr"}}, status=200 if result["status"] in {"saved", "no_changes"} else 400)
+            return
+
+        if self.path == "/tts/interrupted":
+            self._send({"service": PUBLIC_SERVICE, "status": "recorded"})
+            return
+
+        if self.path == "/tts/stream":
+            text = str(payload.get("text", ""))
+            if not text.strip():
+                self._send({"error": "invalid_request", "message": "text is required"}, status=400)
+                return
+            try:
+                audio_bytes = synthesize_tts_bytes(settings, text, payload)
+            except ValueError as exc:
+                self._send({"error": "invalid_request", "message": str(exc)}, status=400)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Length", str(len(audio_bytes)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(audio_bytes)
+            return
 
         if self.path == "/codegraph/repos/register":
             repo_path = str(payload.get("path", ""))
@@ -853,6 +1218,11 @@ class HermesHandler(BaseHTTPRequestHandler):
                 parser_command=plan.command,
             )
             self._send({"service": PUBLIC_SERVICE, "document_ingest": ingest.__dict__, "document_parse": mineru_payload(plan)}, status=201)
+            return
+
+        if self.path == "/document/parse/upload":
+            result, status = _save_document_upload_and_plan(settings, payload)
+            self._send({"service": PUBLIC_SERVICE, "document_upload": result}, status=status)
             return
 
         if self.path == "/document/parse/run-ingest":
@@ -937,7 +1307,7 @@ class HermesHandler(BaseHTTPRequestHandler):
                 app_id=str(payload.get("app_id", "default")),
                 project_id=str(payload.get("project_id", "default")),
             )
-            status = 200 if result.status in {"approved", "rejected"} else 503
+            status = 200 if result.status in {"approved", "rejected", "promotion_failed"} else 503
             if result.status == "not_found":
                 status = 404
             if result.status == "invalid_decision":
@@ -1074,6 +1444,20 @@ class HermesHandler(BaseHTTPRequestHandler):
             if result.status == "unsupported_action":
                 status = 409
             self._send({"service": PUBLIC_SERVICE, "document_workbench_run": asdict(result)}, status=status)
+            return
+
+        if self.path == "/document/parse/memory-trial":
+            result = run_document_memory_trial(
+                settings,
+                text=str(payload.get("text", "")),
+                title=str(payload.get("title", "bairui document memory trial")),
+                decision=str(payload.get("decision", "reject")),
+                reviewer_ref=str(payload.get("reviewer_ref", "owner")),
+                timeout_seconds=int(payload.get("timeout_seconds") or settings.mineru_timeout_seconds),
+                max_steps=int(payload.get("max_steps", 10)),
+            )
+            status = 200 if result["status"] == "completed" else 409 if result["status"] == "needs_review" else 503
+            self._send({"service": PUBLIC_SERVICE, "document_memory_trial": result}, status=status)
             return
 
         if self.path == "/admin/migrate":

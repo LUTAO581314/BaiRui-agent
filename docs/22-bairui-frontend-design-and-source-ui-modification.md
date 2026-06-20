@@ -261,8 +261,10 @@ Must render:
 
 Hard rule:
 
-- never show external send success. Backend currently records approval and
-  `will_send=false`.
+- never show optimistic external send success. Generic channel drafts remain
+  approval-first. Only show sent/delivered when the backend returns a reviewed
+  dispatch result with `will_send=true`, `delivery_status=sent`,
+  `external_message_id`, and a secret-safe receipt.
 
 ### Settings
 
@@ -412,8 +414,8 @@ Quality constraints:
 - No raw secrets, internal runtime tokens, or upstream project names.
 - No optimistic success state for blocked, missing_config, needs_review,
   approval_required, or pending_review.
-- Channels must not show sent/delivered because backend currently records
-  approval only and will_send=false.
+- Channels must not show sent/delivered unless the backend has returned a real
+  reviewed dispatch result and receipt.
 - Responsive at 1440x900, 768x1024, and 390x844.
 - No text overlap, clipped controls, nested cards, or horizontal scroll.
 ```
@@ -545,4 +547,3 @@ states.
 14. Run brand, responsive, interaction, and GitHub CI checks.
 
 Do not start deep decorative polish until steps 1-13 are connected and verified.
-

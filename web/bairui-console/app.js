@@ -16,6 +16,7 @@ const THEME_KEY = "bairui-brain-ui-theme";
 const PHYSICS_STORAGE_KEY = "bairui-brain-ui-physics";
 const ACTIVATION_WARMUP_KEY = "bairui_activation_warmup_until";
 const ACTIVATION_DISMISSED_KEY = "bairui.activation.dismissed.v1";
+const ACTIVATION_DRAFT_KEY = "bairui.activation.draft.v1";
 const UI_ZOOM_STORAGE_KEY = "bairui_ui_zoom_factor";
 const MAX_CHAT_HISTORY = 60;
 const DEFAULT_AGENT_NAME = "bairui";
@@ -30,6 +31,8 @@ const SAFETY_BOUNDARY = {
   external_send_performed: false,
   long_term_memory_auto_write: false,
 };
+const CHANNEL_PLAN_SEND_ENDPOINT = "/channels/send";
+const WECOM_TRIAL_ENDPOINT = "/channels/wecom-trial";
 const MEMORY_GRAPH_STORAGE_KEY = "bairui-memory-graph-enabled";
 let MEMORY_GRAPH_ENABLED = localStorage.getItem(MEMORY_GRAPH_STORAGE_KEY) !== "false";
 
@@ -56,6 +59,7 @@ const SUPPRESS_UPDATES_KEY = "bairui_suppress_update_notifications";
 let agentName = DEFAULT_AGENT_NAME;
 let currentUiZoom = DEFAULT_UI_ZOOM;
 let chat = null;
+let activationOverlayState = null;
 // 由 initSettings() 内部赋值，供 chat.js 的斜杠命令打开设置面板
 let openSettingsRef = null;
 
@@ -247,7 +251,7 @@ function setAgentName(nextName) {
   agentName = normalized;
   document.title = "bairui Console";
   if (brandNameEl) brandNameEl.textContent = normalized === DEFAULT_AGENT_NAME ? "bairui Agent" : `${normalized} · bairui Agent`;
-  if (graphEl) graphEl.setAttribute("aria-label", "bairui Obsidian graph");
+  if (graphEl) graphEl.setAttribute("aria-label", "bairui memory graph");
   const input = document.getElementById("msg-input");
   if (input && !chat?.isComposerLocked?.()) input.placeholder = defaultInputPlaceholder();
   document.querySelectorAll(".msg-bairui .msg-label").forEach((el) => {
@@ -309,7 +313,7 @@ function countPayloadItems(payload, keys = []) {
 function normalizeActivationStatus(value) {
   const status = String(value || "unknown").toLowerCase();
   if (["ready", "ok", "passed", "configured", "active", "enabled", "true"].includes(status)) return "ready";
-  if (["blocked", "failed", "error", "unhealthy", "false"].includes(status)) return "blocked";
+  if (["blocked", "failed", "error", "unhealthy", "false", "configured_unreachable"].includes(status)) return "blocked";
   if (["missing_config", "partial", "needs_review", "disabled", "optional", "unknown"].includes(status)) return status === "unknown" ? "partial" : status;
   return "partial";
 }
@@ -395,7 +399,7 @@ function activationStepMeta(step, state = {}) {
     repair.push("没有报告时先在文档工作台跑一次摄取流程，来源引用会同步显示。");
   } else if (id === "channels") {
     const diagnostics = state.channels_diagnostics?.channel_diagnostics || [];
-    const deliverable = diagnostics.filter((item) => item.channel_type !== "personal_chat");
+    const deliverable = diagnostics.filter((item) => item.channel_type !== "personal_chat" && !(item.warnings || []).includes("approval_only_target"));
     const ready = deliverable.filter((item) => ["ready", "approval_required"].includes(String(item.status || "").toLowerCase()));
     evidence("Channels", payloadStatus(state.channels_status, ["channels"]));
     evidence("Targets", countPayloadItems(state.channels_targets, ["channel_targets"]));
@@ -492,6 +496,7 @@ async function saveActivationModelConfig(overlay, feedbackEl) {
   const baseURL = overlay.querySelector("#activation-model-baseurl")?.value?.trim();
   const model = overlay.querySelector("#activation-model-name")?.value?.trim();
   const apiKey = overlay.querySelector("#activation-model-key")?.value?.trim();
+  const ownerToken = overlay.querySelector("#activation-owner-token")?.value?.trim();
   const saveBtn = overlay.querySelector("#activation-save-model-btn");
   if (!baseURL || !model) {
     if (feedbackEl) {
@@ -504,10 +509,11 @@ async function saveActivationModelConfig(overlay, feedbackEl) {
   try {
     const values = { model_base_url: baseURL, model_name: model };
     if (apiKey) values.model_api_key = apiKey;
+    if (ownerToken) values.owner_token = ownerToken;
     const res = await fetch(`${API}/config/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
-      body: JSON.stringify({ values }),
+      body: JSON.stringify({ values, ...(ownerToken ? { danger_confirmation: "APPLY BAIRUI CONFIG" } : {}) }),
     });
     const data = await res.json().catch(() => ({}));
     const result = data.config_apply || data;
@@ -515,11 +521,14 @@ async function saveActivationModelConfig(overlay, feedbackEl) {
       throw new Error(result.message || result.error || "保存失败");
     }
     if (feedbackEl) {
-      feedbackEl.textContent = result.status === "no_changes" ? "配置未变化，已继续复检。" : "模型配置已保存，密钥不会回显。";
+      feedbackEl.textContent = result.status === "no_changes" ? "配置未变化，已继续复检。" : "核心配置已保存，密钥不会回显。";
       feedbackEl.className = "activation-form-feedback ok";
     }
+    if (ownerToken) saveOwnerAuthToken(ownerToken);
     const keyInput = overlay.querySelector("#activation-model-key");
     if (keyInput) keyInput.value = "";
+    const ownerInput = overlay.querySelector("#activation-owner-token");
+    if (ownerInput) ownerInput.value = "";
     return true;
   } catch (error) {
     if (feedbackEl) {
@@ -530,6 +539,186 @@ async function saveActivationModelConfig(overlay, feedbackEl) {
   } finally {
     if (saveBtn) saveBtn.disabled = false;
   }
+}
+
+function activationEnterpriseGroupTargetJson() {
+  return JSON.stringify([
+    {
+      id: "wecom:webhook:",
+      label: "企业群机器人",
+      channel_type: "wecom-webhook",
+      supports: ["text"],
+      requires_owner_confirmation: true,
+    },
+  ]);
+}
+
+async function saveActivationWecomTrial(overlay) {
+  const feedback = overlay.querySelector("#activation-channel-feedback");
+  const button = overlay.querySelector("#activation-save-wecom-trial-btn");
+  const botKey = overlay.querySelector("#activation-wecom-bot-key")?.value?.trim() || "";
+  const text = overlay.querySelector("#activation-wecom-test-message")?.value?.trim() || "bairui 企业群渠道验收消息";
+  if (!botKey) {
+    if (feedback) {
+      feedback.textContent = "请先填写企业群 Bot Key。";
+      feedback.className = "activation-form-feedback error";
+    }
+    return false;
+  }
+  if (button) button.disabled = true;
+  try {
+    const saveRes = await fetch(`${API}/config/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+      body: JSON.stringify({
+        values: {
+          channel_enabled: "1",
+          channel_targets_json: activationEnterpriseGroupTargetJson(),
+          wecom_bot_key: botKey,
+        },
+        danger_confirmation: "APPLY BAIRUI CONFIG",
+      }),
+    });
+    const saveData = await saveRes.json().catch(() => ({}));
+    const saveResult = saveData.config_apply || saveData;
+    if (!saveRes.ok || saveResult.status === "invalid_request" || saveResult.error) {
+      throw new Error(saveResult.message || saveResult.error || "渠道配置保存失败");
+    }
+
+    const trialRes = await fetch(`${API}${WECOM_TRIAL_ENDPOINT}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+      body: JSON.stringify({ text, approve: false, reviewer_ref: "owner", note: "activation-wecom-trial" }),
+    });
+    const trialData = await trialRes.json().catch(() => ({}));
+    const trial = trialData.wecom_trial || trialData;
+    if (!trialRes.ok && trial?.status !== "ready_to_approve") {
+      throw new Error(trial.next_step || trial.error || "测试审批创建失败");
+    }
+    const keyInput = overlay.querySelector("#activation-wecom-bot-key");
+    if (keyInput) keyInput.value = "";
+    if (feedback) {
+      feedback.textContent = "已保存企业群配置并创建测试审批；请到渠道设置中批准后真实发送。";
+      feedback.className = "activation-form-feedback ok";
+    }
+    return true;
+  } catch (error) {
+    if (feedback) {
+      feedback.textContent = error?.message || "渠道验收准备失败";
+      feedback.className = "activation-form-feedback error";
+    }
+    return false;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function readActivationDraft() {
+  try {
+    const raw = localStorage.getItem(ACTIVATION_DRAFT_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeActivationDraft(patch = {}) {
+  const next = { ...readActivationDraft(), ...patch };
+  try {
+    localStorage.setItem(ACTIVATION_DRAFT_KEY, JSON.stringify(next));
+  } catch {}
+  return next;
+}
+
+function clearActivationDraftFields(keys = []) {
+  const current = readActivationDraft();
+  keys.forEach((key) => {
+    delete current[key];
+  });
+  try {
+    localStorage.setItem(ACTIVATION_DRAFT_KEY, JSON.stringify(current));
+  } catch {}
+}
+
+function activationModelDraftValue(draft, serverValue) {
+  const value = String(draft || "").trim();
+  if (value) return value;
+  return String(serverValue || "").trim();
+}
+
+function renderActivationModelOptions(models = [], selected = "") {
+  const unique = [...new Set((models || []).map((item) => String(item || "").trim()).filter(Boolean))];
+  const options = [`<option value="">自动探测后选择模型…</option>`]
+    .concat(unique.map((model) => `<option value="${settingsSafeText(model)}">${settingsSafeText(model)}</option>`))
+    .join("");
+  return `<select id="activation-model-select">${options}</select>`;
+}
+
+async function fetchActivationState() {
+  const readJson = (path) => fetch(`${API}${path}`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {});
+  const postJson = (path, body = {}) => fetch(`${API}${path}`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+    body: JSON.stringify(body),
+  }).then(r => r.ok ? r.json() : {});
+
+  const [
+    contract, setupPlan, deploymentChecklist, health, ready, runtime, capabilities, configStatus, license, platformHeartbeat,
+    documentParse, memoryPending, reports, ingestReports, sourceRefs, channelsStatus,
+    channelsDiagnostics, channelsTargets, channelsApprovals, avatarStatus, avatarManifest, codegraphStatus,
+  ] = await Promise.all([
+    readJson("/frontend/contract"),
+    readJson("/activation/setup-plan"),
+    readJson("/deployment/checklist"),
+    readJson("/health"),
+    readJson("/ready"),
+    readJson("/runtime/readiness"),
+    readJson("/capabilities"),
+    readJson("/config/status"),
+    readJson("/license"),
+    readJson("/platform/heartbeat"),
+    readJson("/document/parse/status"),
+    postJson("/document/parse/memory-review-pending", {}),
+    readJson("/reports"),
+    readJson("/document/ingest-reports"),
+    readJson("/source-refs"),
+    readJson("/channels/status"),
+    readJson("/channels/diagnostics"),
+    readJson("/channels/targets"),
+    readJson("/channels/approvals"),
+    readJson("/avatar/status"),
+    readJson("/avatar/manifest"),
+    readJson("/codegraph/status"),
+  ]);
+
+  return {
+    contract: contract.frontend_contract || contract,
+    state: {
+      health,
+      setup_plan: setupPlan,
+      deployment_checklist: deploymentChecklist,
+      ready,
+      runtime_readiness: runtime.runtime_readiness || runtime,
+      capabilities: capabilities.capabilities || [],
+      config_status: configStatus,
+      license,
+      platform_heartbeat: platformHeartbeat,
+      document_parse: documentParse,
+      memory_pending: memoryPending,
+      reports,
+      ingest_reports: ingestReports,
+      source_refs: sourceRefs,
+      channels_status: channelsStatus,
+      channels_diagnostics: channelsDiagnostics,
+      channels_targets: channelsTargets,
+      channels_approvals: channelsApprovals,
+      avatar_status: avatarStatus,
+      avatar_manifest: avatarManifest,
+      codegraph_status: codegraphStatus,
+    },
+  };
 }
 
 function configStatusItem(configStatus, itemId) {
@@ -545,6 +734,7 @@ function renderActivationOverlay(contract = {}, state = {}) {
   const flow = Array.isArray(contract.activation_flow) ? contract.activation_flow : [];
   state.contract = contract;
   const setupPlan = state.setup_plan?.activation_setup_plan || state.setup_plan || {};
+  const activationDraft = readActivationDraft();
   const overlay = document.createElement("section");
   overlay.className = "bairui-activation-overlay";
   overlay.setAttribute("role", "dialog");
@@ -555,11 +745,16 @@ function renderActivationOverlay(contract = {}, state = {}) {
   const blockerCount = Array.isArray(state.runtime_readiness?.blockers) ? state.runtime_readiness.blockers.length : 0;
   const databaseStatus = state.ready?.database?.status || "unknown";
   const platformStatus = state.ready?.platform || "missing_config";
-  const modelBaseUrl = activationConfigField(state.config_status, "model_gateway", "base_url");
-  const modelName = activationConfigField(state.config_status, "model_gateway", "model");
+  const modelBaseUrl = activationModelDraftValue(activationDraft.model_base_url, activationConfigField(state.config_status, "model_gateway", "base_url"));
+  const modelName = activationModelDraftValue(activationDraft.model_name, activationConfigField(state.config_status, "model_gateway", "model"));
+  const modelOptions = Array.isArray(activationDraft.model_options) ? activationDraft.model_options : [];
+  const modelProbeStatus = String(activationDraft.model_probe_status || "").trim();
+  const modelProbeMessage = String(activationDraft.model_probe_message || "").trim();
   const channelConfig = (setupPlan.required_config || []).find((item) => item.id === "social_channels") || {};
   const channelDiagnostics = state.channels_diagnostics?.channel_diagnostics || [];
-  const channelReadyCount = channelDiagnostics.filter((item) => ["ready", "approval_required"].includes(String(item.status || "").toLowerCase())).length;
+  const channelReadyCount = channelDiagnostics.filter((item) => ["ready", "approval_required"].includes(String(item.status || "").toLowerCase()) && !(item.warnings || []).includes("approval_only_target")).length;
+  const commercialTrial = state.config_status?.config_status?.commercial_trial || state.config_status?.commercial_trial || {};
+  const deploymentChecklist = state.deployment_checklist?.deployment_checklist || state.deployment_checklist || {};
 
   overlay.innerHTML = `
     <div class="activation-core-bg" aria-hidden="true">
@@ -612,6 +807,10 @@ function renderActivationOverlay(contract = {}, state = {}) {
                 <input id="activation-model-baseurl" type="text" autocomplete="off" placeholder="https://your-model-gateway.example/v1" value="${escapeActivationHtml(modelBaseUrl)}">
               </label>
               <label>
+                <span>自动探测模型</span>
+                ${renderActivationModelOptions(modelOptions, modelName)}
+              </label>
+              <label>
                 <span>Model</span>
                 <input id="activation-model-name" type="text" autocomplete="off" placeholder="model-name" value="${escapeActivationHtml(modelName)}">
               </label>
@@ -619,8 +818,17 @@ function renderActivationOverlay(contract = {}, state = {}) {
                 <span>API Key</span>
                 <input id="activation-model-key" type="password" autocomplete="new-password" placeholder="只写入，不回显；已配置时可留空">
               </label>
+              <label class="activation-form-wide">
+                <span>Owner Token</span>
+                <input id="activation-owner-token" type="password" autocomplete="new-password" placeholder="服务器/公网建议设置；保存后用于后续写接口授权">
+              </label>
+            </div>
+            <div class="activation-model-probe ${activationStatusClass(modelProbeStatus || "unknown")}" id="activation-model-probe">
+              <strong>${escapeActivationHtml(modelProbeStatus || "waiting")}</strong>
+              <small>${escapeActivationHtml(modelProbeMessage || "填入 Base URL 和 API Key 后会自动探测模型列表与连通性。")}</small>
             </div>
             <div class="activation-form-actions">
+              <button class="activation-secondary" id="activation-detect-model-btn" type="button">探测模型</button>
               <button class="activation-primary" id="activation-save-model-btn" type="button">保存并复检</button>
               <span class="activation-form-feedback" id="activation-model-feedback"></span>
             </div>
@@ -631,7 +839,7 @@ function renderActivationOverlay(contract = {}, state = {}) {
               <span>03</span>
               <div>
                 <strong>确认核心存储</strong>
-                <small>首次激活只确认内核必需目录。情报雷达、联网搜索、爬虫索引、文档解析和语音等能力在设置页继续配置。</small>
+                <small>首次激活只确认内核必需目录。能力模块不在首次激活里强制配置；情报雷达、联网搜索、爬虫索引、文档解析和语音等能力在设置页继续配置。</small>
               </div>
             </div>
             <div class="activation-capability-grid">
@@ -648,9 +856,17 @@ function renderActivationOverlay(contract = {}, state = {}) {
             <div class="activation-inline-subsection">
               <div>
                 <strong>渠道首次测试这样做</strong>
-                <small>先在设置页 Social 打开渠道内核，再填 target JSON、平台密钥和 webhook；返回激活页看到 Channels 变成 ready 或 approval_required 后，再进入控制台做第一条测试。</small>
+                <small>企业群机器人是第一条商用验收通道：填 Bot Key 后会保存配置、开启渠道、生成安全目标，并创建一条需要主人批准的测试审批。</small>
               </div>
-              <button class="activation-secondary activation-open-settings-inline" id="activation-open-social-settings-btn" type="button">打开 Social 配置渠道</button>
+              <div class="activation-channel-trial">
+                <input id="activation-wecom-bot-key" type="password" autocomplete="new-password" placeholder="企业群 Bot Key，只写入不回显">
+                <input id="activation-wecom-test-message" type="text" autocomplete="off" value="bairui 企业群渠道验收消息">
+                <div>
+                  <button class="activation-primary" id="activation-save-wecom-trial-btn" type="button">保存并创建测试审批</button>
+                  <button class="activation-secondary activation-open-settings-inline" id="activation-open-social-settings-btn" type="button">打开完整渠道设置</button>
+                </div>
+                <span class="activation-form-feedback" id="activation-channel-feedback"></span>
+              </div>
             </div>
           </div>
 
@@ -683,6 +899,8 @@ function renderActivationOverlay(contract = {}, state = {}) {
                 <strong>${escapeActivationHtml(channelConfig.status || "unknown")}</strong>
                 <small>${channelReadyCount} deliverable targets ready</small>
               </div>
+              ${renderActivationCommercialTrialCard(commercialTrial)}
+              ${renderActivationDeploymentChecklistCard(deploymentChecklist)}
             </div>
             <div class="activation-safety">
               <b>安全边界</b>
@@ -707,6 +925,8 @@ function renderActivationOverlay(contract = {}, state = {}) {
             <strong>${platformStatus}</strong>
             <small>server id / license visibility</small>
           </div>
+          ${renderActivationCommercialTrialCard(commercialTrial)}
+          ${renderActivationDeploymentChecklistCard(deploymentChecklist)}
           <div class="activation-safety">
             <b>安全边界</b>
             <p>不会自动外发消息，不会自动写入长期记忆；渠道发送和记忆入库都需要主人审核。</p>
@@ -742,11 +962,13 @@ function renderActivationOverlay(contract = {}, state = {}) {
         <button class="activation-secondary" id="activation-recheck-btn" type="button">重新检查</button>
         <button class="activation-secondary" id="activation-next-tab-btn" type="button">下一步</button>
         <button class="activation-primary" id="activation-enter-btn" type="button">进入控制台</button>
+        <span class="activation-enter-feedback" id="activation-enter-feedback"></span>
       </footer>
     </div>
   `;
 
   document.body.appendChild(overlay);
+  activationOverlayState = { overlay, contract, state };
   const activationTabOrder = ["mode", "model", "storage", "verify"];
   let activeActivationTab = "mode";
   const setActivationTab = (tabId) => {
@@ -777,36 +999,64 @@ function renderActivationOverlay(contract = {}, state = {}) {
   });
   setActivationTab(activeActivationTab);
   overlay.querySelector("#activation-enter-btn")?.addEventListener("click", () => {
+    const blockers = activationRequiredBlockers(state);
+    const feedback = overlay.querySelector("#activation-enter-feedback");
+    if (blockers.length) {
+      const tab = activationBlockerTab(blockers);
+      setActivationTab(tab);
+      if (feedback) {
+        feedback.textContent = `还不能进入：请先完成必填配置 ${blockers.join(", ")}`;
+        feedback.className = "activation-enter-feedback error";
+      }
+      overlay.querySelector("#activation-model-feedback")?.classList.add("error");
+      return;
+    }
     try { localStorage.setItem(ACTIVATION_DISMISSED_KEY, "1"); } catch {}
     overlay.classList.add("is-leaving");
-    setTimeout(() => overlay.remove(), 260);
+    setTimeout(() => {
+      overlay.remove();
+      if (activationOverlayState?.overlay === overlay) activationOverlayState = null;
+    }, 260);
   });
-  overlay.querySelector("#activation-recheck-btn")?.addEventListener("click", () => {
-    overlay.remove();
-    showActivationOverlay({ force: true });
+  overlay.querySelector("#activation-recheck-btn")?.addEventListener("click", async () => {
+    const feedback = overlay.querySelector("#activation-model-feedback");
+    if (feedback) {
+      feedback.textContent = "正在重新检查当前配置…";
+      feedback.className = "activation-form-feedback";
+    }
+    syncActivationDraftFromOverlay(overlay);
+    await refreshActivationOverlay(overlay);
   });
   overlay.querySelector("#activation-save-model-btn")?.addEventListener("click", async () => {
     const saved = await saveActivationModelConfig(overlay, overlay.querySelector("#activation-model-feedback"));
     if (saved) {
-      setTimeout(() => {
-        overlay.remove();
-        showActivationOverlay({ force: true });
-      }, 520);
+      clearActivationDraftFields(["model_api_key"]);
+      await refreshActivationOverlay(overlay);
     }
+  });
+  overlay.querySelector("#activation-detect-model-btn")?.addEventListener("click", async () => {
+    await detectActivationModels(overlay, { silentWhenIncomplete: false });
+  });
+  overlay.querySelector("#activation-save-wecom-trial-btn")?.addEventListener("click", async () => {
+    const saved = await saveActivationWecomTrial(overlay);
+    if (saved) await refreshActivationOverlay(overlay);
   });
   overlay.querySelector("#activation-open-settings-btn")?.addEventListener("click", () => {
     try { localStorage.setItem(ACTIVATION_DISMISSED_KEY, "1"); } catch {}
     overlay.remove();
+    if (activationOverlayState?.overlay === overlay) activationOverlayState = null;
     openSettingsRef?.("system");
   });
   overlay.querySelector("#activation-open-capabilities-settings-btn")?.addEventListener("click", () => {
     try { localStorage.setItem(ACTIVATION_DISMISSED_KEY, "1"); } catch {}
     overlay.remove();
+    if (activationOverlayState?.overlay === overlay) activationOverlayState = null;
     openSettingsRef?.("system");
   });
   overlay.querySelector("#activation-open-social-settings-btn")?.addEventListener("click", () => {
     try { localStorage.setItem(ACTIVATION_DISMISSED_KEY, "1"); } catch {}
     overlay.remove();
+    if (activationOverlayState?.overlay === overlay) activationOverlayState = null;
     openSettingsRef?.("social");
   });
   overlay.querySelectorAll(".activation-mode-card").forEach((card) => {
@@ -825,6 +1075,202 @@ function renderActivationOverlay(contract = {}, state = {}) {
   });
   overlay.querySelector(".activation-step")?.classList.add("active");
   sanitizePublicBrandText(overlay);
+  bindActivationDraftInputs(overlay);
+  hydrateActivationModelSelect(overlay);
+  queueActivationModelProbe(overlay);
+}
+
+function renderActivationDeploymentChecklistCard(checklist = {}) {
+  const status = checklist.status || "unknown";
+  const missingRequired = Array.isArray(checklist.missing_required) ? checklist.missing_required : [];
+  const optionalMissing = Array.isArray(checklist.optional_missing) ? checklist.optional_missing : [];
+  const requiredText = missingRequired.length ? missingRequired.join(", ") : "none";
+  const optionalText = optionalMissing.length ? optionalMissing.slice(0, 4).join(", ") : "none";
+  const moreOptional = optionalMissing.length > 4 ? ` +${optionalMissing.length - 4}` : "";
+  return `
+    <div class="activation-evidence-card activation-deployment-checklist ${activationStatusClass(status)}">
+      <span>Deployment Checklist</span>
+      <strong>${escapeActivationHtml(status)}</strong>
+      <small>Required: ${escapeActivationHtml(requiredText)}</small>
+      <small>Optional: ${escapeActivationHtml(optionalText)}${escapeActivationHtml(moreOptional)}</small>
+      <code>/deployment/checklist</code>
+    </div>
+  `;
+}
+
+function activationRequiredBlockers(state = {}) {
+  const checklist = state.deployment_checklist?.deployment_checklist || state.deployment_checklist || {};
+  const missing = Array.isArray(checklist.missing_required) ? checklist.missing_required : [];
+  return missing.map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+function activationBlockerTab(blockers = []) {
+  if (blockers.includes("model_gateway")) return "model";
+  if (blockers.some((item) => ["data_dir", "memory_vault", "codegraph_root", "documents", "avatar"].includes(item))) return "storage";
+  return "verify";
+}
+
+function renderActivationCommercialTrialCard(commercialTrial = {}) {
+  const status = String(commercialTrial.status || "unknown");
+  const checks = Array.isArray(commercialTrial.checks) ? commercialTrial.checks : [];
+  const blockerText = Array.isArray(commercialTrial.blockers) && commercialTrial.blockers.length
+    ? `阻塞：${commercialTrial.blockers.join(" / ")}`
+    : "模型、访问保护和真实渠道已通过";
+  const rows = checks.map((check) => `
+    <li class="${activationStatusClass(check.status)}">
+      <span>${escapeActivationHtml(check.label || check.id || "check")}</span>
+      <b>${escapeActivationHtml(check.status || "unknown")}</b>
+    </li>
+  `).join("");
+  return `
+    <div class="activation-evidence-card activation-commercial-trial ${activationStatusClass(status)}">
+      <span>Commercial Trial</span>
+      <strong>${escapeActivationHtml(status)}</strong>
+      <small>${escapeActivationHtml(blockerText)}</small>
+      ${rows ? `<ul>${rows}</ul>` : ""}
+    </div>
+  `;
+}
+
+function syncActivationDraftFromOverlay(overlay) {
+  if (!overlay) return readActivationDraft();
+  return writeActivationDraft({
+    model_base_url: overlay.querySelector("#activation-model-baseurl")?.value?.trim() || "",
+    model_name: overlay.querySelector("#activation-model-name")?.value?.trim() || "",
+    model_api_key: overlay.querySelector("#activation-model-key")?.value?.trim() || "",
+    active_tab: overlay.querySelector(".activation-tab.active")?.dataset.activationTab || "mode",
+  });
+}
+
+function bindActivationDraftInputs(overlay) {
+  const ids = ["activation-model-baseurl", "activation-model-name", "activation-model-key"];
+  ids.forEach((id) => {
+    overlay.querySelector(`#${id}`)?.addEventListener("input", () => {
+      syncActivationDraftFromOverlay(overlay);
+      if (id !== "activation-model-name") queueActivationModelProbe(overlay);
+    });
+  });
+}
+
+function hydrateActivationModelSelect(overlay) {
+  overlay.querySelector("#activation-model-select")?.addEventListener("change", (event) => {
+    const value = event.target?.value || "";
+    const modelInput = overlay.querySelector("#activation-model-name");
+    if (modelInput && value) {
+      modelInput.value = value;
+      syncActivationDraftFromOverlay(overlay);
+    }
+  });
+}
+
+function updateActivationProbeUi(overlay, status, message) {
+  const probeEl = overlay.querySelector("#activation-model-probe");
+  if (!probeEl) return;
+  probeEl.className = `activation-model-probe ${activationStatusClass(status || "unknown")}`;
+  const strong = probeEl.querySelector("strong");
+  const small = probeEl.querySelector("small");
+  if (strong) strong.textContent = status || "waiting";
+  if (small) small.textContent = message || "";
+}
+
+async function detectActivationModels(overlay, { silentWhenIncomplete = true } = {}) {
+  if (!overlay || !overlay.isConnected) return;
+  const draft = syncActivationDraftFromOverlay(overlay);
+  const baseUrl = String(draft.model_base_url || "").trim();
+  const apiKey = String(draft.model_api_key || "").trim();
+  const feedback = overlay.querySelector("#activation-model-feedback");
+  const detectBtn = overlay.querySelector("#activation-detect-model-btn");
+  if (!baseUrl) {
+    if (!silentWhenIncomplete) {
+      updateActivationProbeUi(overlay, "partial", "请先填写 Base URL，再探测模型列表。");
+    }
+    return;
+  }
+  if (detectBtn) detectBtn.disabled = true;
+  updateActivationProbeUi(overlay, "partial", "正在解析模型列表并执行真实回复探活…");
+  try {
+    const probe = await probeGatewayModel({ baseUrl, apiKey, model: draft.model_name });
+    const models = Array.isArray(probe.models) ? probe.models : [];
+    const resolvedModel = probe.model || draft.model_name || models[0] || "";
+    const nextDraft = writeActivationDraft({
+      ...draft,
+      model_options: models,
+      model_probe_status: probe.status === "ready" ? "ready" : "blocked",
+      model_probe_message: probe.status === "ready"
+        ? `已解析 ${models.length} 个模型，并确认 ${resolvedModel || "当前模型"} 可真实回复。`
+        : (probe.error || probe.detail || "模型探活失败"),
+      model_name: resolvedModel,
+    });
+    const select = overlay.querySelector("#activation-model-select");
+    if (select) {
+      select.innerHTML = [`<option value="">自动探测后选择模型…</option>`]
+        .concat(models.map((model) => `<option value="${settingsSafeText(model)}">${settingsSafeText(model)}</option>`))
+        .join("");
+      if (nextDraft.model_name) select.value = nextDraft.model_name;
+    }
+    const modelInput = overlay.querySelector("#activation-model-name");
+    if (modelInput && !String(modelInput.value || "").trim()) {
+      modelInput.value = nextDraft.model_name || "";
+    }
+    updateActivationProbeUi(overlay, nextDraft.model_probe_status, nextDraft.model_probe_message);
+    if (feedback) {
+      feedback.textContent = nextDraft.model_probe_message;
+      feedback.className = "activation-form-feedback ok";
+    }
+  } catch (error) {
+    writeActivationDraft({
+      ...draft,
+      model_options: [],
+      model_probe_status: "blocked",
+      model_probe_message: error?.message || "模型探测失败",
+    });
+    updateActivationProbeUi(overlay, "blocked", error?.message || "模型探测失败");
+    if (!silentWhenIncomplete && feedback) {
+      feedback.textContent = error?.message || "模型探测失败";
+      feedback.className = "activation-form-feedback error";
+    }
+  } finally {
+    if (detectBtn) detectBtn.disabled = false;
+  }
+}
+
+function queueActivationModelProbe(overlay) {
+  if (!overlay) return;
+  const token = String(Date.now());
+  overlay.dataset.activationProbeToken = token;
+  setTimeout(() => {
+    if (!overlay.isConnected) return;
+    if (overlay.dataset.activationProbeToken !== token) return;
+    detectActivationModels(overlay, { silentWhenIncomplete: true });
+  }, 420);
+}
+
+async function refreshActivationOverlay(overlay) {
+  if (!overlay || !overlay.isConnected) return;
+  const activeTab = overlay.querySelector(".activation-tab.active")?.dataset.activationTab || "mode";
+  syncActivationDraftFromOverlay(overlay);
+  const shell = overlay.querySelector(".activation-shell");
+  if (shell) shell.classList.add("is-loading");
+  try {
+    const { contract, state } = await fetchActivationState();
+    const draft = writeActivationDraft({ active_tab: activeTab });
+    renderActivationOverlay(contract, state);
+    const replacement = activationOverlayState?.overlay;
+    if (replacement && replacement !== overlay) {
+      replacement.querySelectorAll(".activation-tab").forEach((tab) => {
+        if (tab.dataset.activationTab === draft.active_tab) tab.click();
+      });
+      overlay.remove();
+      activationOverlayState = { ...activationOverlayState, overlay: replacement };
+    }
+  } catch (error) {
+    const feedback = overlay.querySelector("#activation-model-feedback");
+    if (feedback) {
+      feedback.textContent = error?.message || "重新检查失败";
+      feedback.className = "activation-form-feedback error";
+    }
+    if (shell) shell.classList.remove("is-loading");
+  }
 }
 
 async function showActivationOverlay({ force = false } = {}) {
@@ -835,62 +1281,8 @@ async function showActivationOverlay({ force = false } = {}) {
   }
   if (document.querySelector(".bairui-activation-overlay")) return;
   try {
-    const readJson = (path) => fetch(`${API}${path}`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {});
-    const postJson = (path, body = {}) => fetch(`${API}${path}`, {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
-      body: JSON.stringify(body),
-    }).then(r => r.ok ? r.json() : {});
-    const [
-      contract, setupPlan, health, ready, runtime, capabilities, configStatus, license, platformHeartbeat,
-      documentParse, memoryPending, reports, ingestReports, sourceRefs, channelsStatus,
-      channelsDiagnostics, channelsTargets, channelsApprovals, avatarStatus, avatarManifest, codegraphStatus,
-    ] = await Promise.all([
-      readJson("/frontend/contract"),
-      readJson("/activation/setup-plan"),
-      readJson("/health"),
-      readJson("/ready"),
-      readJson("/runtime/readiness"),
-      readJson("/capabilities"),
-      readJson("/config/status"),
-      readJson("/license"),
-      readJson("/platform/heartbeat"),
-      readJson("/document/parse/status"),
-      postJson("/document/parse/memory-review-pending", {}),
-      readJson("/reports"),
-      readJson("/document/ingest-reports"),
-      readJson("/source-refs"),
-      readJson("/channels/status"),
-      readJson("/channels/diagnostics"),
-      readJson("/channels/targets"),
-      readJson("/channels/approvals"),
-      readJson("/avatar/status"),
-      readJson("/avatar/manifest"),
-      readJson("/codegraph/status"),
-    ]);
-    renderActivationOverlay(contract.frontend_contract || contract, {
-      health,
-      setup_plan: setupPlan,
-      ready,
-      runtime_readiness: runtime.runtime_readiness || runtime,
-      capabilities: capabilities.capabilities || [],
-      config_status: configStatus,
-      license,
-      platform_heartbeat: platformHeartbeat,
-      document_parse: documentParse,
-      memory_pending: memoryPending,
-      reports,
-      ingest_reports: ingestReports,
-      source_refs: sourceRefs,
-      channels_status: channelsStatus,
-      channels_diagnostics: channelsDiagnostics,
-      channels_targets: channelsTargets,
-      channels_approvals: channelsApprovals,
-      avatar_status: avatarStatus,
-      avatar_manifest: avatarManifest,
-      codegraph_status: codegraphStatus,
-    });
+    const { contract, state } = await fetchActivationState();
+    renderActivationOverlay(contract, state);
   } catch (error) {
     renderActivationOverlay({ activation_flow: [] }, { ready: { status: "blocked" }, runtime_readiness: { blockers: [error.message] } });
   }
@@ -1647,10 +2039,10 @@ async function loadMemories() {
     const graph = graphBody.obsidian_graph || {};
     const rows = buildBairuiGraphRows(memoryPendingBody, reportsBody, sourceRefsBody, auditBody).slice(0, 180);
     const syncStatus = graph.status === "ready"
-      ? ` · Obsidian 已同步 ${graph.note_count || 0} notes / ${graph.link_count || 0} links`
+      ? ` · 记忆仓已同步 ${graph.note_count || 0} notes / ${graph.link_count || 0} links`
       : graph.status === "empty"
-        ? " · Obsidian 同步仓为空"
-        : " · Obsidian 同步待检查";
+        ? " · 记忆同步仓为空"
+        : " · 记忆同步待检查";
     setConnectionState(`记忆图谱 ${rows.length} 节点${syncStatus}`, graph.status === "ready");
     if (!Array.isArray(rows)) return;
 
@@ -1682,17 +2074,17 @@ async function loadMemories() {
     nodeData = buildBairuiGraphRows();
     linkData = [];
     renderGraph(1.1);
-    setConnectionState("Obsidian 图谱读取失败，显示内核图", false);
+    setConnectionState("记忆图谱读取失败，显示内核图", false);
   }
 }
 
-function buildObsidianGraphRows(graph = {}) {
+function buildMemoryVaultGraphRows(graph = {}) {
   const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
   return nodes.map((item, index) => ({
     id: item.id || `obsidian:${index}`,
     mem_id: item.mem_id || item.id || `obsidian:${index}`,
-    title: item.title || item.path || "Obsidian note",
-    content: item.content || item.path || "Obsidian vault note",
+    title: item.title || item.path || "memory note",
+    content: item.content || item.path || "memory vault note",
     entities: item.entities || ["obsidian:vault", item.unresolved ? "memory:unresolved" : "memory:note"],
     kind: item.kind || (item.unresolved ? "obsidian_unresolved" : "obsidian_note"),
     event_type: item.event_type || (item.unresolved ? "obsidian_unresolved" : "obsidian_note"),
@@ -1701,7 +2093,7 @@ function buildObsidianGraphRows(graph = {}) {
   }));
 }
 
-function buildObsidianGraphLinks(links = [], nodeIds = new Set()) {
+function buildMemoryVaultGraphLinks(links = [], nodeIds = new Set()) {
   const seen = new Set();
   return links
     .map((link, index) => {
@@ -1848,6 +2240,99 @@ const L2 = new ThoughtStream("si-l2", "warm", {
 let currentPath = "l2";
 function currentStream() { return currentPath === "l1" ? L1 : L2; }
 
+function emitConsoleProcessEvent(type, data = {}) {
+  switch (type) {
+    case "message_received":
+      currentPath = "l1";
+      L1.beginRound();
+      L1.newLine("user message received", { content: data.content || "" });
+      L1.startThinkingSession();
+      L2.beginRound();
+      L2.newLine("console turn");
+      L2.setStatus("等待任务进入模型网关…", "busy");
+      setConnectionState("处理中", true);
+      setOpsActive("收到新消息", shortOpsText(data.content || "等待处理"));
+      pushOpsEvent("收到用户消息", data.content || "等待处理");
+      setOpsTool("—", "正在准备上下文");
+      highlightCapability("");
+      break;
+    case "memory_context":
+      currentPath = "l1";
+      L1.tool("search_memory", { keywords: ["context", "capabilities"] }, JSON.stringify({ ok: true, summary: data.detail || "上下文已准备" }), true);
+      L2.setStatus(data.detail || "准备上下文…", "busy");
+      recordAiActivity("search_memory");
+      setOpsActive("准备上下文", data.detail || "读取可用记忆和能力");
+      setOpsTool("检索记忆", data.detail || "上下文已准备");
+      highlightCapability("everos_memory");
+      pushOpsEvent("上下文准备", data.detail || "读取可用记忆和能力");
+      break;
+    case "model_call":
+      currentPath = "l1";
+      L1.tool("model_gateway", { command: "POST /chat" }, JSON.stringify({ ok: true, summary: data.detail || "模型网关已调用" }), true);
+      L2.setTimedStatus(data.detail || "模型生成中…", "busy", { staleAfterMs: 45000, staleText: "模型生成时间偏长，仍在等待上游…" });
+      recordAiActivity("model_gateway");
+      setOpsActive("模型生成中", data.detail || "调用模型网关生成回答");
+      setOpsTool("模型网关", data.detail || "等待上游返回内容");
+      highlightCapability("model_gateway");
+      pushOpsEvent("模型调用", data.detail || "调用模型网关生成回答");
+      break;
+    case "message_completed":
+      currentPath = "l1";
+      L1.stopThinking();
+      L1.tool("send_message", { content: data.hasContent ? "回答已生成" : "返回诊断信息" }, JSON.stringify({ ok: Boolean(data.hasContent), summary: `status=${data.status || "unknown"} model=${data.model || ""}` }), Boolean(data.hasContent));
+      L1.end();
+      L2.clearStatus();
+      L2.tool("send_message", { content: data.hasContent ? "已回复用户" : "已返回诊断" }, JSON.stringify({ ok: true, summary: data.provider || "model gateway" }), true);
+      L2.end();
+      setConnectionState("已连接", true);
+      setOpsActive(data.hasContent ? "回答完成" : "返回诊断", `status=${data.status || "unknown"} · ${data.model || data.provider || "gateway"}`);
+      setOpsTool("发送回复", data.hasContent ? "正文已返回到对话区" : "已返回诊断信息");
+      highlightCapability("model_gateway");
+      pushOpsEvent(data.hasContent ? "回答完成" : "返回诊断", `status=${data.status || "unknown"} · ${data.model || data.provider || "gateway"}`);
+      break;
+    case "message_failed":
+      currentPath = "l1";
+      L1.stopThinking();
+      L1.setStatus(data.error || "处理失败", "failed");
+      L1.end();
+      L2.setStatus(data.error || "处理失败", "failed");
+      setConnectionState("已连接", false);
+      setOpsActive("处理失败", data.error || "请检查模型网关与后端");
+      setOpsTool("失败", data.error || "处理失败");
+      pushOpsEvent("处理失败", data.error || "请检查模型网关与后端");
+      break;
+    case "tool_preparing":
+      setOpsActive("准备工具调用", data.name ? TOOL_LABEL_FALLBACK(data.name) : "等待工具就绪");
+      if (data.name) {
+        setOpsTool(TOOL_LABEL_FALLBACK(data.name), "正在准备执行");
+        highlightCapability(capabilityForTool(data.name));
+      }
+      break;
+    case "tool_executing":
+      setOpsActive("执行工具中", data.name ? TOOL_LABEL_FALLBACK(data.name) : "工具运行中");
+      if (data.name) {
+        setOpsTool(TOOL_LABEL_FALLBACK(data.name), "等待工具结果返回");
+        highlightCapability(capabilityForTool(data.name));
+        pushOpsEvent("执行工具", TOOL_LABEL_FALLBACK(data.name));
+      }
+      break;
+    case "llm_retry":
+      setOpsActive("模型繁忙重试", `第 ${Number(data.nextAttempt || 2)} 次重试 · ${formatRetryDelay(Number(data.delayMs || 0))}`);
+      pushOpsEvent("模型繁忙", "系统已进入自动重试");
+      break;
+    case "message_requeued":
+      setOpsActive("等待重试队列", `已入队重试 ${Number(data.retryCount || 1)}/3`);
+      break;
+    case "message_dropped":
+      setOpsActive("重试结束", "模型繁忙，已达到最大重试次数");
+      setOpsTool("重试结束", "请检查上游模型网关");
+      pushOpsEvent("重试结束", "模型繁忙，已达到最大重试次数");
+      break;
+    default:
+      break;
+  }
+}
+
 function isBusyErrorMessage(message = "") {
   return /(429|rate limit|too many requests|busy|overload|temporarily unavailable|server busy|resource exhausted)/i.test(String(message || ""));
 }
@@ -1903,6 +2388,9 @@ function recordAiActivity(name) {
   if (aiActivityLog.length === 0) aiActivityFirstTs = now;
   aiActivityLog.push({ name, ts: now, group: classifyTool(name) });
   refreshAiActivity();
+  const matchedCapability = capabilityForTool(name);
+  if (matchedCapability) highlightCapability(matchedCapability);
+  setOpsTool(TOOL_LABEL_FALLBACK(name), `${classifyTool(name)} · 最近工具调用`);
 }
 
 function refreshAiActivity() {
@@ -1943,6 +2431,195 @@ if (aiActivityEl) {
   aiActivityEl.dataset.state = "idle";
   aiActivityTimer = setInterval(refreshAiActivity, 1000);
 }
+
+const capabilityListEl = document.getElementById("capability-list");
+const capabilityRefreshBtn = document.getElementById("capability-refresh");
+const runtimeListEl = document.getElementById("runtime-list");
+const runtimeShelfNoteEl = document.getElementById("runtime-shelf-note");
+const opsActiveLabelEl = document.getElementById("ops-active-label");
+const opsActiveDetailEl = document.getElementById("ops-active-detail");
+const opsToolLabelEl = document.getElementById("ops-tool-label");
+const opsToolDetailEl = document.getElementById("ops-tool-detail");
+const opsEventListEl = document.getElementById("ops-event-list");
+const opsEventCountEl = document.getElementById("ops-event-count");
+const opsRecentEvents = [];
+let activeCapabilityName = "";
+
+function publicCapabilityName(name = "") {
+  const labels = {
+    health_api: "健康检查",
+    readiness_api: "可用性检查",
+    version_api: "版本信息",
+    jobs_api: "任务创建",
+    audit_api: "审计事件",
+    obsidian_report_write: "记忆报告写入",
+    model_gateway: "模型网关",
+    license_validation: "授权校验",
+    postgresql: "PostgreSQL",
+    obsidian_vault: "长期记忆库",
+    everos_memory: "记忆运行时",
+    funasr_voice_asr: "语音识别",
+    mineru_document_parse: "文档解析",
+    trendradar_intelligence: "情报雷达",
+    mirofish_simulation: "推演模拟",
+    searxng_search: "联网搜索",
+    sonic_local_index: "本地索引",
+    bairui_avatar_runtime: "Avatar",
+    bairui_codegraph: "源码图谱",
+    bairui_agents: "多智能体",
+  };
+  return labels[name] || String(name || "").replace(/_/g, " ");
+}
+
+function publicCapabilityDetail(text = "") {
+  return sanitizePublicBrandText(String(text || ""))
+    .replace(/OpenAI-compatible/g, "模型兼容")
+    .replace(/HTTP /g, "")
+    .replace(/endpoint/g, "接口");
+}
+
+function capabilityForTool(name = "") {
+  const map = {
+    model_gateway: "model_gateway",
+    search_memory: "everos_memory",
+    recall_memory: "everos_memory",
+    probe_memory: "everos_memory",
+    upsert_memory: "everos_memory",
+    merge_memories: "everos_memory",
+    downgrade_memory: "everos_memory",
+    web_search: "searxng_search",
+    fetch_url: "trendradar_intelligence",
+    browser_read: "trendradar_intelligence",
+    open_doc_panel: "mineru_document_parse",
+    runtime_capability: "funasr_voice_asr",
+  };
+  return map[name] || "";
+}
+
+function TOOL_LABEL_FALLBACK(name = "") {
+  return L2?.toolLabel ? L2.toolLabel(name) : name || "工具";
+}
+
+function shortOpsText(value, max = 80) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > max ? text.slice(0, max) + "…" : text;
+}
+
+function setOpsActive(label, detail = "") {
+  if (opsActiveLabelEl) opsActiveLabelEl.textContent = label || "空闲";
+  if (opsActiveDetailEl) opsActiveDetailEl.textContent = detail || "等待新的任务进入";
+}
+
+function setOpsTool(label, detail = "") {
+  if (opsToolLabelEl) opsToolLabelEl.textContent = label || "—";
+  if (opsToolDetailEl) opsToolDetailEl.textContent = detail || "尚未调用工具";
+}
+
+function renderOpsEvents() {
+  if (!opsEventListEl) return;
+  if (!opsRecentEvents.length) {
+    opsEventListEl.innerHTML = `<div class="capability-empty">等待消息或工具事件…</div>`;
+    if (opsEventCountEl) opsEventCountEl.textContent = "0 条";
+    return;
+  }
+  if (opsEventCountEl) opsEventCountEl.textContent = `${opsRecentEvents.length} 条`;
+  opsEventListEl.innerHTML = opsRecentEvents.map((item, index) => `
+    <div class="ops-event-item ${index === 0 ? "active" : ""}">
+      <div class="ops-event-head">
+        <strong>${settingsSafeText(item.label)}</strong>
+        <span>${settingsSafeText(item.time)}</span>
+      </div>
+      <p>${settingsSafeText(item.detail)}</p>
+    </div>
+  `).join("");
+}
+
+function pushOpsEvent(label, detail = "") {
+  opsRecentEvents.unshift({
+    label,
+    detail: shortOpsText(detail, 140),
+    time: new Date().toLocaleTimeString("zh-CN", { hour12: false }),
+  });
+  opsRecentEvents.splice(10);
+  renderOpsEvents();
+}
+
+function highlightCapability(name = "") {
+  activeCapabilityName = name || "";
+  document.querySelectorAll(".capability-item[data-capability-name]").forEach((el) => {
+    el.classList.toggle("active", Boolean(activeCapabilityName) && el.dataset.capabilityName === activeCapabilityName);
+  });
+}
+
+function capabilityStatusWeight(status = "") {
+  const value = String(status || "").toLowerCase();
+  if (["missing_config", "blocked", "error", "failed"].includes(value)) return 0;
+  if (["partial", "needs_review", "unknown"].includes(value)) return 1;
+  return 2;
+}
+
+function renderRuntimeList(capabilities = []) {
+  if (!runtimeListEl) return;
+  const items = capabilities.filter((item) => /_(voice_asr|document_parse|intelligence|search|local_index|runtime|codegraph|memory)$/.test(String(item.name || "")) || String(item.name || "").startsWith("bairui_"));
+  if (!items.length) {
+    runtimeListEl.innerHTML = `<div class="capability-empty">暂无 runtime 数据。</div>`;
+    if (runtimeShelfNoteEl) runtimeShelfNoteEl.textContent = "0 项";
+    return;
+  }
+  if (runtimeShelfNoteEl) runtimeShelfNoteEl.textContent = `${items.length} 项`;
+  runtimeListEl.innerHTML = items.map((item) => `
+    <div class="capability-item is-${settingsSafeClass(item.status)}" data-capability-name="${settingsSafeText(item.name)}">
+      <strong>${settingsSafeText(publicCapabilityName(item.name))}</strong>
+      <small>${settingsSafeText(publicCapabilityDetail(item.detail || item.source || ""))}</small>
+      <span>${settingsSafeText(item.status || "unknown")}</span>
+    </div>
+  `).join("");
+}
+
+function renderCapabilityList(capabilities = []) {
+  if (!capabilityListEl) return;
+  if (!capabilities.length) {
+    capabilityListEl.innerHTML = `<div class="capability-empty">暂无能力数据。请检查 /capabilities。</div>`;
+    return;
+  }
+  const priority = ["model_gateway", "bairui_agents", "everos_memory", "mineru_document_parse", "trendradar_intelligence", "searxng_search", "sonic_local_index", "funasr_voice_asr", "bairui_codegraph"];
+  const sorted = [...capabilities].sort((a, b) => {
+    const statusDiff = capabilityStatusWeight(a.status) - capabilityStatusWeight(b.status);
+    if (statusDiff !== 0) return statusDiff;
+    const ai = priority.indexOf(a.name);
+    const bi = priority.indexOf(b.name);
+    return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
+  });
+  capabilityListEl.innerHTML = sorted.slice(0, 18).map((item) => {
+    const status = String(item.status || "unknown");
+    return `
+      <div class="capability-item is-${settingsSafeClass(status)}" data-capability-name="${settingsSafeText(item.name)}">
+        <strong>${settingsSafeText(publicCapabilityName(item.name))}</strong>
+        <small>${settingsSafeText(publicCapabilityDetail(item.detail || item.source || ""))}</small>
+        <span class="capability-badge">${settingsSafeText(status)}</span>
+      </div>
+    `;
+  }).join("");
+  highlightCapability(activeCapabilityName);
+  renderRuntimeList(sorted);
+}
+
+function settingsSafeClass(value) {
+  return String(value || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+}
+
+async function loadCapabilityShelf() {
+  if (!capabilityListEl) return;
+  try {
+    const res = await fetch(`${API}/capabilities`, { cache: "no-store", headers: ownerAuthHeaders() });
+    const data = await res.json().catch(() => ({}));
+    renderCapabilityList(data.capabilities || []);
+  } catch {
+    capabilityListEl.innerHTML = `<div class="capability-empty">能力清单读取失败。</div>`;
+  }
+}
+
+capabilityRefreshBtn?.addEventListener("click", loadCapabilityShelf);
 
 async function refreshMemoryAuditStats() {
   if (!memRecallEl || !memExtractEl) return;
@@ -2177,6 +2854,7 @@ function handle({ type, data = {} }) {
     case "tool_call":
       currentStream().tool(data.name, data.args, data.result, data.ok);
       recordAiActivity(data.name);
+      pushOpsEvent(TOOL_LABEL_FALLBACK(data.name), shortOpsText(data.result || data.args?.content || data.args?.command || "工具调用完成", 140));
       break;
     case "response":
       // Round complete — stop all animations
@@ -2865,6 +3543,7 @@ chat = initChat({
   getAgentName: () => agentName,
   defaultInputPlaceholder,
   openSettings: (tab) => openSettingsRef?.(tab),
+  onProcessEvent: emitConsoleProcessEvent,
   onUserMessage: (text) => {
     if (document.body.classList.contains('hotspot-mode') && /关闭|退出|关掉|隐藏/.test(text)) {
       toggleHotspot();
@@ -2892,6 +3571,7 @@ if (MEMORY_GRAPH_ENABLED) {
   }, 5 * 60 * 1000);
 }
 connectSSE();
+loadCapabilityShelf();
 loadAgentProfile();
 initPersonCard();
 initDocPanel().catch((err) => console.warn('[DocPanel] init failed:', err));
@@ -3205,6 +3885,10 @@ function initTTSSettings() {
   const socialFeedback  = document.getElementById("settings-social-feedback");
   const socialChannelsEnabled = document.getElementById("social-channels-enabled");
   const socialTargetsJson = document.getElementById("social-targets-json");
+  const socialBuildWecomTargetBtn = document.getElementById("social-build-wecom-target-btn");
+  const socialSendTestBtn = document.getElementById("social-send-test-btn");
+  const socialSendWecomNowBtn = document.getElementById("social-send-wecom-now-btn");
+  const socialTestMessage = document.getElementById("social-test-message");
   const saveVoiceBtn    = document.getElementById("settings-save-voice");
   const voiceFeedback   = document.getElementById("settings-voice-feedback");
   const voiceThreshSlider = document.getElementById("settings-voice-threshold");
@@ -3269,9 +3953,9 @@ function initTTSSettings() {
       id: "memory",
       label: "记忆系统",
       title: "记忆系统",
-      detail: "长期记忆、Obsidian 双链图、记忆候选和人工审核队列集中管理。自动写入长期记忆保持关闭，必须经过主人审核。",
+      detail: "长期记忆、双链图、记忆候选和人工审核队列集中管理。自动写入长期记忆保持关闭，必须经过主人审核。",
       endpoints: ["/memory/status", "/obsidian/graph", "/document/memory-candidates", "/document/memory-reviews"],
-      actions: ["查看 Obsidian 双链图", "审核记忆候选", "追踪写入记录"],
+      actions: ["查看记忆双链图", "审核记忆候选", "追踪写入记录"],
     },
     {
       id: "documents",
@@ -3285,9 +3969,9 @@ function initTTSSettings() {
       id: "reports",
       label: "报告与来源",
       title: "报告与来源",
-      detail: "集中查看交付报告、文档摄取报告、可追踪来源引用以及 Obsidian 报告写入结果。",
+      detail: "集中查看交付报告、文档摄取报告、可追踪来源引用以及本地记忆仓报告写入结果。",
       endpoints: ["/reports", "/document/ingest-reports", "/source-refs", "/obsidian/graph"],
-      actions: ["写入报告", "查看来源链路", "打开 Obsidian 双链关系"],
+      actions: ["写入报告", "查看来源链路", "打开记忆双链关系"],
     },
     {
       id: "intelligence",
@@ -3311,7 +3995,7 @@ function initTTSSettings() {
       id: "codegraph",
       label: "源码图谱",
       title: "源码图谱",
-      detail: "源码结构索引和长期记忆分开存储，让 AI 能看到代码结构但不会把源码图谱混入 Obsidian 记忆。",
+      detail: "源码结构索引和长期记忆分开存储，让 AI 能看到代码结构但不会把源码图谱混入长期记忆。",
       endpoints: ["/codegraph/status", "/codegraph/repos", "/codegraph/overview"],
       actions: ["注册源码仓库", "扫描仓库", "查询符号/文件", "分析影响范围"],
     },
@@ -3476,6 +4160,7 @@ function initTTSSettings() {
   }
 
   function renderCompleteSettingsTab(tab) {
+    if (tab.id === "documents") return renderDocumentWorkbenchSettingsTab(tab);
     const endpointRows = tab.endpoints.map((path, index) => `
       <div class="settings-overview-item" data-settings-endpoint="${settingsSafeText(path)}" data-status-target="${settingsSafeText(tab.id)}-${index}">
         <div>
@@ -3508,6 +4193,77 @@ function initTTSSettings() {
     `;
   }
 
+  function renderDocumentWorkbenchSettingsTab(tab) {
+    return `
+      <div class="settings-tab" data-tab="${settingsSafeText(tab.id)}">
+        <div class="settings-section">
+          <div class="settings-section-label">文档记忆工作台</div>
+          <p class="settings-hint">把文档从解析计划推进到记忆候选、主人审核、来源引用和本地记忆仓摄取报告。长期记忆不会自动写入，必须在这里审核。</p>
+          <div class="settings-core-form">
+            <label class="settings-core-form-wide">
+              <span>文档路径</span>
+              <input class="settings-input" id="document-workbench-input-path" type="text" placeholder="服务器可访问的 PDF / DOCX / Markdown / 文本路径" autocomplete="off">
+            </label>
+            <label class="settings-core-form-wide">
+              <span>本地上传</span>
+              <input class="settings-input" id="document-workbench-file" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.md,.markdown,.txt,.csv,.json,application/pdf,text/plain,text/markdown,application/json">
+            </label>
+            <label>
+              <span>标题</span>
+              <input class="settings-input" id="document-workbench-title" type="text" placeholder="例如：客户资料 / 会议纪要" autocomplete="off">
+            </label>
+            <label>
+              <span>语言</span>
+              <input class="settings-input" id="document-workbench-language" type="text" placeholder="zh / en，可留空自动" autocomplete="off">
+            </label>
+            <label>
+              <span>候选上限</span>
+              <input class="settings-input" id="document-workbench-max-candidates" type="number" min="1" max="50" value="12">
+            </label>
+          </div>
+          <div class="settings-row-action">
+            <button class="settings-save-btn" id="document-workbench-create-plan" type="button">创建摄取计划</button>
+            <button class="settings-save-btn secondary" id="document-workbench-upload-plan" type="button">上传并创建计划</button>
+            <button class="settings-save-btn secondary" id="document-workbench-refresh" type="button">刷新会话</button>
+            <span class="settings-feedback" id="document-workbench-feedback"></span>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-label">摄取会话</div>
+          <div class="document-workbench-session-bar">
+            <select class="settings-select" id="document-workbench-session-select">
+              <option value="">暂无会话</option>
+            </select>
+            <button class="settings-save-btn secondary" id="document-workbench-next" type="button">推进下一步</button>
+            <button class="settings-save-btn secondary" id="document-workbench-run" type="button">运行到阻塞</button>
+          </div>
+          <div class="settings-overview-list" id="document-workbench-session-list">
+            <div class="settings-overview-empty">正在读取文档摄取会话…</div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-label">当前流程</div>
+          <div class="document-workbench-stage-grid" id="document-workbench-stages">
+            <div class="settings-overview-empty">请选择一个摄取会话。</div>
+          </div>
+          <div class="settings-overview-list" id="document-workbench-blockers" style="margin-top:12px;"></div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-label">记忆候选审核</div>
+          <div class="settings-overview-list" id="document-workbench-review-list">
+            <div class="settings-overview-empty">没有待审核候选。</div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-label">报告与来源</div>
+          <div class="settings-overview-list" id="document-workbench-report-list">
+            <div class="settings-overview-empty">暂无摄取报告或来源引用。</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   ensureSettingsOverviewTab();
 
   overlay.querySelectorAll(".settings-nav-item").forEach(btn => {
@@ -3518,10 +4274,12 @@ function initTTSSettings() {
       const tab = btn.dataset.tab;
       overlay.querySelector(`.settings-tab[data-tab="${tab}"]`)?.classList.add("active");
       if (tab === "system") loadRuntimeSettingsOverview();
+      if (tab === "voice") loadVoiceSettings();
       if (tab === "social") loadSocialSettings();
       if (tab === "security") loadSecuritySettings();
       if (tab === "web-search") loadWebSearchSettings();
       if (tab === "update") loadUpdateSettings();
+      if (tab === "documents") loadDocumentWorkbench();
       loadCompleteSettingsSurface(tab);
     });
   });
@@ -3635,6 +4393,10 @@ function initTTSSettings() {
   }
 
   async function loadCompleteSettingsSurface(tabId) {
+    if (tabId === "documents") {
+      await loadDocumentWorkbench();
+      return;
+    }
     const tab = completeSettingsTabs.find(item => item.id === tabId && !item.existing);
     if (!tab) return;
     const pane = overlay.querySelector(`.settings-tab[data-tab="${tabId}"]`);
@@ -3660,6 +4422,261 @@ function initTTSSettings() {
         row.querySelector("small").textContent = error?.message || "读取失败";
       }
     }));
+  }
+
+  function documentWorkbenchPost(path, body = {}) {
+    return fetch(`${API}${path}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+      body: JSON.stringify(body),
+    }).then(async (res) => {
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.message || payload.error || `${path} failed`);
+      return payload;
+    });
+  }
+
+  function documentWorkbenchSessionId() {
+    return document.getElementById("document-workbench-session-select")?.value?.trim() || "";
+  }
+
+  function renderDocumentWorkbenchSessions(sessions = [], selectedId = "") {
+    const select = document.getElementById("document-workbench-session-select");
+    const list = document.getElementById("document-workbench-session-list");
+    if (select) {
+      select.innerHTML = sessions.length
+        ? sessions.map((item) => `
+          <option value="${settingsSafeText(item.ingest_id)}" ${item.ingest_id === selectedId ? "selected" : ""}>
+            ${settingsSafeText(item.title || item.ingest_id)} · ${settingsSafeText(item.current_stage || item.status || "pending")}
+          </option>
+        `).join("")
+        : `<option value="">暂无会话</option>`;
+    }
+    if (!list) return;
+    if (!sessions.length) {
+      list.innerHTML = `<div class="settings-overview-empty">还没有文档摄取会话。先填写文档路径并创建计划。</div>`;
+      return;
+    }
+    list.innerHTML = sessions.map((item) => `
+      <button class="settings-overview-item ${settingsStatusClass(item.status)} document-workbench-session" type="button" data-ingest-id="${settingsSafeText(item.ingest_id)}">
+        <div>
+          <strong>${settingsSafeText(item.title || item.ingest_id)}</strong>
+          <small>${settingsSafeText(item.source || "unknown source")} · ${settingsSafeText(item.current_stage || "pending")} · ${Number(item.progress_percent || 0)}%</small>
+        </div>
+        <span>${settingsSafeText(item.status || "unknown")}</span>
+      </button>
+    `).join("");
+    list.querySelectorAll(".document-workbench-session").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (select) select.value = button.dataset.ingestId || "";
+        loadDocumentWorkbenchSummary(button.dataset.ingestId || "");
+      });
+    });
+  }
+
+  function renderDocumentWorkbenchSummary(summary = {}) {
+    const stagesEl = document.getElementById("document-workbench-stages");
+    const blockersEl = document.getElementById("document-workbench-blockers");
+    const reviewEl = document.getElementById("document-workbench-review-list");
+    const reportEl = document.getElementById("document-workbench-report-list");
+    const stages = Array.isArray(summary.stages) ? summary.stages : [];
+    const workbench = summary.workbench || {};
+    if (stagesEl) {
+      stagesEl.innerHTML = stages.length ? stages.map((stage) => `
+        <div class="settings-runtime-tile ${settingsStatusClass(stage.status)}">
+          <span>${settingsSafeText(stage.label || stage.id)}</span>
+          <strong>${settingsSafeText(stage.status || "pending")}</strong>
+          <small>${settingsSafeText(stage.id || "")}</small>
+        </div>
+      `).join("") : `<div class="settings-overview-empty">暂无流程阶段。</div>`;
+    }
+    const blockers = [...(summary.blockers || []), ...(summary.warnings || [])].filter(Boolean);
+    if (blockersEl) {
+      blockersEl.innerHTML = blockers.length ? blockers.map((item) => `
+        <div class="settings-overview-item is-blocked">
+          <div><strong>阻塞/警告</strong><small>${settingsSafeText(item)}</small></div>
+          <span>check</span>
+        </div>
+      `).join("") : `<div class="settings-overview-empty">没有阻塞项。可继续推进下一步。</div>`;
+    }
+    const candidates = summary.review_queue?.candidates || [];
+    if (reviewEl) {
+      reviewEl.innerHTML = candidates.length ? candidates.map((item) => `
+        <div class="settings-overview-item document-memory-review-row" data-candidate-id="${settingsSafeText(item.id)}">
+          <div>
+            <strong>${settingsSafeText(item.title || item.source_title || "记忆候选")}</strong>
+            <small>${settingsSafeText(item.summary || item.content || item.detail || "等待主人审核")}</small>
+          </div>
+          <span class="document-review-actions">
+            <button class="settings-mini-btn" data-document-review="approve" type="button">通过</button>
+            <button class="settings-mini-btn" data-document-review="reject" type="button">拒绝</button>
+          </span>
+        </div>
+      `).join("") : `<div class="settings-overview-empty">没有待审核候选。运行到阻塞后如果提取到长期记忆，会出现在这里。</div>`;
+      reviewEl.querySelectorAll("[data-document-review]").forEach((button) => {
+        button.addEventListener("click", () => reviewDocumentMemoryCandidate(
+          button.closest("[data-candidate-id]")?.dataset.candidateId || "",
+          button.dataset.documentReview || ""
+        ));
+      });
+    }
+    const refs = workbench.source_refs || [];
+    const reports = workbench.ingest_reports || [];
+    if (reportEl) {
+      const reportRows = reports.map((item) => `
+        <div class="settings-overview-item is-ready">
+          <div><strong>${settingsSafeText(item.title || "摄取报告")}</strong><small>${settingsSafeText(item.path || item.created_at || "")}</small></div>
+          <span>report</span>
+        </div>
+      `).join("");
+      const refRows = refs.slice(0, 12).map((item) => `
+        <div class="settings-overview-item is-ready">
+          <div><strong>${settingsSafeText(item.title || item.label || "来源引用")}</strong><small>${settingsSafeText(item.path || item.url || item.artifact_path || "")}</small></div>
+          <span>source</span>
+        </div>
+      `).join("");
+      reportEl.innerHTML = reportRows + refRows || `<div class="settings-overview-empty">暂无摄取报告或来源引用。</div>`;
+    }
+  }
+
+  async function loadDocumentWorkbench(preferredId = "") {
+    const feedback = document.getElementById("document-workbench-feedback");
+    try {
+      const payload = await documentWorkbenchPost("/document/parse/session-list", { limit: 50 });
+      const sessions = payload.document_ingest_sessions?.sessions || [];
+      const current = preferredId || documentWorkbenchSessionId() || sessions[0]?.ingest_id || "";
+      renderDocumentWorkbenchSessions(sessions, current);
+      if (current) await loadDocumentWorkbenchSummary(current);
+      if (feedback) feedback.textContent = "";
+    } catch (error) {
+      if (feedback) {
+        feedback.textContent = `文档工作台读取失败：${error.message}`;
+        feedback.className = "settings-feedback error";
+      }
+    }
+  }
+
+  async function loadDocumentWorkbenchSummary(ingestId = documentWorkbenchSessionId()) {
+    if (!ingestId) {
+      renderDocumentWorkbenchSummary({});
+      return;
+    }
+    const payload = await documentWorkbenchPost("/document/parse/session-summary", { ingest_id: ingestId });
+    renderDocumentWorkbenchSummary(payload.document_ingest_session || {});
+  }
+
+  async function createDocumentWorkbenchPlan() {
+    const feedback = document.getElementById("document-workbench-feedback");
+    const inputPath = document.getElementById("document-workbench-input-path")?.value?.trim() || "";
+    const title = document.getElementById("document-workbench-title")?.value?.trim() || "";
+    const language = document.getElementById("document-workbench-language")?.value?.trim() || "";
+    if (!inputPath) {
+      showFeedback(feedback, "请先填写服务器可访问的文档路径。", true);
+      return;
+    }
+    try {
+      showFeedback(feedback, "正在创建摄取计划…");
+      const payload = await documentWorkbenchPost("/document/parse/ingest-plan", {
+        input_path: inputPath,
+        title: title || inputPath.split(/[\\/]/).pop() || "文档摄取",
+        language,
+      });
+      const ingestId = payload.document_ingest?.id || payload.document_ingest_plan?.ingest?.id || "";
+      await loadDocumentWorkbench(ingestId);
+      showFeedback(feedback, "摄取计划已创建。");
+    } catch (error) {
+      showFeedback(feedback, `创建失败：${error.message}`, true);
+    }
+  }
+
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const value = String(reader.result || "");
+        resolve(value.includes(",") ? value.split(",", 2)[1] : value);
+      };
+      reader.onerror = () => reject(reader.error || new Error("file read failed"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function uploadDocumentWorkbenchPlan() {
+    const feedback = document.getElementById("document-workbench-feedback");
+    const fileInput = document.getElementById("document-workbench-file");
+    const file = fileInput?.files?.[0];
+    const title = document.getElementById("document-workbench-title")?.value?.trim() || "";
+    const language = document.getElementById("document-workbench-language")?.value?.trim() || "";
+    if (!file) {
+      showFeedback(feedback, "请先选择一个本地文档。", true);
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      showFeedback(feedback, "文件超过 25MB，试点版请先上传较小文档。", true);
+      return;
+    }
+    try {
+      showFeedback(feedback, "正在上传文档并创建摄取计划…");
+      const fileBase64 = await readFileAsBase64(file);
+      const payload = await documentWorkbenchPost("/document/parse/upload", {
+        filename: file.name,
+        mime_type: file.type || "",
+        file_base64: fileBase64,
+        title: title || file.name.replace(/\.[^.]+$/, ""),
+        language,
+      });
+      const ingestId = payload.document_upload?.document_ingest?.id || "";
+      if (fileInput) fileInput.value = "";
+      await loadDocumentWorkbench(ingestId);
+      showFeedback(feedback, "文档已上传，摄取计划已创建。");
+    } catch (error) {
+      showFeedback(feedback, `上传失败：${error.message}`, true);
+    }
+  }
+
+  async function runDocumentWorkbenchAction(mode) {
+    const feedback = document.getElementById("document-workbench-feedback");
+    const ingestId = documentWorkbenchSessionId();
+    const maxCandidates = Number(document.getElementById("document-workbench-max-candidates")?.value || 12);
+    if (!ingestId) {
+      showFeedback(feedback, "请先选择一个摄取会话。", true);
+      return;
+    }
+    try {
+      showFeedback(feedback, mode === "run" ? "正在运行到下一个阻塞点…" : "正在推进下一步…");
+      const path = mode === "run" ? "/document/parse/workbench-run-until-blocked" : "/document/parse/workbench-next";
+      const payload = await documentWorkbenchPost(path, {
+        ingest_id: ingestId,
+        max_candidates: Math.max(1, Math.min(50, maxCandidates || 12)),
+        max_steps: 10,
+      });
+      const status = payload.document_workbench_run?.status || payload.document_workbench_step?.status || "completed";
+      await loadDocumentWorkbench(ingestId);
+      showFeedback(feedback, status === "needs_review" ? "已运行到记忆审核，请在下方处理候选。" : `流程已推进：${status}`);
+      loadMemories();
+    } catch (error) {
+      showFeedback(feedback, `推进失败：${error.message}`, true);
+    }
+  }
+
+  async function reviewDocumentMemoryCandidate(candidateId, decision) {
+    const feedback = document.getElementById("document-workbench-feedback");
+    if (!candidateId || !decision) return;
+    try {
+      showFeedback(feedback, decision === "approve" ? "正在写入审核通过记录…" : "正在记录拒绝…");
+      await documentWorkbenchPost("/document/parse/review-memory-candidate", {
+        candidate_id: candidateId,
+        decision,
+        reviewer_ref: "owner",
+        note: decision === "approve" ? "Approved from bairui document workbench" : "Rejected from bairui document workbench",
+      });
+      await loadDocumentWorkbench(documentWorkbenchSessionId());
+      showFeedback(feedback, decision === "approve" ? "已通过并同步到记忆仓边界。" : "已拒绝该候选。");
+      loadMemories();
+    } catch (error) {
+      showFeedback(feedback, `审核失败：${error.message}`, true);
+    }
   }
 
   function setSettingsInputValue(id, value) {
@@ -3720,14 +4737,214 @@ function initTTSSettings() {
     `).join("");
   }
 
+  function renderCommercialTrialChecks(commercialTrial = {}) {
+    const checks = Array.isArray(commercialTrial.checks) ? commercialTrial.checks : [];
+    if (!checks.length) return `<div class="settings-overview-empty">暂无商用试点门槛数据。</div>`;
+    const header = `
+      <div class="settings-overview-item ${settingsStatusClass(commercialTrial.status || "unknown")}">
+        <div>
+          <strong>商用试点</strong>
+          <small>${settingsSafeText((commercialTrial.blockers || []).length ? `阻塞项：${commercialTrial.blockers.join(" / ")}` : "全部关键门槛已通过")}</small>
+        </div>
+        <span>${settingsSafeText(commercialTrial.status || "unknown")}</span>
+      </div>
+    `;
+    return header + checks.map((check) => `
+      <div class="settings-overview-item ${settingsStatusClass(check.status)}">
+        <div>
+          <strong>${settingsSafeText(check.label || check.id)}</strong>
+          <small>${settingsSafeText(check.detail || "")}</small>
+        </div>
+        <span>${settingsSafeText(check.status || "unknown")}</span>
+      </div>
+    `).join("");
+  }
+
+  function renderDeliveryStatusChecks(deliveryStatus = {}) {
+    const checks = Array.isArray(deliveryStatus.checks) ? deliveryStatus.checks : [];
+    if (!checks.length) return `<div class="settings-overview-empty">暂无交付闭环状态数据。</div>`;
+    const evidence = deliveryStatus.evidence || {};
+    const actions = Array.isArray(deliveryStatus.actions) ? deliveryStatus.actions : [];
+    const channelBlockers = Array.isArray(evidence.channel_blockers) ? evidence.channel_blockers : [];
+    const channelWarnings = Array.isArray(evidence.channel_warnings) ? evidence.channel_warnings : [];
+    const evidenceText = [
+      `渠道=${evidence.channel_status || "unknown"}`,
+      `真实目标=${evidence.deliverable_target_count ?? 0}`,
+      `回执=${evidence.sent_channel_receipt_count ?? 0}/${evidence.channel_receipt_count ?? 0}`,
+      `文档完成=${evidence.completed_document_session_count ?? 0}/${evidence.document_session_count ?? 0}`,
+      `备份=${evidence.backup || "unknown"}`,
+    ].join(" · ");
+    const latestReceipt = evidence.latest_channel_receipt || {};
+    const channelDetail = [
+      channelBlockers.length ? `渠道阻塞=${channelBlockers.join("/")}` : "",
+      channelWarnings.length ? `渠道提醒=${channelWarnings.join("/")}` : "",
+      latestReceipt.external_message_id ? `最近回执=${latestReceipt.external_message_id}` : "",
+      latestReceipt.receipt_path ? `回执路径=${latestReceipt.receipt_path}` : "",
+    ].filter(Boolean).join(" · ");
+    const header = `
+      <div class="settings-overview-item ${settingsStatusClass(deliveryStatus.status || "unknown")}">
+        <div>
+          <strong>交付闭环</strong>
+          <small>${settingsSafeText(deliveryStatus.next_step || evidenceText)}</small>
+        </div>
+        <span>${settingsSafeText(deliveryStatus.status || "unknown")}</span>
+      </div>
+      <div class="settings-overview-item muted">
+        <div>
+          <strong>当前证据</strong>
+          <small>${settingsSafeText(evidenceText)}</small>
+          ${channelDetail ? `<small>${settingsSafeText(channelDetail)}</small>` : ""}
+        </div>
+        <span>${settingsSafeText((deliveryStatus.blockers || []).length ? `${deliveryStatus.blockers.length} blockers` : "clear")}</span>
+      </div>
+      ${actions.length ? `
+        <div class="settings-overview-action-list">
+          ${actions.map(renderDeliveryAction).join("")}
+        </div>
+      ` : ""}
+    `;
+    return header + checks.map((check) => {
+      const blockers = Array.isArray(check.blockers) && check.blockers.length ? `阻塞：${check.blockers.join(" / ")}` : check.detail || "";
+      return `
+        <div class="settings-overview-item ${settingsStatusClass(check.status)}">
+          <div>
+            <strong>${settingsSafeText(check.label || check.id)}</strong>
+            <small>${settingsSafeText(blockers)}</small>
+          </div>
+          <span>${settingsSafeText(check.status || "unknown")}</span>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderDeliveryAction(action = {}) {
+    const fields = Array.isArray(action.fields) && action.fields.length
+      ? `字段：${action.fields.join(" / ")}`
+      : "";
+    const endpoint = action.endpoint ? `接口：${action.endpoint}` : "";
+    const command = action.command ? `命令：${action.command}` : "";
+    const owner = action.owner_required ? "需要主人确认" : "可直接检查";
+    const meta = [fields, endpoint, command].filter(Boolean);
+    return `
+      <div class="settings-overview-item settings-delivery-action">
+        <div>
+          <strong>${settingsSafeText(action.label || action.id || "下一步动作")}</strong>
+          <small>${settingsSafeText(action.detail || "")}</small>
+          ${meta.map((line) => `<small>${settingsSafeText(line)}</small>`).join("")}
+        </div>
+        <span>${settingsSafeText(owner)}</span>
+      </div>
+    `;
+  }
+
+  function bindDocumentWorkbenchControls() {
+    document.getElementById("document-workbench-create-plan")?.addEventListener("click", createDocumentWorkbenchPlan);
+    document.getElementById("document-workbench-upload-plan")?.addEventListener("click", uploadDocumentWorkbenchPlan);
+    document.getElementById("document-workbench-refresh")?.addEventListener("click", () => loadDocumentWorkbench());
+    document.getElementById("document-workbench-next")?.addEventListener("click", () => runDocumentWorkbenchAction("next"));
+    document.getElementById("document-workbench-run")?.addEventListener("click", () => runDocumentWorkbenchAction("run"));
+    document.getElementById("document-workbench-session-select")?.addEventListener("change", () => loadDocumentWorkbenchSummary());
+  }
+
   function renderRuntimeTiles(entries) {
     return entries.map((entry) => `
-      <div class="settings-runtime-tile ${settingsStatusClass(entry.status)}">
+      <div class="settings-runtime-tile ${settingsStatusClass(entry.status)}" data-runtime-id="${settingsSafeText(entry.runtimeId || "")}">
         <span>${settingsSafeText(entry.label)}</span>
         <strong>${settingsSafeText(entry.status)}</strong>
         <small>${settingsSafeText(entry.detail || entry.path)}</small>
+        ${entry.installable ? `
+          <button class="settings-save-btn runtime-install-btn" data-runtime-id="${settingsSafeText(entry.runtimeId)}" type="button">安装/修复</button>
+          <div class="settings-install-progress" data-runtime-progress="${settingsSafeText(entry.runtimeId)}">
+            <i style="width:0%"></i><em>等待安装</em>
+          </div>
+        ` : ""}
       </div>
     `).join("");
+  }
+
+  const INSTALLABLE_RUNTIME_IDS = new Set([
+    "mineru_document_parse",
+    "searxng_metasearch",
+    "sonic_local_index",
+    "funasr_voice_asr",
+    "bairui_avatar_runtime",
+  ]);
+
+  function latestRuntimeInstallations(rows = []) {
+    const latest = new Map();
+    rows.forEach((row) => {
+      if (!row?.runtime_id) return;
+      latest.set(row.runtime_id, row);
+    });
+    return latest;
+  }
+
+  async function loadRuntimeInstallations() {
+    try {
+      const res = await fetch(`${API}/runtime/installations`, { cache: "no-store", headers: ownerAuthHeaders() });
+      const data = await res.json().catch(() => ({}));
+      return latestRuntimeInstallations(data.runtime_installations || []);
+    } catch {
+      return new Map();
+    }
+  }
+
+  function applyRuntimeInstallationProgress(latest) {
+    if (!latest || typeof latest.get !== "function") return;
+    document.querySelectorAll("[data-runtime-progress]").forEach((box) => {
+      const runtimeId = box.dataset.runtimeProgress;
+      const row = latest.get(runtimeId);
+      if (!row) return;
+      const percent = Math.max(0, Math.min(100, Number(row.progress_percent || 0)));
+      const bar = box.querySelector("i");
+      const label = box.querySelector("em");
+      if (bar) bar.style.width = `${percent}%`;
+      if (label) label.textContent = `${row.status || "unknown"} · ${percent}%`;
+    });
+  }
+
+  async function startRuntimeInstallation(runtimeId) {
+    if (!INSTALLABLE_RUNTIME_IDS.has(runtimeId)) return;
+    const button = document.querySelector(`.runtime-install-btn[data-runtime-id="${CSS.escape(runtimeId)}"]`);
+    if (button) button.disabled = true;
+    try {
+      const res = await fetch(`${API}/runtime/installations/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+        body: JSON.stringify({ runtime_id: runtimeId, confirmation: "INSTALL BAIRUI RUNTIME" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.status !== "started") {
+        throw new Error(data.message || data.error || data.status || "安装启动失败");
+      }
+      const box = document.querySelector(`[data-runtime-progress="${CSS.escape(runtimeId)}"]`);
+      if (box) {
+        const label = box.querySelector("em");
+        if (label) label.textContent = "started · 5%";
+      }
+      startRuntimeInstallationPolling();
+    } catch (error) {
+      const box = document.querySelector(`[data-runtime-progress="${CSS.escape(runtimeId)}"]`);
+      const label = box?.querySelector("em");
+      if (label) label.textContent = error?.message || "安装启动失败";
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  let runtimeInstallPollTimer = null;
+  function startRuntimeInstallationPolling() {
+    if (runtimeInstallPollTimer) return;
+    runtimeInstallPollTimer = setInterval(async () => {
+      const latest = await loadRuntimeInstallations();
+      applyRuntimeInstallationProgress(latest);
+      const running = Array.from(latest.values()).some((row) => ["queued", "running"].includes(row.status));
+      if (!running) {
+        clearInterval(runtimeInstallPollTimer);
+        runtimeInstallPollTimer = null;
+        loadRuntimeSettingsOverview();
+      }
+    }, 2000);
   }
 
   async function loadRuntimeSettingsOverview() {
@@ -3738,11 +4955,14 @@ function initTTSSettings() {
     const configList = document.getElementById("settings-config-status-list");
     const runtimeGrid = document.getElementById("settings-runtime-status-grid");
     const planGrid = document.getElementById("settings-activation-plan-grid");
+    const commercialTrialList = document.getElementById("settings-commercial-trial-list");
+    const deliveryStatusList = document.getElementById("settings-delivery-status-list");
     const readJson = (path) => fetch(`${API}${path}`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {});
     try {
       const [
         readiness, configStatus, backupStatus, backupPlan, memory, voiceAsr,
         documentParse, intel, simulation, search, index, avatar, codegraph, setupPlan,
+        runtimeInstallations, deliveryStatus,
       ] = await Promise.all([
         readJson("/runtime/readiness"),
         readJson("/config/status"),
@@ -3758,6 +4978,8 @@ function initTTSSettings() {
         readJson("/avatar/status"),
         readJson("/codegraph/status"),
         readJson("/activation/setup-plan"),
+        readJson("/runtime/installations"),
+        readJson("/delivery/status"),
       ]);
       const runtime = readiness.runtime_readiness || readiness;
       const config = configStatus.config_status || {};
@@ -3768,30 +4990,41 @@ function initTTSSettings() {
       setText("settings-config-next-step", config.next_step || "无下一步");
       setText("settings-backup-plan", backupPlan.backup_plan?.status || backupStatus.backup?.status || "unknown");
       if (configList) configList.innerHTML = renderSettingsConfigItems(config.items || []);
+      if (commercialTrialList) commercialTrialList.innerHTML = renderCommercialTrialChecks(config.commercial_trial || {});
+      if (deliveryStatusList) deliveryStatusList.innerHTML = renderDeliveryStatusChecks(deliveryStatus.delivery_status || deliveryStatus || {});
       populateCoreConfigForm(configStatus);
       if (planGrid) planGrid.innerHTML = renderSettingsActivationPlan(setupPlan.activation_setup_plan || setupPlan);
       const tiles = [
-        { label: "长期记忆", status: settingsRuntimeStatus(memory, "memory"), path: "/memory/status" },
-        { label: "语音识别", status: settingsRuntimeStatus(voiceAsr, "voice_asr"), path: "/voice/asr/status" },
-        { label: "文档解析", status: settingsRuntimeStatus(documentParse, "document_parse"), path: "/document/parse/status" },
-        { label: "情报雷达", status: settingsRuntimeStatus(intel, "intelligence"), path: "/intel/status" },
-        { label: "推演模拟", status: settingsRuntimeStatus(simulation, "simulation"), path: "/simulation/status" },
-        { label: "联网搜索", status: settingsRuntimeStatus(search, "search"), path: "/search/status" },
-        { label: "本地索引", status: settingsRuntimeStatus(index, "index"), path: "/index/status" },
-        { label: "Avatar", status: settingsRuntimeStatus(avatar, "avatar"), path: "/avatar/status" },
-        { label: "源码图谱", status: settingsRuntimeStatus(codegraph, "codegraph"), path: "/codegraph/status" },
+        { label: "长期记忆", status: settingsRuntimeStatus(memory, "memory"), path: "/memory/status", runtimeId: "everos_memory" },
+        { label: "语音识别", status: settingsRuntimeStatus(voiceAsr, "voice_asr"), path: "/voice/asr/status", runtimeId: "funasr_voice_asr", installable: true },
+        { label: "文档解析", status: settingsRuntimeStatus(documentParse, "document_parse"), path: "/document/parse/status", runtimeId: "mineru_document_parse", installable: true },
+        { label: "情报雷达", status: settingsRuntimeStatus(intel, "intelligence"), path: "/intel/status", runtimeId: "trendradar_intelligence" },
+        { label: "推演模拟", status: settingsRuntimeStatus(simulation, "simulation"), path: "/simulation/status", runtimeId: "mirofish_simulation" },
+        { label: "联网搜索", status: settingsRuntimeStatus(search, "search"), path: "/search/status", runtimeId: "searxng_metasearch", installable: true },
+        { label: "本地索引", status: settingsRuntimeStatus(index, "index"), path: "/index/status", runtimeId: "sonic_local_index", installable: true },
+        { label: "Avatar", status: settingsRuntimeStatus(avatar, "avatar"), path: "/avatar/status", runtimeId: "bairui_avatar_runtime", installable: true },
+        { label: "源码图谱", status: settingsRuntimeStatus(codegraph, "codegraph"), path: "/codegraph/status", runtimeId: "bairui_codegraph" },
       ];
-      if (runtimeGrid) runtimeGrid.innerHTML = renderRuntimeTiles(tiles);
+      if (runtimeGrid) {
+        runtimeGrid.innerHTML = renderRuntimeTiles(tiles);
+        runtimeGrid.querySelectorAll(".runtime-install-btn").forEach((button) => {
+          button.addEventListener("click", () => startRuntimeInstallation(button.dataset.runtimeId || ""));
+        });
+        applyRuntimeInstallationProgress(latestRuntimeInstallations(runtimeInstallations.runtime_installations || []));
+      }
     } catch (error) {
       setText("settings-overview-readiness", "blocked");
       setText("settings-overview-blockers", error?.message || "状态读取失败");
       if (configList) configList.innerHTML = `<div class="settings-overview-empty">配置诊断读取失败。</div>`;
+      if (commercialTrialList) commercialTrialList.innerHTML = `<div class="settings-overview-empty">商用试点状态读取失败。</div>`;
+      if (deliveryStatusList) deliveryStatusList.innerHTML = `<div class="settings-overview-empty">交付闭环状态读取失败。</div>`;
       if (runtimeGrid) runtimeGrid.innerHTML = `<div class="settings-overview-empty">runtime 状态读取失败。</div>`;
       if (planGrid) planGrid.innerHTML = `<div class="settings-overview-empty">激活计划读取失败。</div>`;
     }
   }
 
   document.getElementById("settings-overview-refresh")?.addEventListener("click", loadRuntimeSettingsOverview);
+  bindDocumentWorkbenchControls();
 
   function fillSettingsModelList(models = [], selected = "") {
     const select = document.getElementById("settings-core-model-list");
@@ -3833,6 +5066,24 @@ function initTTSSettings() {
       throw new Error(result.error || result.message || "解析失败");
     }
     return result.models || [];
+  }
+
+  async function probeGatewayModel({ baseUrl, apiKey, model }) {
+    const res = await fetch(`${API}/model-gateway/probe`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+      body: JSON.stringify({
+        base_url: baseUrl,
+        ...(apiKey ? { api_key: apiKey } : {}),
+        ...(model ? { model } : {}),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    const result = data.model_gateway_probe || data;
+    if (!res.ok || result.status !== "ready") {
+      throw new Error(result.error || result.detail || result.message || "模型探活失败");
+    }
+    return result;
   }
 
   async function refreshSettingsModelList() {
@@ -4035,15 +5286,17 @@ function initTTSSettings() {
   }
 
   const SOCIAL_FIELD_MAP = {
-    "social-discord-token":  "DISCORD_BOT_TOKEN",
-    "social-feishu-appid":   "FEISHU_APP_ID",
-    "social-feishu-secret":  "FEISHU_APP_SECRET",
-    "social-feishu-token":   "FEISHU_VERIFICATION_TOKEN",
-    "social-wechat-appid":   "WECHAT_OFFICIAL_APP_ID",
-    "social-wechat-secret":  "WECHAT_OFFICIAL_APP_SECRET",
-    "social-wechat-token":   "WECHAT_OFFICIAL_TOKEN",
-    "social-wecom-botkey":   "WECOM_BOT_KEY",
-    "social-wecom-token":    "WECOM_INCOMING_TOKEN",
+    "social-discord-token":  "discord_bot_token",
+    "social-feishu-appid":   "feishu_app_id",
+    "social-feishu-secret":  "feishu_app_secret",
+    "social-feishu-token":   "feishu_verification_token",
+    "social-wechat-appid":   "wechat_official_app_id",
+    "social-wechat-secret":  "wechat_official_app_secret",
+    "social-wechat-token":   "wechat_official_token",
+    "social-wecom-botkey":   "wecom_bot_key",
+    "social-wecom-token":    "wecom_incoming_token",
+    "social-qq-napcat-url":  "qq_napcat_base_url",
+    "social-qq-napcat-token":"qq_napcat_token",
   };
 
   const SOCIAL_PLATFORM_STATUS = {
@@ -4051,21 +5304,27 @@ function initTTSSettings() {
     "social-status-feishu":  ["FEISHU_APP_ID", "FEISHU_APP_SECRET", "FEISHU_VERIFICATION_TOKEN"],
     "social-status-wechat":  ["WECHAT_OFFICIAL_APP_ID", "WECHAT_OFFICIAL_APP_SECRET", "WECHAT_OFFICIAL_TOKEN"],
     "social-status-wecom":   ["WECOM_BOT_KEY", "WECOM_INCOMING_TOKEN"],
+    "social-status-qq":      ["QQ_NAPCAT_BASE_URL", "QQ_NAPCAT_TOKEN"],
   };
 
   async function loadSocialSettings() {
     try {
-      const [statusBody, targetsBody, diagnosticsBody, approvalsBody, configBody] = await Promise.all([
+      const [statusBody, targetsBody, diagnosticsBody, approvalsBody, reviewsBody, receiptsBody, configBody] = await Promise.all([
         fetch(`${API}/channels/status`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
         fetch(`${API}/channels/targets`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
         fetch(`${API}/channels/diagnostics`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
         fetch(`${API}/channels/approvals`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+        fetch(`${API}/channels/approvals/reviews`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
+        fetch(`${API}/channels/receipts`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
         fetch(`${API}/config/status`, { cache: "no-store", headers: ownerAuthHeaders() }).then(r => r.ok ? r.json() : {}),
       ]);
       const channels = statusBody.channels || {};
       const targets = targetsBody.channel_targets || channels.configured_targets || [];
       const diagnostics = diagnosticsBody.channel_diagnostics || [];
       const approvals = approvalsBody.channel_approvals || [];
+      const reviews = reviewsBody.channel_approval_reviews || [];
+      const archivedReceipts = receiptsBody.channel_receipts || [];
+      const commercialTrial = configBody.config_status?.commercial_trial || {};
       const channelConfig = (configBody.config_status?.items || []).find((item) => item.id === "channel_targets") || {};
       if (socialChannelsEnabled) socialChannelsEnabled.checked = Boolean(channels.enabled);
       if (socialTargetsJson && !socialTargetsJson.value.trim()) {
@@ -4075,10 +5334,16 @@ function initTTSSettings() {
       if (summary) summary.textContent = `${channels.status || "unknown"} · ${targets.length} targets · ${channels.supported_media_kinds?.join("/") || "text/image/video/file"}`;
       const queue = document.getElementById("social-approval-queue");
       if (queue) queue.textContent = `${channels.approval_queue_count ?? approvals.length} pending · will_send=false`;
+      const socialCommercialTrialList = document.getElementById("social-commercial-trial-list");
+      if (socialCommercialTrialList) socialCommercialTrialList.innerHTML = renderCommercialTrialChecks(commercialTrial);
+      const flowList = document.getElementById("social-channel-flow");
+      if (flowList) flowList.innerHTML = renderEnterpriseGroupChannelFlow(channels, approvals, reviews);
       const diagList = document.getElementById("social-diagnostic-list");
       if (diagList) diagList.innerHTML = renderChannelDiagnostics(diagnostics);
       const approvalList = document.getElementById("social-approval-list");
       if (approvalList) approvalList.innerHTML = renderChannelApprovals(approvals);
+      const reviewList = document.getElementById("social-review-list");
+      if (reviewList) reviewList.innerHTML = renderChannelReviewReceipts(reviews, archivedReceipts);
       const platformList = document.getElementById("social-platform-status-list");
       if (platformList) platformList.innerHTML = renderChannelPlatformStatus(diagnostics);
       const webhookList = document.getElementById("social-webhook-list");
@@ -4090,7 +5355,7 @@ function initTTSSettings() {
     if (!diagnostics.length) return `<div class="settings-overview-empty">暂无渠道诊断。</div>`;
     return diagnostics.map((item) => {
       const detail = [
-        item.channel_type,
+        channelTypeLabel(item.channel_type),
         `supports=${(item.supports || []).join("/") || "missing"}`,
         item.requires_owner_confirmation ? "approval_required" : "unsafe_no_approval",
         ...(item.blockers || []),
@@ -4108,6 +5373,42 @@ function initTTSSettings() {
     }).join("");
   }
 
+  function renderEnterpriseGroupChannelFlow(channels = {}, approvals = [], reviews = []) {
+    const pendingCount = approvals.filter((item) => String(item.review_status || "").toLowerCase() === "pending_review").length;
+    const sentReview = reviews.find((item) => Boolean(item.will_send) && String(item.delivery_status || "").toLowerCase() === "sent");
+    const receiptPath = sentReview?.delivery_evidence?.receipt_path || "";
+    const reviewed = reviews.find((item) => String(item.status || "").toLowerCase() === "reviewed");
+    const steps = [
+      {
+        label: "配置目标",
+        status: channels.enabled && Number(channels.deliverable_target_count || 0) > 0 ? "ready" : "blocked",
+        detail: `${channels.enabled ? "channels=on" : "channels=off"} · deliverable=${channels.deliverable_target_count || 0}`,
+      },
+      {
+        label: "创建审批",
+        status: pendingCount > 0 || reviewed ? "ready" : "partial",
+        detail: pendingCount > 0 ? `${pendingCount} pending_review` : "点击发送测试审批",
+      },
+      {
+        label: "主人批准",
+        status: reviewed ? "ready" : pendingCount > 0 ? "partial" : "blocked",
+        detail: reviewed ? `decision=${reviewed.decision || "reviewed"}` : "等待主人批准",
+      },
+      {
+        label: "真实回执",
+        status: sentReview ? "ready" : "blocked",
+        detail: sentReview ? `sent · ${sentReview.external_message_id || "external_id_missing"}${receiptPath ? " · receipt archived" : ""}` : "批准后才会外发",
+      },
+    ];
+    return steps.map((step, index) => `
+      <div class="settings-channel-flow-step ${settingsStatusClass(step.status)}">
+        <span>${String(index + 1).padStart(2, "0")}</span>
+        <strong>${settingsSafeText(step.label)}</strong>
+        <small>${settingsSafeText(step.detail)}</small>
+      </div>
+    `).join("");
+  }
+
   function renderChannelApprovals(approvals = []) {
     if (!approvals.length) return `<div class="settings-overview-empty">暂无待审批渠道动作。</div>`;
     return approvals.slice(0, 12).map((item) => `
@@ -4117,8 +5418,52 @@ function initTTSSettings() {
           <small>${settingsSafeText(item.media_kind || "text")} · ${settingsSafeText(item.message_preview || item.reason || "")}</small>
         </div>
         <span>${settingsSafeText(item.review_status || item.status || "pending")}</span>
+        ${String(item.review_status || "").toLowerCase() === "pending_review" ? `
+          <button class="settings-mini-btn" data-channel-review="approve" data-request-id="${settingsSafeText(item.id || "")}" type="button">批准</button>
+          <button class="settings-mini-btn" data-channel-review="reject" data-request-id="${settingsSafeText(item.id || "")}" type="button">拒绝</button>
+        ` : ""}
       </div>
     `).join("");
+  }
+
+  function renderChannelReviewReceipts(reviews = [], archivedReceipts = []) {
+    const archivedIds = new Set((archivedReceipts || []).map((item) => String(item.review_id || item.request_id || "")));
+    const rows = [
+      ...(archivedReceipts || []).map((item) => ({ ...item, archived_receipt: true })),
+      ...(reviews || []).filter((item) => !archivedIds.has(String(item.review_id || item.id || item.request_id || ""))),
+    ];
+    if (!rows.length) return `<div class="settings-overview-empty">暂无渠道发送回执。先发送测试审批，再批准或拒绝。</div>`;
+    return rows.slice(0, 12).map((item) => {
+      const sent = Boolean(item.will_send);
+      const deliveryStatus = item.delivery_status || (sent ? "sent" : "not_sent");
+      const evidence = item.delivery_evidence || {};
+      const detail = [
+        `decision=${item.decision || "unknown"}`,
+        `will_send=${sent ? "true" : "false"}`,
+        item.delivery_reason || "",
+        item.external_message_id ? `external_id=${item.external_message_id}` : "",
+        item.archived_receipt ? "archived_receipt=true" : "",
+        item.receipt_path ? `receipt=${item.receipt_path}` : "",
+      ].filter(Boolean).join(" · ");
+      const evidenceDetail = [
+        evidence.platform ? `platform=${evidence.platform}` : "",
+        evidence.status ? `evidence=${evidence.status}` : "",
+        typeof evidence.raw_ok === "boolean" ? `raw_ok=${evidence.raw_ok ? "true" : "false"}` : "",
+        evidence.external_message_id ? `external_message_id=${evidence.external_message_id}` : "",
+        evidence.receipt_path ? `receipt=${evidence.receipt_path}` : "",
+        evidence.secret_echo === false ? "secret_echo=false" : "",
+      ].filter(Boolean).join(" · ");
+      return `
+        <div class="settings-overview-item ${settingsStatusClass(sent ? "ready" : deliveryStatus)}">
+          <div>
+            <strong>${settingsSafeText(item.request_id || "channel receipt")}</strong>
+            <small>${settingsSafeText(detail || "已记录审批结果")}</small>
+            ${evidenceDetail ? `<small>${settingsSafeText(evidenceDetail)}</small>` : ""}
+          </div>
+          <span>${settingsSafeText(deliveryStatus)}</span>
+        </div>
+      `;
+    }).join("");
   }
 
   function renderChannelPlatformStatus(diagnostics = []) {
@@ -4139,13 +5484,26 @@ function initTTSSettings() {
       return `
         <div class="settings-overview-item ${settingsStatusClass(item.status)}">
           <div>
-            <strong>${settingsSafeText(channelType)}</strong>
+            <strong>${settingsSafeText(channelTypeLabel(channelType))}</strong>
             <small>${settingsSafeText(detail || "无附加说明")}</small>
           </div>
           <span>${settingsSafeText(item.status || "unknown")}</span>
         </div>
       `;
     }).join("");
+  }
+
+  function channelTypeLabel(channelType) {
+    const labels = {
+      "personal_chat": "主人审批",
+      "wechat-clawbot": "个人扫码 Bot",
+      "wechat-official": "订阅号客服通道",
+      "wecom-webhook": "企业群机器人",
+      "qq-napcat": "群聊 Bot / NapCat",
+      "feishu": "协作应用通道",
+      "discord": "海外群组 Bot",
+    };
+    return labels[String(channelType || "").trim().toLowerCase()] || channelType || "unknown";
   }
 
   function renderChannelWebhookStatus(webhooks = {}) {
@@ -4160,6 +5518,94 @@ function initTTSSettings() {
         <span>ready</span>
       </div>
     `).join("");
+  }
+
+  function readSocialTargets() {
+    try {
+      const parsed = JSON.parse(socialTargetsJson?.value?.trim() || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function writeSocialTargets(targets) {
+    if (socialTargetsJson) socialTargetsJson.value = JSON.stringify(targets, null, 2);
+  }
+
+  function upsertEnterpriseGroupTarget() {
+    const targets = readSocialTargets().filter((item) => String(item?.id || "") !== "wecom:webhook:");
+    targets.push({
+      id: "wecom:webhook:",
+      label: "企业群机器人",
+      channel_type: "wecom-webhook",
+      supports: ["text"],
+      requires_owner_confirmation: true,
+    });
+    writeSocialTargets(targets);
+    if (socialChannelsEnabled) socialChannelsEnabled.checked = true;
+    showFeedback(socialFeedback, "已生成企业群目标，请保存配置后发送测试审批");
+  }
+
+  async function runEnterpriseGroupTrial({ approve = false } = {}) {
+    const message = socialTestMessage?.value?.trim() || "bairui 渠道测试消息";
+    const activeButton = approve ? socialSendWecomNowBtn : socialSendTestBtn;
+    if (activeButton) activeButton.disabled = true;
+    try {
+      const res = await fetch(`${API}${WECOM_TRIAL_ENDPOINT}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+        body: JSON.stringify({ text: message, approve, reviewer_ref: "owner", note: approve ? "settings-wecom-trial-approved" : "settings-wecom-trial" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const result = data.wecom_trial || data;
+      if (!res.ok) {
+        const plan = result.plan || {};
+        const review = result.review || {};
+        const reason = String(review.delivery_reason || review.reason || plan.reason || result.next_step || data.error || "企业群验收失败");
+        if (reason.includes("missing_wecom_bot_key") || reason.includes("target_not_found")) throw new Error("请先填写企业群 Bot Key 并保存配置");
+        throw new Error(reason);
+      }
+      const review = result.review || {};
+      const plan = result.plan || {};
+      if (approve) {
+        const receiptPath = review.delivery_evidence?.receipt_path;
+        showFeedback(socialFeedback, review.will_send ? `已批准并真实发送：${review.delivery_status || "sent"}${receiptPath ? ` · 回执已归档 ${receiptPath}` : ""}` : `已审批但未发送：${review.delivery_reason || review.reason || result.next_step}`);
+      } else {
+        showFeedback(socialFeedback, `已创建企业群测试审批：${plan.approval_request_id || result.status}`);
+      }
+      await loadSocialSettings();
+    } catch (error) {
+      showFeedback(socialFeedback, error?.message || "企业群验收失败", true);
+    } finally {
+      if (activeButton) activeButton.disabled = false;
+    }
+  }
+
+  async function sendEnterpriseGroupTestApproval() {
+    await runEnterpriseGroupTrial({ approve: false });
+  }
+
+  async function approveAndSendEnterpriseGroupTrial() {
+    await runEnterpriseGroupTrial({ approve: true });
+  }
+
+  async function reviewChannelRequest(requestId, decision) {
+    if (!requestId || !decision) return;
+    try {
+      const res = await fetch(`${API}/channels/approvals/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...ownerAuthHeaders() },
+        body: JSON.stringify({ request_id: requestId, decision, reviewer_ref: "owner", note: "settings-review" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const result = data.channel_approval_review || data;
+      if (!res.ok) throw new Error(result.reason || result.message || data.error || "审批失败");
+      showFeedback(socialFeedback, result.will_send ? `已批准并发送：${result.delivery_status}` : `已记录审批：${result.reason || result.status}`);
+      await loadSocialSettings();
+    } catch (error) {
+      showFeedback(socialFeedback, error?.message || "审批失败", true);
+    }
   }
 
   const fileSandboxToggle = document.getElementById("security-file-sandbox");
@@ -4283,6 +5729,15 @@ function initTTSSettings() {
   }
 
   if (saveSocialBtn) {
+    socialBuildWecomTargetBtn?.addEventListener("click", upsertEnterpriseGroupTarget);
+    socialSendTestBtn?.addEventListener("click", sendEnterpriseGroupTestApproval);
+    socialSendWecomNowBtn?.addEventListener("click", approveAndSendEnterpriseGroupTrial);
+    document.getElementById("social-approval-list")?.addEventListener("click", (event) => {
+      const button = event.target?.closest?.("[data-channel-review]");
+      if (!button) return;
+      reviewChannelRequest(button.dataset.requestId || "", button.dataset.channelReview || "");
+    });
+
     saveSocialBtn.addEventListener("click", async () => {
       const updates = {};
       for (const [fieldId, envKey] of Object.entries(SOCIAL_FIELD_MAP)) {
@@ -4320,7 +5775,8 @@ function initTTSSettings() {
             const el = document.getElementById(id);
             if (el) el.value = "";
           });
-          loadSocialSettings();
+          await loadSocialSettings();
+          loadRuntimeSettingsOverview();
         } else {
           showFeedback(socialFeedback, result.message || data.error || "保存失败", true);
         }
@@ -4366,6 +5822,7 @@ function initTTSSettings() {
 
   function applyVoiceProviderUI(provider) {
     const panels = {
+      funasr: "voice-cred-funasr",
       aliyun: "voice-cred-aliyun",
       volcengine: "voice-cred-volcengine",
       tencent: "voice-cred-tencent",
@@ -4375,6 +5832,41 @@ function initTTSSettings() {
       const el = document.getElementById(id);
       if (el) el.style.display = key === provider ? "" : "none";
     }
+  }
+
+  function renderVoiceRuntimeCard(voice = {}) {
+    const normalized = normalizeActivationStatus(voice?.status);
+    const badge = document.getElementById("voice-runtime-badge");
+    const statusEl = document.getElementById("voice-runtime-status");
+    const engineEl = document.getElementById("voice-runtime-engine");
+    const modelEl = document.getElementById("voice-runtime-model");
+    const healthEl = document.getElementById("voice-runtime-health");
+    const detailEl = document.getElementById("voice-runtime-detail");
+    const safeText = (value) => {
+      const text = String(value == null ? "" : value).trim();
+      return text && text !== "missing_config" && text !== "configured" ? text : "";
+    };
+
+    if (badge) {
+      badge.dataset.state = normalized;
+      badge.textContent =
+        normalized === "ready" ? "已就绪" :
+        normalized === "blocked" ? "不可用" :
+        normalized === "missing_config" ? "未配置" : "待检查";
+    }
+    if (statusEl) {
+      statusEl.textContent =
+        normalized === "ready" ? "探活通过" :
+        normalized === "blocked" ? "探活失败" :
+        normalized === "missing_config" ? "未配置" : "待检查";
+    }
+    if (engineEl) engineEl.textContent = safeText(voice?.runtimeEngine) || "-";
+    if (modelEl) modelEl.textContent = safeText(voice?.runtimeModel) || safeText(voice?.model) || "-";
+    if (healthEl) {
+      const base = safeText(voice?.funasrBaseURL);
+      healthEl.textContent = base ? `${base.replace(/\/+$/, "")}/health` : "-";
+    }
+    if (detailEl) detailEl.textContent = voice?.detail || "保存后将检查后端语音运行时。";
   }
 
   function detectVoiceProviderFromKey(key) {
@@ -4437,14 +5929,20 @@ function initTTSSettings() {
     if (voiceThreshSlider) voiceThreshSlider.value = String(savedThresh);
     if (voiceThreshVal)    voiceThreshVal.textContent = savedThresh.toFixed(3);
 
-    let savedProvider = localStorage.getItem(VOICE_PROVIDER_KEY) || "aliyun";
+    let savedProvider = localStorage.getItem(VOICE_PROVIDER_KEY) || "funasr";
     try {
-      const resp = await fetch("http://127.0.0.1:3721/settings/voice");
+      const resp = await fetch(`${API}/settings/voice`);
       const data = await resp.json().catch(() => ({}));
       if (resp.ok && data?.voice?.voiceProvider) {
         savedProvider = data.voice.voiceProvider;
         localStorage.setItem(VOICE_PROVIDER_KEY, savedProvider);
       }
+      const funasrBaseUrl = data?.voice?.funasrBaseURL;
+      const funasrBaseUrlInput = document.getElementById("voice-funasr-baseurl");
+      if (funasrBaseUrlInput && funasrBaseUrl && funasrBaseUrl !== "missing_config") {
+        funasrBaseUrlInput.value = funasrBaseUrl;
+      }
+      renderVoiceRuntimeCard(data?.voice || {});
     } catch {}
     if (voiceProviderSelect) voiceProviderSelect.value = savedProvider;
     applyVoiceProviderUI(savedProvider);
@@ -4463,7 +5961,7 @@ function initTTSSettings() {
       const autoSend  = document.getElementById("voice-auto-send")?.checked ?? true;
       const autoMic   = document.getElementById("voice-auto-mic")?.checked ?? false;
       const threshold = parseFloat(voiceThreshSlider?.value ?? "0.008");
-      const provider  = voiceProviderSelect?.value || "aliyun";
+      const provider  = voiceProviderSelect?.value || "funasr";
 
       localStorage.setItem(VOICE_LANG_KEY,      lang);
       localStorage.setItem(VOICE_AUTO_SEND_KEY,  String(autoSend));
@@ -4473,7 +5971,10 @@ function initTTSSettings() {
 
       window.dispatchEvent(new CustomEvent("bairui:voice-threshold", { detail: { threshold } }));
 
-      const body = { voiceProvider: provider };
+      const body = {
+        voiceProvider: provider,
+        funasrBaseURL: document.getElementById("voice-funasr-baseurl")?.value?.trim() || "",
+      };
       const aliyunKey = document.getElementById("voice-aliyun-key")?.value?.trim();
       if (aliyunKey) body.aliyunApiKey = aliyunKey;
       const tencentSid = document.getElementById("voice-tencent-sid")?.value?.trim();
@@ -4498,12 +5999,13 @@ function initTTSSettings() {
       if (Object.keys(body).length > 0) {
         try {
           saveVoiceBtn.disabled = true;
-          const resp = await fetch("http://127.0.0.1:3721/settings/voice", {
+          const resp = await fetch(`${API}/settings/voice`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           });
           if (!resp.ok) throw new Error("保存失败");
+          const data = await resp.json().catch(() => ({}));
           [
             "voice-aliyun-key",
             "voice-auto-key",
@@ -4518,6 +6020,8 @@ function initTTSSettings() {
             if (el) el.value = "";
           });
           if (voiceAutoDetect) voiceAutoDetect.textContent = "";
+          renderVoiceRuntimeCard(data?.voice || {});
+          await loadVoiceSettings();
           showFeedback(voiceFeedback, "已保存");
         } catch { showFeedback(voiceFeedback, "保存失败", true); }
         finally { saveVoiceBtn.disabled = false; }
@@ -4688,98 +6192,15 @@ function initTTSSettings() {
     finally { saveMinimaxBtn.disabled = false; }
   });
 
-  const clawbotConnectBtn = document.getElementById("clawbot-connect-btn");
-  const clawbotLogoutBtn  = document.getElementById("clawbot-logout-btn");
-  const clawbotQrArea     = document.getElementById("clawbot-qr-area");
-  const clawbotQrImg      = document.getElementById("clawbot-qr-img");
-  const clawbotQrHint     = document.getElementById("clawbot-qr-hint");
   const clawbotFeedback   = document.getElementById("clawbot-feedback");
   const clawbotStatus     = document.getElementById("social-status-clawbot");
-  let clawbotPollTimer    = null;
-
-  function setClawbotStatus(text, ok) {
-    if (!clawbotStatus) return;
-    clawbotStatus.textContent = ok ? `● ${text}` : `○ ${text}`;
-    clawbotStatus.className = `settings-platform-status ${ok ? "ok" : "miss"}`;
+  if (clawbotStatus) {
+    clawbotStatus.textContent = "○ 已迁移到真实渠道配置";
+    clawbotStatus.className = "settings-platform-status miss";
   }
-
-  function stopClawbotPoll() {
-    if (clawbotPollTimer) { clearInterval(clawbotPollTimer); clawbotPollTimer = null; }
+  if (clawbotFeedback) {
+    clawbotFeedback.textContent = "旧扫码实验链路已停用，请在渠道配置中完成真实通道接入。";
   }
-
-  async function pollClawbotQR() {
-    try {
-      const data = await fetch(`${API}/social/wechat-clawbot/qr`).then(r => r.json());
-      if (data.status === "connected") {
-        stopClawbotPoll();
-        if (clawbotQrArea) clawbotQrArea.style.display = "none";
-        setClawbotStatus("已连接", true);
-        if (clawbotFeedback) showFeedback(clawbotFeedback, "渠道绑定成功！");
-        loadSocialSettings();
-      } else if (data.status === "qr_ready" && data.qr_url) {
-        if (clawbotQrImg) clawbotQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data.qr_url)}`;
-        if (clawbotQrArea) clawbotQrArea.style.display = "block";
-        if (clawbotQrHint) clawbotQrHint.textContent = "等待扫码…";
-        setClawbotStatus("等待扫码", false);
-      } else if (data.status === "qr_pending") {
-        if (clawbotQrHint) clawbotQrHint.textContent = "正在生成二维码…";
-      } else if (data.status === "error") {
-        stopClawbotPoll();
-        if (clawbotQrArea) clawbotQrArea.style.display = "none";
-        setClawbotStatus("连接失败", false);
-        if (clawbotFeedback) showFeedback(clawbotFeedback, data.error || "连接失败", true);
-      }
-    } catch {}
-  }
-
-  if (clawbotConnectBtn) {
-    pollClawbotQR();
-  }
-
-  clawbotConnectBtn?.addEventListener("click", async () => {
-    if (clawbotQrArea) clawbotQrArea.style.display = "none";
-    setClawbotStatus("启动中…", false);
-    stopClawbotPoll();
-    try {
-      await fetch(`${API}/settings/social`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ _clawbot_connect: "1" }),
-      });
-    } catch {}
-    await pollClawbotQR();
-    clawbotPollTimer = setInterval(pollClawbotQR, 2000);
-  });
-
-  clawbotLogoutBtn?.addEventListener("click", async () => {
-    stopClawbotPoll();
-    if (clawbotQrArea) clawbotQrArea.style.display = "none";
-    try {
-      await fetch(`${API}/social/wechat-clawbot/logout`, { method: "POST" });
-      setClawbotStatus("已断开", false);
-      showFeedback(clawbotFeedback, "渠道已断开");
-    } catch {
-      showFeedback(clawbotFeedback, "请求失败", true);
-    }
-  });
-
-  window.addEventListener("bairui:social_status", (e) => {
-    const d = e.detail;
-    if (d?.platform !== "wechat-clawbot") return;
-    if (d.status === "connected") {
-      stopClawbotPoll();
-      if (clawbotQrArea) clawbotQrArea.style.display = "none";
-      setClawbotStatus("已连接", true);
-    } else if (d.status === "qr_ready") {
-      if (!clawbotPollTimer) clawbotPollTimer = setInterval(pollClawbotQR, 2000);
-      pollClawbotQR();
-    } else if (d.status === "session_expired") {
-      stopClawbotPoll();
-      setClawbotStatus("会话已过期 — 请重新扫码", false);
-    } else if (d.status === "idle") {
-      setClawbotStatus("未连接", false);
-    }
-  });
 
   const settingsCheckUpdateBtn     = document.getElementById("settings-check-update-btn");
   const settingsDownloadUpdateBtn  = document.getElementById("settings-download-update-btn");

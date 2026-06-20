@@ -4,6 +4,10 @@ param(
         "artifacts/product-acceptance.json",
         "artifacts/server-deployment-verification.json",
         "artifacts/postgres-production-verification.json",
+        "artifacts/deployment-checklist.json",
+        "artifacts/deployment-checklist.md",
+        "artifacts/delivery-status.json",
+        "artifacts/wecom-trial.json",
         "artifacts/commercial-go-no-go.json"
     ),
     [switch]$SkipLocalEvidenceGeneration,
@@ -95,8 +99,13 @@ foreach ($path in $EvidencePaths) {
         Copy-SafeFile -SourcePath $full -DestinationPath $target
         $copied += $name
 
-        $payload = Read-JsonSafely $full
-        $status = if ($payload.status) { [string]$payload.status } else { "present" }
+        if ([System.IO.Path]::GetExtension($full).ToLowerInvariant() -eq ".json") {
+            $payload = Read-JsonSafely $full
+            $status = if ($payload.status) { [string]$payload.status } else { "present" }
+        }
+        else {
+            $status = "present"
+        }
         $records += New-ArtifactRecord -Name $name -SourcePath $path -Present $true -Status $status -Note "copied to bundle"
     }
     else {

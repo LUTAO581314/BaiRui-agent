@@ -1,3 +1,5 @@
+import { API } from './api-client.js';
+
 // voice-core.js —— 语音共享机制引擎（mechanism，不含模式策略）
 //
 // 职责：点云球渲染 + 麦克风采集 + 云端 ASR 传输/转录引擎 + 会话生命周期。
@@ -62,7 +64,6 @@ const STATE_CFG = {
 // 放 core 作单一来源，continuous 从这里 import，避免两处各写一份。
 export const BARGEIN_THRESHOLD = 0.09; // 振幅阈值（高于环境噪声和 AEC 残留）
 
-const CLOUD_WS_URL  = 'ws://127.0.0.1:3721/voice/cloud';
 const VOICE_PROVIDER_KEY = 'bairui-voice-provider';
 
 // 采集分块大小（样本数）：AudioWorklet 累积到该样本数再投递；ScriptProcessor 回退也用它。
@@ -73,6 +74,8 @@ const BARGEIN_PRE_BUFFER_MS = 1500;
 const BARGEIN_MAX_CHUNKS    = Math.ceil(BARGEIN_PRE_BUFFER_MS * 16000 / 1000 / PCM_CHUNK_SAMPLES);
 // 重连预缓冲上限 ≈8s，防长断连无限堆积
 const RECONNECT_MAX_CHUNKS  = Math.ceil(8000 * 16000 / 1000 / PCM_CHUNK_SAMPLES);
+const MIN_FINAL_AUDIO_BYTES = 1200;
+const MIN_FINAL_RECORDING_MS = 650;
 
 // AudioWorklet 处理器源码：跑在独立音频线程，把 Float32 转 Int16 并按块投递到主线程。
 // 用 Blob URL 加载（见 ensurePcmWorkletModule），规避 Electron 打包后 file:// 路径问题。
@@ -255,7 +258,13 @@ export function createVoiceCore({ canvas, transcript, getChatInput, getSendMessa
   let cloudProcessor = null;     // 回退路径：ScriptProcessorNode（AudioWorklet 不可用时）
   let cloudWorkletNode = null;   // 首选路径：AudioWorkletNode（独立音频线程采集）
   let cloudWs = null;
-  let cloudWsIntentional = false; // stopCloudStream 主动关闭时置 true，避免触发重连
+  let cloudWsIntentional = false; // preserved for compatibility with existing state machine
+  let mediaRecorder = null;
+  let mediaChunks = [];
+  let mediaChunkTimer = null;
+  let mediaMimeType = 'audio/webm';
+  let mediaRecordingStartedAt = 0;
+  let pendingFinalUpload = false;
 
   // ─── 采集诊断（定位长语音丢字根因；localStorage 'bairui-voice-diag'='0' 关闭，默认开） ───
   const DIAG_ON = localStorage.getItem('bairui-voice-diag') !== '0';
@@ -495,51 +504,94 @@ export function createVoiceCore({ canvas, transcript, getChatInput, getSendMessa
   }
 
   // ─── Cloud ASR 传输（后端代理） ───
-  function connectCloudWs() {
-    cloudWsIntentional = false; // 新连接建立时清除上一次主动关闭的标记
-    const ws = new WebSocket(CLOUD_WS_URL);
-    ws.binaryType = 'arraybuffer';
-    cloudWs = ws;
-
-    ws.onopen = () => {
-      if (cloudWs !== ws) return;
-      const provider = localStorage.getItem(VOICE_PROVIDER_KEY) || 'aliyun';
-      const lang = getLang?.()?.split('-')[0] || 'zh';
-      ws.send(JSON.stringify({ type: 'config', provider, lang }));
+  async function uploadVoiceChunk(blob, isFinal = false) {
+    if (!blob || !blob.size) return;
+    if (!isFinal) return;
+    if (blob.size < MIN_FINAL_AUDIO_BYTES) {
+      diag('voice-upload-skipped', `too-small:${blob.size}`);
+      setStatus(micActive ? 'listening' : 'idle');
+      return;
+    }
+    try {
+      const language = getLang?.() || 'zh-CN';
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = String(reader.result || '');
+          const comma = result.indexOf(',');
+          resolve(comma >= 0 ? result.slice(comma + 1) : result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      const resp = await fetch(`${API}/voice/asr/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audio_base64: base64,
+          mime_type: blob.type || 'audio/webm',
+          language,
+          response_format: 'json',
+          is_final: isFinal,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const detail =
+          data?.voice_asr?.error ||
+          data?.voice_asr?.message ||
+          data?.error?.message ||
+          data?.message ||
+          `HTTP ${resp.status}`;
+        throw new Error(detail);
+      }
+      const text = String(data.text || '').trim();
+      if (text) {
+        handleAsrMessage({ type: 'transcript', text, is_final: true, seg: Date.now() });
+      }
+      pendingFinalUpload = false;
       setStatus('listening');
-      lastInboundTs = Date.now(); // 看门狗：（重）连后给一个新鲜起点，避免连上瞬间误判停滞
-      // 补发重连死区里暂存的音频，避免断连期间说的话丢失
-      if (reconnectBuffer.length) {
-        for (const chunk of reconnectBuffer) {
-          if (ws.readyState === WebSocket.OPEN) ws.send(chunk.buffer);
-        }
-        reconnectBuffer = [];
-      }
-      // 注意：此处不重置 accumulatedText，由调用方在首次启动时负责清空
+    } catch (error) {
+      pendingFinalUpload = false;
+      diag('voice-upload-failed', error?.message || error);
+      setStatus('error');
+      if (transcript) transcript.textContent = `语音识别失败：${error?.message || '上传失败'}`;
+    }
+  }
+
+  function buildWavBlobFromInt16Chunks(chunks) {
+    const sampleRate = 16000;
+    const channelCount = 1;
+    const bytesPerSample = 2;
+    const totalSamples = chunks.reduce((sum, chunk) => sum + (chunk?.length || 0), 0);
+    const dataSize = totalSamples * bytesPerSample;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    const writeAscii = (offset, value) => {
+      for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
     };
 
-    ws.onmessage = (ev) => {
-      if (cloudWs !== ws) return;
-      try { handleAsrMessage(JSON.parse(ev.data)); } catch {}
-    };
+    writeAscii(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeAscii(8, 'WAVE');
+    writeAscii(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, channelCount, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * channelCount * bytesPerSample, true);
+    view.setUint16(32, channelCount * bytesPerSample, true);
+    view.setUint16(34, bytesPerSample * 8, true);
+    writeAscii(36, 'data');
+    view.setUint32(40, dataSize, true);
 
-    ws.onerror = () => { if (cloudWs === ws) setStatus('error'); };
-
-    ws.onclose = () => {
-      if (cloudWs !== ws) return; // 已被新连接取代，忽略旧连接的 close 事件
-      cloudWs = null;
-      if (!cloudWsIntentional && micActive) {
-        // 非主动断开（超时/网络抖动）且用户仍在录音 → 自动重连，保留已识别文字。
-        // 先把当前句未定稿的前半句提级保住，否则新会话只 finalize 尾巴会覆盖丢失。
-        diagReconnects++;
-        diag('ws-closed → reconnect in 800ms', 'reconnects=' + diagReconnects);
-        commitPendingInterim();
-        setTimeout(() => { if (micActive) connectCloudWs(); }, 800);
-      } else {
-        cloudWsIntentional = false;
-        if (micActive) setStatus('idle');
-      }
-    };
+    let offset = 44;
+    for (const chunk of chunks) {
+      if (!chunk) continue;
+      for (let i = 0; i < chunk.length; i++, offset += 2) view.setInt16(offset, chunk[i], true);
+    }
+    return new Blob([buffer], { type: 'audio/wav' });
   }
 
   async function startCloudStream(stream) {
@@ -553,13 +605,50 @@ export function createVoiceCore({ canvas, transcript, getChatInput, getSendMessa
       await setupCloudProcessor(micData.src, micData.actx);
     }
 
-    // 首次启动清空累积文字；重连时由 connectCloudWs 直接调用，不经过此处
+    // 首次启动清空累积文字；当前实现改为浏览器录音分段上传
     resetTranscriptAccumulation();
     reconnectBuffer = [];
     if (transcript) transcript.textContent = '';
     diagStart();
     startWatchdog();
-    connectCloudWs();
+    if (typeof MediaRecorder !== 'undefined') {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        try { mediaRecorder.stop(); } catch {}
+      }
+      mediaChunks = [];
+      mediaRecordingStartedAt = Date.now();
+      mediaMimeType =
+        (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) ? 'audio/webm;codecs=opus'
+        : (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/webm')) ? 'audio/webm'
+        : '';
+      const recorder = mediaMimeType ? new MediaRecorder(stream, { mimeType: mediaMimeType }) : new MediaRecorder(stream);
+      mediaRecorder = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size) {
+          mediaChunks.push(event.data);
+        }
+      };
+      recorder.onstop = () => {
+        const finalChunks = mediaChunks.slice();
+        mediaChunks = [];
+        if (mediaRecorder === recorder) mediaRecorder = null;
+        if (!finalChunks.length) return;
+        const durationMs = Date.now() - mediaRecordingStartedAt;
+        if (durationMs < MIN_FINAL_RECORDING_MS) {
+          diag('voice-upload-skipped', `too-short:${durationMs}ms`);
+          setStatus(micActive ? 'listening' : 'idle');
+          return;
+        }
+        const finalBlob = new Blob(finalChunks, { type: mediaMimeType || finalChunks[0].type || 'audio/webm' });
+        pendingFinalUpload = true;
+        uploadVoiceChunk(finalBlob, true);
+      };
+      recorder.start(1800);
+      setStatus('listening');
+    } else {
+      setStatus('error');
+      if (transcript) transcript.textContent = '当前浏览器不支持录音';
+    }
   }
 
   // 一块 PCM（Int16Array）的统一去向：TTS 期间写打断缓冲 / WS 未连写重连缓冲 / 否则直发。
@@ -631,15 +720,11 @@ export function createVoiceCore({ canvas, transcript, getChatInput, getSendMessa
   }
 
   function stopCloudStream({ preserveProcessor = false } = {}) {
-    cloudWsIntentional = true; // 标记为主动关闭，防止 onclose 触发重连
-    try {
-      if (cloudWs && cloudWs.readyState === WebSocket.OPEN) {
-        cloudWs.send(JSON.stringify({ type: 'flush' }));
-        setTimeout(() => { try { cloudWs?.close(); } catch {} }, 200);
-      } else {
-        cloudWs?.close();
-      }
-    } catch {}
+    cloudWsIntentional = true;
+    if (mediaChunkTimer) { clearTimeout(mediaChunkTimer); mediaChunkTimer = null; }
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      try { mediaRecorder.stop(); } catch {}
+    }
     cloudWs = null;
 
     if (!preserveProcessor) {
@@ -653,11 +738,9 @@ export function createVoiceCore({ canvas, transcript, getChatInput, getSendMessa
 
   // 向云端 ASR 请求立即给最终结果（PTT 松手 / 关闭时调用）
   function flushAsr() {
-    try {
-      if (cloudWs && cloudWs.readyState === WebSocket.OPEN) {
-        cloudWs.send(JSON.stringify({ type: 'flush' }));
-      }
-    } catch {}
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      try { mediaRecorder.requestData(); } catch {}
+    }
   }
 
   // ─── 会话生命周期 ───
@@ -696,7 +779,7 @@ export function createVoiceCore({ canvas, transcript, getChatInput, getSendMessa
     diagStop();
     stopWatchdog();
     setStatus('idle');
-    if (transcript) transcript.textContent = '';
+    if (transcript && !pendingFinalUpload) transcript.textContent = '';
     syncState();
   }
 
@@ -733,42 +816,15 @@ export function createVoiceCore({ canvas, transcript, getChatInput, getSendMessa
     onResume?.(fromBargein); // 各模式重置检测状态 / 启动续播计时
 
     if (micActive && micData && (cloudWorkletNode || cloudProcessor)) {
-      // TTS 模式：采集节点仍存活，只需重连 WebSocket
+      // 现实现走浏览器录音上传：恢复后重新开始本轮录音即可
       setStatus('listening');
       resetTranscriptAccumulation();
       if (transcript) transcript.textContent = '';
-      const bargeinWs = new WebSocket(CLOUD_WS_URL);
-      bargeinWs.binaryType = 'arraybuffer';
-      cloudWs = bargeinWs;
-      bargeinWs.onopen = () => {
-        if (cloudWs !== bargeinWs) return;
-        const provider = localStorage.getItem(VOICE_PROVIDER_KEY) || 'aliyun';
-        const lang = getLang?.()?.split('-')[0] || 'zh';
-        bargeinWs.send(JSON.stringify({ type: 'config', provider, lang }));
-        lastInboundTs = Date.now(); // 看门狗：打断重连后给新鲜起点
-        // 先把预缓冲的历史音频一次性发出，补回打断前说的内容
-        for (const chunk of bufferedChunks) {
-          if (bargeinWs.readyState === WebSocket.OPEN) bargeinWs.send(chunk.buffer);
-        }
-      };
-      bargeinWs.onmessage = (ev) => {
-        if (cloudWs !== bargeinWs) return;
-        try { handleAsrMessage(JSON.parse(ev.data)); } catch {}
-      };
-      bargeinWs.onerror = () => { if (cloudWs === bargeinWs) setStatus('error'); };
-      bargeinWs.onclose = () => {
-        if (cloudWs !== bargeinWs) return;
-        cloudWs = null;
-        if (!cloudWsIntentional && micActive) {
-          diagReconnects++;
-          diag('barge-in ws-closed → reconnect in 800ms', 'reconnects=' + diagReconnects);
-          commitPendingInterim(); // 同 connectCloudWs：重连前保住当前句前半段
-          setTimeout(() => { if (micActive) connectCloudWs(); }, 800);
-        } else {
-          cloudWsIntentional = false;
-          if (micActive) setStatus('idle');
-        }
-      };
+      if (bufferedChunks.length) {
+        const merged = buildWavBlobFromInt16Chunks(bufferedChunks);
+        uploadVoiceChunk(merged, true);
+      }
+      if (micData?.stream) await startCloudStream(micData.stream);
     } else {
       // 视频/音乐模式，或 Processor 已被销毁：完整重启
       micActive = true;

@@ -31,6 +31,10 @@ class FunASRStatus:
     api_contract: tuple[str, ...]
     cli_contract: tuple[str, ...]
     commercial_boundary: str
+    health_url: str
+    reachable: bool
+    runtime_engine: str
+    runtime_model: str
 
 
 @dataclass(frozen=True)
@@ -70,9 +74,20 @@ def status(settings: Settings) -> FunASRStatus:
     if not settings.funasr_base_url:
         state = "missing_config"
         detail = "Set FUNASR_BASE_URL to enable OpenAI-compatible ASR transcription calls"
+        reachable = False
+        runtime_engine = ""
+        runtime_model = ""
     else:
-        state = "configured"
-        detail = "FunASR OpenAI-compatible transcription endpoint is configured"
+        probe = _probe_health(settings)
+        reachable = probe["reachable"]
+        runtime_engine = probe["engine"]
+        runtime_model = probe["model"]
+        if reachable:
+            state = "ready"
+            detail = f"ASR runtime is reachable at /health ({runtime_engine or 'unknown_engine'} / {runtime_model or settings.funasr_model})"
+        else:
+            state = "configured_unreachable"
+            detail = f"ASR endpoint is configured but /health probe failed: {probe['detail']}"
 
     return FunASRStatus(
         status=state,
@@ -86,7 +101,40 @@ def status(settings: Settings) -> FunASRStatus:
         api_contract=api_contract,
         cli_contract=cli_contract,
         commercial_boundary="MIT runtime is suitable for productized ASR integration while preserving license notices.",
+        health_url=_health_url(settings),
+        reachable=reachable,
+        runtime_engine=runtime_engine,
+        runtime_model=runtime_model,
     )
+
+
+def _health_url(settings: Settings) -> str:
+    if not settings.funasr_base_url:
+        return ""
+    return settings.funasr_base_url.rstrip("/") + "/health"
+
+
+def _probe_health(settings: Settings) -> dict[str, Any]:
+    url = _health_url(settings)
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=min(settings.funasr_timeout_seconds, 10)) as response:
+            raw = response.read().decode("utf-8")
+            data = json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as exc:
+        return {"reachable": False, "detail": f"http_{exc.code}", "engine": "", "model": ""}
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        return {"reachable": False, "detail": str(exc), "engine": "", "model": ""}
+    return {
+        "reachable": True,
+        "detail": "ok",
+        "engine": str(data.get("engine", "")),
+        "model": str(data.get("model", "")),
+    }
 
 
 def build_server_command(settings: Settings, *, device: str = "cuda", model: str = "") -> FunASRCommandPlan:

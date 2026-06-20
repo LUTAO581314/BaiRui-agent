@@ -115,56 +115,22 @@ function stopPoll() {
 
 // 返回 true 表示应继续轮询，false 表示已终止（connected / error）
 async function pollQR() {
-  try {
-    const data = await fetch(`${API}/social/wechat-clawbot/qr`).then(r => r.json());
-    if (data.status === 'connected') {
-      stopPoll();
-      setStatus('connected');
-      showFeedback('渠道绑定成功！');
-      return false;
-    } else if (data.status === 'error') {
-      stopPoll();
-      setStatus('error', { error: data.error });
-      return false;
-    } else if (data.status === 'qr_ready' && data.qr_url) {
-      setStatus('qr_ready', { qr_url: data.qr_url });
-    } else {
-      setStatus(data.status || 'qr_pending');
-    }
-  } catch {
-    // silent
-  }
-  return true;
+  setStatus('error', { error: '旧扫码实验链路已下线，请到设置页的渠道配置中完成真实通道接入。' });
+  stopPoll();
+  return false;
 }
 
 async function triggerConnect() {
-  const { connectBtn } = getEls();
-  setStatus('qr_pending');
-  if (connectBtn) connectBtn.disabled = true;
-  try {
-    await fetch(`${API}/settings/social`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ _clawbot_connect: '1' }),
-    });
-  } catch {}
-  stopPoll();
-  // 先立即轮询一次，等返回后再决定是否启动 interval
-  const shouldContinue = await pollQR();
-  if (shouldContinue) pollTimer = setInterval(pollQR, 1500);
+  setStatus('error', { error: '该旧扫码方式已停用，请改用设置页里的真实渠道配置。' });
+  showFeedback('请在设置页完成渠道配置', true);
 }
 
 async function triggerLogout() {
   stopPoll();
   const { qrWrap } = getEls();
   if (qrWrap) qrWrap.style.display = 'none';
-  try {
-    await fetch(`${API}/social/wechat-clawbot/logout`, { method: 'POST' });
-    setStatus('idle');
-      showFeedback('已断开渠道连接');
-  } catch {
-    showFeedback('请求失败', true);
-  }
+  setStatus('idle');
+  showFeedback('旧扫码实验链路未启用');
 }
 
 export function initWechatPopup() {
@@ -198,26 +164,7 @@ export function initWechatPopup() {
 export async function showWechatPopup() {
   if (!overlay) return;
   overlay.removeAttribute('hidden');
-
-  // 先查询当前状态，按实际状态渲染
-  try {
-    const data = await fetch(`${API}/social/wechat-clawbot/qr`).then(r => r.json());
-    if (data.status === 'connected') {
-      setStatus('connected');
-    } else if (data.status === 'qr_ready' && data.qr_url) {
-      setStatus('qr_ready', { qr_url: data.qr_url });
-      stopPoll();
-      pollTimer = setInterval(pollQR, 1500);
-    } else if (data.status === 'qr_pending') {
-      setStatus('qr_pending');
-      stopPoll();
-      pollTimer = setInterval(pollQR, 1500);
-    } else {
-      setStatus('idle');
-    }
-  } catch {
-    setStatus('idle');
-  }
+  setStatus('error', { error: '该弹窗仅保留为旧交互占位，请在设置页的渠道授权中使用真实接入能力。' });
 }
 
 export function hideWechatPopup() {

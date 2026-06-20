@@ -1,10 +1,10 @@
-import { createHotspotPanel } from './hotspot-panel.js';
+﻿import { createHotspotPanel } from './hotspot-panel.js';
 import { createPersonCardPanel } from './person-card-panel.js';
 import { createDocPanel } from './doc-panel.js';
 
 const createGraphStage = () => `
 <div class="grid-overlay"></div>
-<svg id="graph" aria-label="bairui Obsidian 双链图"></svg>
+<svg id="graph" aria-label="bairui 记忆双链图"></svg>
 `;
 
 const createPrimaryPanel = () => `
@@ -118,15 +118,58 @@ const createSecondaryPanel = () => `
 
   <div class="stream-meta">
     <div>
-      <div class="stream-title-text">自主行动机制 · Tick</div>
-      <div class="stream-subtitle">心跳 · 思考 · 工具</div>
+      <div class="stream-title-text">右侧动态工作台</div>
+      <div class="stream-subtitle">事件 · 工具 · 能力 · runtime</div>
     </div>
     <span class="pill pill-warm" id="pill-l2">流式传输</span>
   </div>
 
+  <section class="ops-overview" id="ops-overview" aria-label="实时工作概览">
+    <div class="ops-overview-card" id="ops-active-card">
+      <span>当前动作</span>
+      <strong id="ops-active-label">空闲</strong>
+      <small id="ops-active-detail">等待新的任务进入</small>
+    </div>
+    <div class="ops-overview-card" id="ops-tool-card">
+      <span>最近工具</span>
+      <strong id="ops-tool-label">—</strong>
+      <small id="ops-tool-detail">尚未调用工具</small>
+    </div>
+  </section>
+
+  <section class="ops-event-shelf" aria-label="最近事件">
+    <div class="capability-shelf-head">
+      <span>最近事件</span>
+      <span class="ops-shelf-note" id="ops-event-count">0 条</span>
+    </div>
+    <div class="ops-event-list" id="ops-event-list">
+      <div class="capability-empty">等待消息或工具事件…</div>
+    </div>
+  </section>
+
   <div class="stream">
     <div class="stream-inner" id="si-l2"></div>
   </div>
+
+  <section class="capability-shelf" id="capability-shelf" aria-label="bairui 可调用能力">
+    <div class="capability-shelf-head">
+      <span>可调用能力</span>
+      <button class="capability-refresh" id="capability-refresh" type="button" title="刷新能力">刷新</button>
+    </div>
+    <div class="capability-list" id="capability-list">
+      <div class="capability-empty">正在读取能力清单…</div>
+    </div>
+  </section>
+
+  <section class="capability-shelf" id="runtime-shelf" aria-label="bairui runtime 状态">
+    <div class="capability-shelf-head">
+      <span>Runtime 状态</span>
+      <span class="ops-shelf-note" id="runtime-shelf-note">等待读取</span>
+    </div>
+    <div class="capability-list" id="runtime-list">
+      <div class="capability-empty">正在读取 runtime 状态…</div>
+    </div>
+  </section>
 </aside>
 `;
 
@@ -176,6 +219,16 @@ const createSettingsModal = () => `
         <!-- ── 个性配置 tab ── -->
         <div class="settings-tab active" data-tab="appearance">
           <div class="settings-section">
+            <div class="settings-section-label">商用试点门槛</div>
+            <p class="settings-hint">这里显示当前服务器是否已经达到可交付试点条件。模型、访问保护和真实渠道全部通过后，才应该给客户使用。</p>
+            <div class="settings-overview-list" id="settings-commercial-trial-list">
+              <div class="settings-overview-empty">正在读取商用试点状态…</div>
+            </div>
+            <div class="settings-overview-list" id="settings-delivery-status-list" style="margin-top:12px;">
+              <div class="settings-overview-empty">正在读取交付闭环状态…</div>
+            </div>
+          </div>
+          <div class="settings-section">
             <div class="settings-section-label">智能体个性</div>
             <p class="settings-hint">这里可以给自己的智能体设置显示名和头像，只影响本机界面展示；产品品牌、服务名和对外标识仍固定为 bairui。</p>
             <div class="settings-persona-card">
@@ -200,7 +253,7 @@ const createSettingsModal = () => `
           </div>
           <div class="settings-section">
             <div class="settings-section-label">记忆图谱</div>
-            <p class="settings-hint">前端主视图使用 bairui 记忆图谱，长期记忆和报告会继续同步到 Obsidian。这里控制的是前端图谱显示，不再直接渲染 Obsidian 原生双链结果。</p>
+            <p class="settings-hint">前端主视图使用 bairui 记忆图谱，长期记忆和报告会继续同步到本地记忆仓。这里控制的是前端图谱显示，不再直接渲染底层记忆仓原生结果。</p>
             <div class="settings-row">
               <label class="settings-label" for="settings-memory-graph-toggle">显示记忆图谱</label>
               <input id="settings-memory-graph-toggle" type="checkbox" style="width:auto;flex:none;">
@@ -327,6 +380,12 @@ const createSettingsModal = () => `
               <span class="settings-config-type">Queue</span>
               <span class="settings-config-info" id="social-approval-queue">正在读取…</span>
             </div>
+            <div class="settings-overview-list" id="social-commercial-trial-list" style="margin-top:12px;">
+              <div class="settings-overview-empty">正在读取渠道试点门槛…</div>
+            </div>
+            <div class="settings-channel-flow" id="social-channel-flow" style="margin-top:12px;">
+              <div class="settings-overview-empty">正在读取企业群验收流程…</div>
+            </div>
           </div>
           <div class="settings-section">
             <div class="settings-section-label">总开关与目标</div>
@@ -341,62 +400,99 @@ const createSettingsModal = () => `
               <label class="settings-label" for="social-targets-json">渠道目标 JSON</label>
               <textarea class="settings-input" id="social-targets-json" rows="8" placeholder='[{"id":"owner_review","label":"Owner Review","channel_type":"personal_chat","supports":["text","image","video","file"],"requires_owner_confirmation":true}]'></textarea>
             </div>
+            <div class="settings-row" style="gap:8px;flex-wrap:wrap;">
+              <button class="settings-save-btn" id="social-build-wecom-target-btn" type="button" style="width:auto;padding:0 16px;">生成企业群目标</button>
+              <input class="settings-input" id="social-test-message" type="text" value="bairui 渠道测试消息" style="flex:1;min-width:220px;">
+              <button class="settings-save-btn" id="social-send-test-btn" type="button" style="width:auto;padding:0 16px;">发送测试审批</button>
+              <button class="settings-save-btn danger" id="social-send-wecom-now-btn" type="button" style="width:auto;padding:0 16px;">批准并真实发送</button>
+            </div>
             <p class="settings-hint">每个 target 对应一个可投递目标：扫码个人账号、开放平台应用、企业机器人、自定义 webhook 等都按 JSON target 暴露。字段缺失时后端会给出诊断。</p>
           </div>
           <div class="settings-section">
-            <div class="settings-section-label">个人扫码渠道</div>
+            <div class="settings-section-label">个人扫码通道</div>
             <div class="settings-platform-status" id="social-status-clawbot">○ 未连接</div>
-            <p class="settings-hint">点击「连接渠道」后会生成二维码，用授权客户端扫码即可绑定个人账号。凭证保存在服务器侧，重启后无需重新扫码。</p>
+            <p class="settings-hint">这是个人扫码 Bot 通道，只处理个人扫码绑定。若后端二维码接口返回 disabled，说明当前服务器没有启用扫码 runtime，不会一直假装生成二维码。</p>
             <div class="settings-row" style="gap:8px;flex-wrap:wrap;">
-              <button class="settings-save-btn" id="clawbot-connect-btn" type="button" style="width:auto;padding:0 16px;">连接渠道</button>
+              <button class="settings-save-btn" id="clawbot-connect-btn" type="button" style="width:auto;padding:0 16px;">连接扫码 Bot</button>
               <button class="settings-save-btn" id="clawbot-logout-btn" type="button" style="width:auto;padding:0 16px;background:var(--danger,#c0392b);">断开</button>
             </div>
             <div id="clawbot-qr-area" style="display:none;margin-top:12px;text-align:center;">
               <p class="settings-hint" style="margin-bottom:8px;">用授权客户端扫描下方二维码：</p>
-              <img id="clawbot-qr-img" src="" alt="渠道二维码" style="width:200px;height:200px;border:1px solid var(--border);border-radius:4px;">
+              <img id="clawbot-qr-img" src="" alt="扫码 Bot 二维码" style="width:200px;height:200px;border:1px solid var(--border);border-radius:4px;">
               <p class="settings-hint" style="margin-top:6px;font-size:11px;" id="clawbot-qr-hint">等待扫码…</p>
             </div>
             <span class="settings-feedback" id="clawbot-feedback"></span>
           </div>
           <div class="settings-section">
-            <div class="settings-section-label">企业/机器人渠道字段</div>
+            <div class="settings-section-label">订阅号客服通道</div>
+            <p class="settings-hint">用于订阅号客服消息与回调。target 示例：<code>wechat:official:OPENID</code>，channel_type 使用 <code>wechat-official</code>。</p>
             <div class="settings-row">
-              <label class="settings-label" for="social-discord-token">机器人 Bot Token</label>
-              <input class="settings-input" id="social-discord-token" type="password" placeholder="留空保持原值不变…" autocomplete="new-password">
+              <label class="settings-label" for="social-wechat-appid">订阅号 App ID</label>
+              <input class="settings-input" id="social-wechat-appid" type="password" placeholder="WECHAT_OFFICIAL_APP_ID，留空保持原值…" autocomplete="new-password">
             </div>
             <div class="settings-row">
-              <label class="settings-label" for="social-feishu-appid">开放平台 App ID</label>
-              <input class="settings-input" id="social-feishu-appid" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+              <label class="settings-label" for="social-wechat-secret">订阅号 App Secret</label>
+              <input class="settings-input" id="social-wechat-secret" type="password" placeholder="WECHAT_OFFICIAL_APP_SECRET，留空保持原值…" autocomplete="new-password">
             </div>
             <div class="settings-row">
-              <label class="settings-label" for="social-feishu-secret">开放平台 App Secret</label>
-              <input class="settings-input" id="social-feishu-secret" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+              <label class="settings-label" for="social-wechat-token">订阅号 Token</label>
+              <input class="settings-input" id="social-wechat-token" type="password" placeholder="WECHAT_OFFICIAL_TOKEN，留空保持原值…" autocomplete="new-password">
+            </div>
+            <p class="settings-hint">回调地址：<code>/social/wechat/official</code></p>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-label">企业群机器人</div>
+            <p class="settings-hint">用于企业群机器人 webhook 和入站回调。只需要填写 Bot Key；保存后 bairui 会自动生成安全目标 <code>wecom:webhook:</code>，不会把 Bot Key 暴露到 target JSON。</p>
+            <div class="settings-row">
+              <label class="settings-label" for="social-wecom-botkey">企业群 Bot Key</label>
+              <input class="settings-input" id="social-wecom-botkey" type="password" placeholder="WECOM_BOT_KEY，留空保持原值…" autocomplete="new-password">
             </div>
             <div class="settings-row">
-              <label class="settings-label" for="social-feishu-token">开放平台 Verify Token</label>
-              <input class="settings-input" id="social-feishu-token" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+              <label class="settings-label" for="social-wecom-token">企业群 Incoming Token</label>
+              <input class="settings-input" id="social-wecom-token" type="password" placeholder="WECOM_INCOMING_TOKEN，留空保持原值…" autocomplete="new-password">
+            </div>
+            <p class="settings-hint">回调地址：<code>/social/wecom/webhook</code></p>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-label">群聊 Bot / NapCat</div>
+            <p class="settings-hint">群聊 Bot 单独走 NapCat/OneBot runtime，不使用个人扫码二维码。target 示例：<code>qq:napcat:private:USER_ID</code> 或 <code>qq:napcat:group:GROUP_ID</code>，channel_type 使用 <code>qq-napcat</code>。</p>
+            <div class="settings-row">
+              <label class="settings-label" for="social-qq-napcat-url">NapCat Base URL</label>
+              <input class="settings-input" id="social-qq-napcat-url" type="text" placeholder="例如 http://127.0.0.1:3000，留空保持原值…" autocomplete="off">
             </div>
             <div class="settings-row">
-              <label class="settings-label" for="social-wechat-appid">扫码平台 App ID</label>
-              <input class="settings-input" id="social-wechat-appid" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+              <label class="settings-label" for="social-qq-napcat-token">NapCat Token</label>
+              <input class="settings-input" id="social-qq-napcat-token" type="password" placeholder="NAPCAT_TOKEN，可选，留空保持原值…" autocomplete="new-password">
+            </div>
+            <p class="settings-hint">群聊 Bot 扫码登录由 NapCat runtime 自己提供；bairui 只保存连接地址和发送令牌，不把群聊 Bot 和个人扫码 Bot 混在一个二维码入口。</p>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-label">协作应用通道</div>
+            <p class="settings-hint">用于协作应用消息发送和 webhook 回调。target 示例：<code>feishu:open_id:OPEN_ID</code>，channel_type 使用 <code>feishu</code>。</p>
+            <div class="settings-row">
+              <label class="settings-label" for="social-feishu-appid">协作应用 App ID</label>
+              <input class="settings-input" id="social-feishu-appid" type="password" placeholder="FEISHU_APP_ID，留空保持原值…" autocomplete="new-password">
             </div>
             <div class="settings-row">
-              <label class="settings-label" for="social-wechat-secret">扫码平台 App Secret</label>
-              <input class="settings-input" id="social-wechat-secret" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+              <label class="settings-label" for="social-feishu-secret">协作应用 App Secret</label>
+              <input class="settings-input" id="social-feishu-secret" type="password" placeholder="FEISHU_APP_SECRET，留空保持原值…" autocomplete="new-password">
             </div>
             <div class="settings-row">
-              <label class="settings-label" for="social-wechat-token">扫码平台 Token</label>
-              <input class="settings-input" id="social-wechat-token" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+              <label class="settings-label" for="social-feishu-token">协作应用 Verify Token</label>
+              <input class="settings-input" id="social-feishu-token" type="password" placeholder="FEISHU_VERIFICATION_TOKEN，留空保持原值…" autocomplete="new-password">
             </div>
+            <p class="settings-hint">回调地址：<code>/social/feishu/webhook</code></p>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-label">海外群组 Bot</div>
+            <p class="settings-hint">用于海外群组 Bot 消息发送。target 示例：<code>discord:CHANNEL_ID</code>，channel_type 使用 <code>discord</code>。</p>
             <div class="settings-row">
-              <label class="settings-label" for="social-wecom-botkey">企业机器人 Bot Key</label>
-              <input class="settings-input" id="social-wecom-botkey" type="password" placeholder="留空保持原值…" autocomplete="new-password">
+              <label class="settings-label" for="social-discord-token">海外群组 Bot Token</label>
+              <input class="settings-input" id="social-discord-token" type="password" placeholder="DISCORD_BOT_TOKEN，留空保持原值不变…" autocomplete="new-password">
             </div>
-            <div class="settings-row">
-              <label class="settings-label" for="social-wecom-token">企业机器人 Incoming Token</label>
-              <input class="settings-input" id="social-wecom-token" type="password" placeholder="留空保持原值…" autocomplete="new-password">
-            </div>
-            <p class="settings-hint">这些字段只在 target JSON 指向对应 channel_type 时才真正生效；未启用的渠道会被诊断面板标成 blocked。</p>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-label">平台状态与 Webhook</div>
             <div class="settings-overview-list" id="social-platform-status-list" style="margin-top:12px;">
               <div class="settings-overview-empty">正在读取渠道平台状态…</div>
             </div>
@@ -409,8 +505,13 @@ const createSettingsModal = () => `
             <div class="settings-overview-list" id="social-diagnostic-list">
               <div class="settings-overview-empty">正在读取渠道诊断…</div>
             </div>
+            <p class="settings-hint" style="margin-top:12px;margin-bottom:8px;">待审批动作：主人批准后，bairui 才会真正调用外部渠道。</p>
             <div class="settings-overview-list" id="social-approval-list" style="margin-top:12px;">
               <div class="settings-overview-empty">正在读取审批队列…</div>
+            </div>
+            <p class="settings-hint" style="margin-top:12px;margin-bottom:8px;">发送回执：记录批准、拒绝、真实发送状态和外部消息 ID。</p>
+            <div class="settings-overview-list" id="social-review-list" style="margin-top:12px;">
+              <div class="settings-overview-empty">正在读取渠道回执…</div>
             </div>
           </div>
           <div class="settings-section settings-section-action">
@@ -422,7 +523,12 @@ const createSettingsModal = () => `
         <!-- ── 语音 tab ── -->
         <div class="settings-tab" data-tab="voice">
           <div class="settings-section">
-            <div class="settings-section-label">云端模式配置</div>
+            <div class="settings-section-label">语音识别引擎</div>
+            <p class="settings-hint">当前真正接通的是 bairui 内核的本地语音识别 / OpenAI-compatible ASR 上传转写链路。其他云厂商字段先保留为扩展位，但只有接入后的能力才会生效。</p>
+            <div class="settings-row">
+              <label class="settings-label" for="voice-funasr-baseurl">语音识别 Base URL</label>
+              <input class="settings-input" type="text" id="voice-funasr-baseurl" placeholder="例如 https://asr.example.com/v1">
+            </div>
             <div class="settings-row">
               <label class="settings-label" for="voice-auto-key">粘贴 Key 自动识别厂商</label>
               <input class="settings-input" type="password" id="voice-auto-key" placeholder="阿里云 / 腾讯云 / 讯飞 / 火山豆包 ASR Key">
@@ -431,11 +537,40 @@ const createSettingsModal = () => `
             <div class="settings-row">
               <label class="settings-label" for="voice-provider-select">服务商</label>
               <select class="settings-select" id="voice-provider-select">
+                <option value="funasr">本地语音识别 / OpenAI-compatible</option>
                 <option value="aliyun">阿里云百炼（推荐）</option>
                 <option value="volcengine">火山引擎豆包 ASR</option>
                 <option value="tencent">腾讯云 ASR</option>
                 <option value="xunfei">科大讯飞 RTASR</option>
               </select>
+            </div>
+            <div id="voice-cred-funasr">
+              <p class="settings-hint">浏览器录音会上传到 bairui 后端，再由后端转发给这里配置的 ASR endpoint。未填写时，语音页会诚实显示为未配置。</p>
+              <div class="settings-runtime-card" id="voice-runtime-card">
+                <div class="settings-runtime-card-head">
+                  <span class="settings-runtime-card-title">运行时探测</span>
+                  <span class="settings-runtime-badge" id="voice-runtime-badge">未检查</span>
+                </div>
+                <div class="settings-runtime-grid">
+                  <div class="settings-runtime-item">
+                    <span class="settings-runtime-label">探活结果</span>
+                    <strong id="voice-runtime-status">未配置</strong>
+                  </div>
+                  <div class="settings-runtime-item">
+                    <span class="settings-runtime-label">实际引擎</span>
+                    <strong id="voice-runtime-engine">-</strong>
+                  </div>
+                  <div class="settings-runtime-item">
+                    <span class="settings-runtime-label">实际模型</span>
+                    <strong id="voice-runtime-model">-</strong>
+                  </div>
+                  <div class="settings-runtime-item">
+                    <span class="settings-runtime-label">探活地址</span>
+                    <strong id="voice-runtime-health">-</strong>
+                  </div>
+                </div>
+                <p class="settings-runtime-detail" id="voice-runtime-detail">保存后将检查后端语音运行时。</p>
+              </div>
             </div>
             <div id="voice-cred-aliyun">
               <div class="settings-row">

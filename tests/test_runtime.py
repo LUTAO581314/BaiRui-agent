@@ -4,8 +4,15 @@ import tempfile
 import threading
 import unittest
 import hashlib
+import importlib.util
+import sys
+import types
+import urllib.error
+import base64
+from dataclasses import asdict
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,8 +25,10 @@ from src.hermes.channels import (
     channel_targets,
     diagnose_channel_targets,
     list_channel_approvals,
+    list_channel_delivery_receipts,
     plan_channel_send,
     review_channel_approval,
+    run_wecom_trial,
 )
 from src.hermes.social_bridge import SocialDispatchResult
 from src.hermes.codegraph import codegraph_impact, codegraph_overview, codegraph_status, query_codegraph, register_codegraph_repo, scan_codegraph_repo
@@ -31,8 +40,9 @@ from src.hermes.backup import RESTORE_CONFIRMATION, backup_status, build_backup_
 from src.hermes.db import SCHEMA_SQL, database_status
 from src.hermes.demo import seed_demo_data
 from src.hermes.demo_flow import run_demo_flow
+from src.hermes.delivery_status import build_delivery_status
 from src.hermes.diagnostics import build_diagnostic_bundle
-from src.hermes.document_pipeline import build_document_ingest_session_summary, build_document_workbench_state, create_document_ingest_report, create_document_source_refs, execute_document_workbench_next, generate_document_memory_candidates, index_document_artifacts, list_document_ingest_session_summaries, list_pending_document_memory_reviews, register_document_artifacts, review_document_memory_candidate, review_document_memory_candidates_batch, run_document_ingest, run_document_workbench_until_blocked
+from src.hermes.document_pipeline import build_document_ingest_session_summary, build_document_workbench_state, create_document_ingest_report, create_document_source_refs, execute_document_workbench_next, generate_document_memory_candidates, index_document_artifacts, list_document_ingest_session_summaries, list_pending_document_memory_reviews, register_document_artifacts, review_document_memory_candidate, review_document_memory_candidates_batch, run_document_ingest, run_document_memory_trial, run_document_workbench_until_blocked
 from src.hermes.events import audit_event_to_frontend_event, build_sse_frame, list_frontend_events
 from src.hermes.frontend_contract import build_frontend_contract
 from src.hermes.hotspots import build_hotspots
@@ -44,7 +54,7 @@ from src.hermes.adapters.searxng import build_docker_command as build_searxng_do
 from src.hermes.adapters.sonic import SonicResult, build_docker_command as build_sonic_docker_command, build_query_payload as build_sonic_query_payload, status as sonic_status
 from src.hermes.adapters.trendradar import build_mcp_command, status as trendradar_status
 from src.hermes.license import load_license, sign_license_payload
-from src.hermes.model_gateway import build_chat_payload, complete_chat, list_models
+from src.hermes.model_gateway import build_chat_payload, complete_chat, list_models, probe_model_gateway
 from src.hermes.obsidian_graph import build_obsidian_graph
 from src.hermes.observability import build_metrics_summary, list_error_logs, record_error_log
 from src.hermes.platform import HEARTBEAT_PROTOCOL_VERSION, build_platform_heartbeat
@@ -106,6 +116,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(settings.trademark_name, "bairui")
         self.assertEqual(settings.logo_text, "bairui")
         self.assertEqual(settings.port, 8787)
+        self.assertEqual(settings.license_file.as_posix(), "license/bairui-license.json")
         self.assertEqual(settings.avatar_engine_package, "pixi-live2d-display-advanced")
         self.assertEqual(settings.avatar_engine_version, "^1.1.0")
 
@@ -184,6 +195,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(contract["product"]["brand_key"], "bairui")
         self.assertEqual(contract["visibility_policy"]["public_brand"], "bairui")
         self.assertIn("activation", screens)
+        self.assertIn("/deployment/checklist", screens["activation"]["read"])
+        self.assertIn("/deployment/checklist", {source["path"] for source in contract["status_sources"]})
         self.assertIn("/jobs", screens["dashboard"]["read"])
         self.assertIn("/audit", screens["dashboard"]["read"])
         self.assertIn("/events", screens["dashboard"]["read"])
@@ -202,12 +215,15 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/channels/diagnostics", screens["channels"]["read"])
         self.assertIn("/channels/approvals", screens["channels"]["read"])
         self.assertIn("/channels/approvals/reviews", screens["channels"]["read"])
+        self.assertIn("/channels/receipts", screens["channels"]["read"])
+        self.assertIn("/delivery/status", screens["channels"]["read"])
         self.assertIn("/config/apply", {action["path"] for action in screens["channels"]["actions"]})
         self.assertIn("channel_send", contract["forms"])
         self.assertIn("channel_approval_review", contract["forms"])
         self.assertIn("/document/parse/session-list", screens["document_ingest"]["read"])
         self.assertIn("/document/parse/session-summary", screens["document_ingest"]["read"])
         self.assertIn("document_ingest_plan", contract["forms"])
+        self.assertIn("/document/parse/upload", {action["path"] for action in screens["document_ingest"]["actions"]})
         self.assertIn("/document/parse/source-refs", {action["path"] for action in screens["document_ingest"]["actions"]})
         self.assertIn("/document/parse/ingest-report", {action["path"] for action in screens["document_ingest"]["actions"]})
         self.assertIn("job_create", contract["forms"])
@@ -896,12 +912,35 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("个性配置", shell_js)
         self.assertIn("settings-persona-name", shell_js)
         self.assertIn("settings-persona-image", shell_js)
+        self.assertIn("settings-commercial-trial-list", shell_js)
+        self.assertIn("settings-delivery-status-list", shell_js)
+        self.assertIn("renderCommercialTrialChecks", app_js)
+        self.assertIn("renderDeliveryStatusChecks", app_js)
+        self.assertIn("renderDeliveryAction", app_js)
+        self.assertIn("sent_channel_receipt_count", app_js)
+        self.assertIn("latest_channel_receipt", app_js)
+        self.assertIn("最近回执", app_js)
+        self.assertIn("settings-overview-action-list", app_js)
+        self.assertIn("settings-delivery-action", Path("web/bairui-console/styles.css").read_text(encoding="utf-8"))
+        self.assertIn("/delivery/status", app_js)
         self.assertIn("记忆图谱", shell_js)
         self.assertIn("显示记忆图谱", shell_js)
         self.assertIn("/chat", chat_js)
         self.assertIn("发送失败，请检查 bairui 服务、模型网关或 owner token", chat_js)
+        self.assertIn("onProcessEvent", chat_js)
+        self.assertIn("模型网关没有返回可展示正文", chat_js)
+        self.assertIn("emitConsoleProcessEvent", app_js)
+        self.assertIn("message_received", app_js)
+        self.assertIn("model_gateway", app_js)
+        self.assertIn("capability-list", shell_js)
+        self.assertIn("ops-event-list", shell_js)
+        self.assertIn("runtime-list", shell_js)
+        self.assertIn("/capabilities", app_js)
+        self.assertIn("renderRuntimeList", app_js)
+        self.assertIn("pushOpsEvent", app_js)
+        self.assertIn("可调用能力", shell_js)
         self.assertIn("buildBairuiGraphRows", app_js)
-        self.assertIn("buildObsidianGraphRows", app_js)
+        self.assertIn("buildMemoryVaultGraphRows", app_js)
         self.assertIn("/obsidian/graph", app_js)
         self.assertIn("/reports", app_js)
         self.assertIn("/source-refs", app_js)
@@ -940,11 +979,256 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(items["model_gateway"]["fields"]["api_key"], "configured")
         self.assertEqual(items["database"]["fields"]["database_url"], "configured")
         self.assertEqual(items["channel_targets"]["fields"]["will_send"], False)
+        self.assertFalse(items["channel_targets"]["fields"]["commercial_trial_ready"])
+        self.assertEqual(payload["commercial_trial"]["status"], "blocked")
+        self.assertIn("deliverable_channel", payload["commercial_trial"]["blockers"])
         self.assertIn("codegraph", items["codegraph_root"]["fields"]["path"])
         self.assertEqual(payload["checklist"]["title"], "bairui deployment checklist")
         self.assertIn("BAIRUI_MODEL_API_KEY=<set-in-local-env-or-server-secret-store>", payload["checklist"]["env_template"])
         self.assertIn("python -m src.hermes config-status", payload["checklist"]["commands"])
         self.assertNotIn("super-secret-key", payload["checklist"]["markdown"])
+
+    def test_config_status_commercial_trial_requires_owner_token_and_deliverable_channel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "https://models.example.test/v1",
+                "BAIRUI_MODEL_API_KEY": "secret-key",
+                "BAIRUI_MODEL_NAME": "gpt-5.5",
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "WECOM_BOT_KEY": "wecom-secret",
+                "BAIRUI_OWNER_TOKEN": "owner-secret",
+            }
+            for path in ("data", "logs", "vault"):
+                (root / path).mkdir(parents=True)
+            with patch.dict(os.environ, env, clear=False):
+                payload = build_config_status(load_settings())
+
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(payload["commercial_trial"]["status"], "ready")
+        self.assertEqual(payload["commercial_trial"]["blockers"], [])
+        items = {item["id"]: item for item in payload["items"]}
+        self.assertTrue(items["channel_targets"]["fields"]["commercial_trial_ready"])
+        self.assertEqual(items["channel_targets"]["fields"]["deliverable_target_count"], 1)
+        self.assertNotIn("wecom-secret", raw)
+        self.assertNotIn("owner-secret", raw)
+
+    def test_delivery_status_reports_secret_safe_commercial_trial_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "https://models.example.test/v1",
+                "BAIRUI_MODEL_API_KEY": "delivery-secret-key",
+                "BAIRUI_MODEL_NAME": "gpt-5.5",
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "WECOM_BOT_KEY": "wecom-secret",
+                "BAIRUI_OWNER_TOKEN": "owner-secret",
+            }
+            for path in ("data", "logs", "vault"):
+                (root / path).mkdir(parents=True)
+            with patch.dict(os.environ, env, clear=False):
+                payload = build_delivery_status(load_settings())
+
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(payload["service"], "bairui")
+        self.assertFalse(payload["secret_echo"])
+        self.assertIn(payload["status"], {"ready", "blocked"})
+        self.assertIn("document_memory_loop", payload["blockers"])
+        self.assertIn("channel_receipt", payload["blockers"])
+        self.assertIn("missing_enterprise_group_receipt", payload["blocker_reasons"])
+        self.assertIn("commercial_trial", {check["id"] for check in payload["checks"]})
+        self.assertEqual(payload["evidence"]["deliverable_target_count"], 1)
+        self.assertEqual(payload["evidence"]["sent_channel_receipt_count"], 0)
+        self.assertNotIn("delivery-secret-key", raw)
+        self.assertNotIn("wecom-secret", raw)
+        self.assertNotIn("owner-secret", raw)
+
+    def test_delivery_status_accepts_secret_safe_sent_channel_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "https://models.example.test/v1",
+                "BAIRUI_MODEL_API_KEY": "delivery-secret-key",
+                "BAIRUI_MODEL_NAME": "gpt-5.5",
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "WECOM_BOT_KEY": "wecom-secret",
+                "BAIRUI_OWNER_TOKEN": "owner-secret",
+            }
+            for path in ("data", "logs", "vault"):
+                (root / path).mkdir(parents=True)
+            receipt_dir = data_dir / "channel_receipts"
+            receipt_dir.mkdir(parents=True)
+            (receipt_dir / "receipt.json").write_text(
+                json.dumps(
+                    {
+                        "service": "bairui",
+                        "receipt_type": "channel_delivery",
+                        "request_id": "request-1",
+                        "review_id": "review-1",
+                        "target_id": "wecom:webhook:",
+                        "channel_type": "wecom-webhook",
+                        "will_send": True,
+                        "delivery_status": "sent",
+                        "external_message_id": "msg-1",
+                        "secret_echo": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, env, clear=False):
+                payload = build_delivery_status(load_settings())
+
+        raw = json.dumps(payload, ensure_ascii=False)
+        checks = {check["id"]: check for check in payload["checks"]}
+        self.assertEqual(checks["channel_receipt"]["status"], "ready")
+        self.assertNotIn("channel_receipt", payload["blockers"])
+        self.assertEqual(payload["evidence"]["sent_channel_receipt_count"], 1)
+        self.assertEqual(payload["evidence"]["latest_channel_receipt"]["external_message_id"], "msg-1")
+        self.assertNotIn("wecom-secret", raw)
+        self.assertNotIn("owner-secret", raw)
+
+    def test_delivery_status_explains_channel_blockers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+            }
+            for path in ("data", "logs", "vault"):
+                (root / path).mkdir(parents=True)
+            with patch.dict(os.environ, env, clear=False):
+                payload = build_delivery_status(load_settings())
+
+        checks = {check["id"]: check for check in payload["checks"]}
+        channel_check = checks["channel_delivery"]
+        self.assertEqual(channel_check["status"], "blocked")
+        self.assertIn("channels_disabled", channel_check["blockers"])
+        self.assertIn("channels_disabled", payload["evidence"]["channel_blockers"])
+        self.assertIn("targets_configured_but_channels_disabled", payload["evidence"]["channel_warnings"])
+        self.assertFalse(payload["secret_echo"])
+
+    def test_delivery_status_next_step_targets_missing_wecom_bot_key_after_core_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "https://models.example.test/v1",
+                "BAIRUI_MODEL_API_KEY": "delivery-secret-key",
+                "BAIRUI_MODEL_NAME": "gpt-5.5",
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "BAIRUI_OWNER_TOKEN": "owner-secret",
+            }
+            for path in ("data", "logs", "vault"):
+                (root / path).mkdir(parents=True)
+            with patch.dict(os.environ, env, clear=False):
+                payload = build_delivery_status(load_settings())
+
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(payload["status"], "blocked")
+        self.assertIn("deliverable_channel", payload["blocker_reasons"])
+        self.assertIn("enterprise group Bot Key", payload["next_step"])
+        self.assertIn("wecom:webhook:", payload["next_step"])
+        action_ids = {action["id"] for action in payload["actions"]}
+        self.assertIn("configure_wecom_trial_channel", action_ids)
+        self.assertIn("configure_postgresql", action_ids)
+        self.assertIn("verify_backup", action_ids)
+        wecom_action = next(action for action in payload["actions"] if action["id"] == "configure_wecom_trial_channel")
+        self.assertIn("wecom_bot_key", wecom_action["fields"])
+        self.assertEqual(wecom_action["endpoint"], "/channels/wecom-trial")
+        self.assertTrue(wecom_action["owner_required"])
+        self.assertNotIn("Set BAIRUI_OWNER_TOKEN", payload["next_step"])
+        self.assertNotIn("delivery-secret-key", raw)
+        self.assertNotIn("owner-secret", raw)
+
+    def test_delivery_status_http_and_cli_are_secret_safe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "https://models.example.test/v1",
+                "BAIRUI_MODEL_API_KEY": "http-delivery-secret",
+                "BAIRUI_MODEL_NAME": "gpt-5.5",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, _, body = _http_get(server.server_port, "/delivery/status")
+                    with patch("src.hermes.cli.print_json") as print_json:
+                        cli_code = run(["delivery-status"])
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        payload = json.loads(body.decode("utf-8"))
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["service"], "bairui")
+        self.assertEqual(payload["delivery_status"]["status"], "blocked")
+        self.assertIn("delivery_status", print_json.call_args.args[0])
+        self.assertEqual(cli_code, 1)
+        self.assertNotIn("http-delivery-secret", raw)
+
+    def test_deployment_checklist_http_and_cli_are_secret_safe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "https://models.example.test/v1",
+                "BAIRUI_MODEL_API_KEY": "deployment-secret-key",
+                "BAIRUI_MODEL_NAME": "gpt-5.5",
+                "WECOM_BOT_KEY": "deployment-wecom-secret",
+                "BAIRUI_OWNER_TOKEN": "deployment-owner-secret",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, _, body = _http_get(server.server_port, "/deployment/checklist")
+                    with patch("src.hermes.cli.print_json") as print_json:
+                        cli_json_code = run(["deployment-checklist"])
+                    with patch("builtins.print") as print_markdown:
+                        cli_markdown_code = run(["deployment-checklist", "--format", "markdown"])
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        payload = json.loads(body.decode("utf-8"))
+        raw = json.dumps(payload, ensure_ascii=False)
+        markdown = print_markdown.call_args.args[0]
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["service"], "bairui")
+        self.assertIn("deployment_checklist", payload)
+        self.assertIn("env_template", payload["deployment_checklist"])
+        self.assertIn("# bairui deployment checklist", markdown)
+        self.assertIn("BAIRUI_MODEL_BASE_URL", markdown)
+        self.assertEqual(cli_json_code, 0)
+        self.assertEqual(cli_markdown_code, 0)
+        self.assertIn("deployment_checklist", print_json.call_args.args[0])
+        self.assertNotIn("deployment-secret-key", raw + markdown)
+        self.assertNotIn("deployment-wecom-secret", raw + markdown)
+        self.assertNotIn("deployment-owner-secret", raw + markdown)
 
     def test_config_status_http_endpoint_is_secret_safe(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1162,6 +1446,59 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["model_gateway_models"]["status"], "completed")
         self.assertEqual(payload["model_gateway_models"]["models"], ["model-a", "model-b"])
+        self.assertFalse(payload["secret_echo"])
+        self.assertNotIn("temporary-secret", raw)
+
+    def test_model_gateway_probe_http_endpoint_requires_non_empty_chat(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return self.payload
+
+        def fake_open(request, timeout):
+            if request.full_url == "https://models.example.test/v1/models":
+                return FakeResponse(json.dumps({"data": [{"id": "gpt-5.5"}]}).encode("utf-8"))
+            if request.full_url == "https://models.example.test/v1/chat/completions":
+                return FakeResponse(json.dumps({"choices": [{"message": {"content": "bairui-ok"}}]}).encode("utf-8"))
+            raise AssertionError(f"unexpected url {request.full_url}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    with patch("src.hermes.model_gateway.urllib.request.urlopen", side_effect=fake_open):
+                        status, _, body = _http_post(
+                            server.server_port,
+                            "/model-gateway/probe",
+                            {"base_url": "https://models.example.test/v1", "api_key": "temporary-secret", "model": "gpt-5.5"},
+                        )
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        payload = json.loads(body.decode("utf-8"))
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["model_gateway_probe"]["status"], "ready")
+        self.assertEqual(payload["model_gateway_probe"]["chat_status"], "completed")
+        self.assertEqual(payload["model_gateway_probe"]["model"], "gpt-5.5")
         self.assertFalse(payload["secret_echo"])
         self.assertNotIn("temporary-secret", raw)
 
@@ -1544,6 +1881,29 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertNotIn("cli-secret-key", raw)
         self.assertIn("secrets are reported only as configured or missing", payload["config_status"]["secret_policy"])
 
+    def test_cli_config_status_alias_prints_safe_diagnostics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "BAIRUI_CODEGRAPH_ROOT": str(root / "codegraph"),
+                "BAIRUI_MODEL_BASE_URL": "https://models.example.test/v1",
+                "BAIRUI_MODEL_API_KEY": "cli-secret-key",
+                "BAIRUI_MODEL_NAME": "bairui-demo-model",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with patch("src.hermes.cli.print_json") as print_json:
+                    code = run(["config", "status"])
+
+        payload = print_json.call_args.args[0]
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["service"], "bairui")
+        self.assertIn(payload["config_status"]["status"], {"ready", "partial"})
+        self.assertNotIn("cli-secret-key", raw)
+
     def test_command_console_composer_maps_to_agent_contracts(self):
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
         chat_js = Path("web/bairui-console/chat.js").read_text(encoding="utf-8")
@@ -1587,8 +1947,39 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("renderActivationOverlay", app_js)
         self.assertIn("/frontend/contract", app_js)
         self.assertIn("/activation/setup-plan", app_js)
+        self.assertIn("/deployment/checklist", app_js)
         self.assertIn("activation-model-baseurl", app_js)
         self.assertIn("activation-model-key", app_js)
+        self.assertIn("activation-owner-token", app_js)
+        self.assertIn("owner_token", app_js)
+        self.assertIn("APPLY BAIRUI CONFIG", app_js)
+        self.assertIn("saveOwnerAuthToken(ownerToken)", app_js)
+        self.assertIn("activation-wecom-bot-key", app_js)
+        self.assertIn("activation-save-wecom-trial-btn", app_js)
+        self.assertIn("saveActivationWecomTrial", app_js)
+        self.assertIn("wecom_bot_key", app_js)
+        self.assertIn("channel_enabled", app_js)
+        self.assertIn("channel_targets_json", app_js)
+        self.assertIn("activationEnterpriseGroupTargetJson", app_js)
+        self.assertIn("WECOM_TRIAL_ENDPOINT", app_js)
+        self.assertIn("activation-wecom-trial", app_js)
+        self.assertIn("ACTIVATION_DRAFT_KEY", app_js)
+        self.assertIn("activation-detect-model-btn", app_js)
+        self.assertIn("activation-model-select", app_js)
+        self.assertIn("detectActivationModels", app_js)
+        self.assertIn("probeGatewayModel", app_js)
+        self.assertIn("/model-gateway/probe", app_js)
+        self.assertIn("真实回复探活", app_js)
+        self.assertIn("refreshActivationOverlay", app_js)
+        self.assertIn("renderActivationCommercialTrialCard", app_js)
+        self.assertIn("renderActivationDeploymentChecklistCard", app_js)
+        self.assertIn("activationRequiredBlockers", app_js)
+        self.assertIn("activationBlockerTab", app_js)
+        self.assertIn("还不能进入", app_js)
+        self.assertIn("activation-enter-feedback", app_js)
+        self.assertIn("Deployment Checklist", app_js)
+        self.assertIn("Commercial Trial", app_js)
+        self.assertIn("commercial_trial", app_js)
         self.assertIn("首次激活", app_js)
         self.assertIn("data-activation-tab", app_js)
         self.assertIn("activation-mode-card", app_js)
@@ -1615,6 +2006,10 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn(".activation-tab-panel", styles)
         self.assertIn(".activation-storage-dot", styles)
         self.assertIn(".activation-form-grid", styles)
+        self.assertIn(".activation-model-probe", styles)
+        self.assertIn(".activation-commercial-trial", styles)
+        self.assertIn(".activation-channel-trial", styles)
+        self.assertIn(".activation-enter-feedback", styles)
         self.assertIn(".panel", styles)
         self.assertIn("#graph", styles)
 
@@ -1646,9 +2041,248 @@ class RuntimeFoundationTests(unittest.TestCase):
 
         self.assertIn("initDocPanel", app_js)
         self.assertIn("createDocPanel", Path("web/bairui-console/app-shell.js").read_text(encoding="utf-8"))
+        self.assertIn("renderDocumentWorkbenchSettingsTab", app_js)
+        self.assertIn("loadDocumentWorkbench", app_js)
+        self.assertIn("createDocumentWorkbenchPlan", app_js)
+        self.assertIn("reviewDocumentMemoryCandidate", app_js)
+        self.assertIn("uploadDocumentWorkbenchPlan", app_js)
+        self.assertIn("document-workbench-file", app_js)
+        self.assertIn("document-workbench-upload-plan", app_js)
+        self.assertIn("/document/parse/upload", app_js)
+        self.assertIn("/document/parse/ingest-plan", app_js)
+        self.assertIn("/document/parse/session-list", app_js)
+        self.assertIn("/document/parse/session-summary", app_js)
+        self.assertIn("/document/parse/workbench-next", app_js)
+        self.assertIn("/document/parse/workbench-run-until-blocked", app_js)
+        self.assertIn("/document/parse/review-memory-candidate", app_js)
         self.assertIn("关于 bairui", doc_js)
         self.assertIn('if self.path == "/docs"', server_py)
         self.assertIn('"docs": []', server_py)
+
+    def test_document_upload_http_saves_file_and_creates_ingest_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "MINERU_OUTPUT_DIR": str(root / "mineru-output"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, _, body = _http_post(
+                        server.server_port,
+                        "/document/parse/upload",
+                        {
+                            "filename": "../客户 资料.md",
+                            "mime_type": "text/markdown",
+                            "file_base64": base64.b64encode("客户偏好：先给摘要，再给证据。".encode("utf-8")).decode("ascii"),
+                            "title": "客户资料",
+                            "language": "zh",
+                        },
+                    )
+                    payload = json.loads(body.decode("utf-8"))["document_upload"]
+                    uploaded_exists = Path(payload["upload_path"]).exists()
+                    ingests = list_document_ingests(load_settings().data_dir)
+                    audit = list_audit_events(load_settings().data_dir, limit=20)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        self.assertEqual(status, 201)
+        self.assertEqual(payload["status"], "planned")
+        self.assertEqual(payload["filename"], "客户-资料.md")
+        self.assertTrue(uploaded_exists)
+        self.assertEqual(payload["document_ingest"]["parser_command"][0], "bairui-internal-text-parser")
+        self.assertEqual(ingests[-1]["id"], payload["document_ingest"]["id"])
+        self.assertIn("document.upload_saved", {event["action"] for event in audit})
+
+    def test_uploaded_markdown_workbench_runs_to_memory_review_without_sonic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "MINERU_OUTPUT_DIR": str(root / "mineru-output"),
+                "SONIC_HOST": "",
+                "SONIC_PASSWORD": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    upload_status, _, upload_body = _http_post(
+                        server.server_port,
+                        "/document/parse/upload",
+                        {
+                            "filename": "memory-smoke.md",
+                            "mime_type": "text/markdown",
+                            "file_base64": base64.b64encode(
+                                "主人偏好：交付报告必须先给结论，然后列出来源证据和下一步动作。".encode("utf-8")
+                            ).decode("ascii"),
+                            "title": "Memory Smoke",
+                            "language": "zh",
+                        },
+                    )
+                    ingest_id = json.loads(upload_body.decode("utf-8"))["document_upload"]["document_ingest"]["id"]
+                    run_status, _, run_body = _http_post(
+                        server.server_port,
+                        "/document/parse/workbench-run-until-blocked",
+                        {"ingest_id": ingest_id, "max_candidates": 5, "max_steps": 10},
+                    )
+                    run_payload = json.loads(run_body.decode("utf-8"))["document_workbench_run"]
+                    candidates = list_document_memory_candidates(load_settings().data_dir)
+                    index_runs = list_document_index_runs(load_settings().data_dir)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        self.assertEqual(upload_status, 201)
+        self.assertEqual(run_status, 200)
+        self.assertEqual(run_payload["status"], "needs_review")
+        self.assertEqual(run_payload["steps"][-1]["action"]["command"], "review-memory-candidate")
+        self.assertEqual(index_runs[-1]["status"], "skipped")
+        self.assertGreaterEqual(len(candidates), 1)
+
+    def test_uploaded_text_workbench_generates_review_candidate_with_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "MINERU_OUTPUT_DIR": str(root / "mineru-output"),
+                "SONIC_HOST": "",
+                "SONIC_PASSWORD": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    upload_status, _, upload_body = _http_post(
+                        server.server_port,
+                        "/document/parse/upload",
+                        {
+                            "filename": "trial-memory.txt",
+                            "mime_type": "text/plain",
+                            "file_base64": base64.b64encode(
+                                "客户关注企业微信渠道、文档摄取、记忆审核和来源引用。项目目标是商用试点可交付。".encode("utf-8")
+                            ).decode("ascii"),
+                            "title": "Trial Memory",
+                            "language": "zh",
+                        },
+                    )
+                    ingest_id = json.loads(upload_body.decode("utf-8"))["document_upload"]["document_ingest"]["id"]
+                    run_status, _, run_body = _http_post(
+                        server.server_port,
+                        "/document/parse/workbench-run-until-blocked",
+                        {"ingest_id": ingest_id, "max_candidates": 5, "max_steps": 10},
+                    )
+                    run_payload = json.loads(run_body.decode("utf-8"))["document_workbench_run"]
+                    candidates = list_document_memory_candidates(load_settings().data_dir)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        self.assertEqual(upload_status, 201)
+        self.assertEqual(run_status, 200)
+        self.assertEqual(run_payload["status"], "needs_review")
+        self.assertGreaterEqual(len(candidates), 1)
+        self.assertEqual(candidates[-1]["status"], "pending_review")
+
+    def test_document_memory_trial_runs_complete_local_closure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "MINERU_OUTPUT_DIR": str(root / "mineru-output"),
+                "SONIC_HOST": "",
+                "SONIC_PASSWORD": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                result = run_document_memory_trial(
+                    load_settings(),
+                    text="bairui document memory trial verifies candidates, review, source refs, report, and graph sync.",
+                    decision="reject",
+                )
+                graph = build_obsidian_graph(load_settings())
+
+        evidence = result["evidence"]
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(evidence["current_stage"], "done")
+        self.assertEqual(evidence["progress_percent"], 100)
+        self.assertGreaterEqual(evidence["candidate_count"], 1)
+        self.assertGreaterEqual(evidence["review_count"], 1)
+        self.assertGreaterEqual(evidence["source_ref_count"], 1)
+        self.assertGreaterEqual(evidence["report_count"], 1)
+        self.assertGreaterEqual(len(graph["nodes"]), 1)
+        self.assertEqual(evidence["obsidian_graph"]["status"], "ready")
+        self.assertTrue(evidence["obsidian_graph"]["report_node_present"])
+        self.assertGreaterEqual(evidence["obsidian_graph"]["review_note_count"], 1)
+        self.assertFalse(evidence["obsidian_graph"]["secret_echo"])
+        self.assertFalse(evidence["secret_echo"])
+
+    def test_document_memory_trial_http_and_cli_return_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = {
+                "HERMES_DATA_DIR": str(root / "data"),
+                "HERMES_LOG_DIR": str(root / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(root / "vault"),
+                "MINERU_OUTPUT_DIR": str(root / "mineru-output"),
+                "SONIC_HOST": "",
+                "SONIC_PASSWORD": "",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, _, body = _http_post(
+                        server.server_port,
+                        "/document/parse/memory-trial",
+                        {
+                            "text": "bairui HTTP document memory trial verifies report and source references.",
+                            "decision": "reject",
+                        },
+                    )
+                    with patch("src.hermes.cli.print_json") as print_json:
+                        cli_code = run(
+                            [
+                                "document",
+                                "parse",
+                                "memory-trial",
+                                "--text",
+                                "bairui CLI document memory trial verifies report and source references.",
+                            ]
+                        )
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        payload = json.loads(body.decode("utf-8"))["document_memory_trial"]
+        cli_payload = print_json.call_args.args[0]["document_memory_trial"]
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["status"], "completed")
+        self.assertEqual(payload["evidence"]["current_stage"], "done")
+        self.assertGreaterEqual(payload["evidence"]["source_ref_count"], 1)
+        self.assertTrue(payload["evidence"]["obsidian_graph"]["report_node_present"])
+        self.assertEqual(cli_code, 0)
+        self.assertEqual(cli_payload["status"], "completed")
+        self.assertEqual(cli_payload["evidence"]["current_stage"], "done")
+        self.assertGreaterEqual(cli_payload["evidence"]["obsidian_graph"]["review_note_count"], 1)
 
     def test_memory_review_console_keeps_owner_review_and_source_trace_visible(self):
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
@@ -1656,10 +2290,10 @@ class RuntimeFoundationTests(unittest.TestCase):
         memory_screen = next(screen for screen in contract["screens"] if screen["id"] == "memory_review")
 
         self.assertIn("buildBairuiGraphRows", app_js)
-        self.assertIn("buildObsidianGraphRows", app_js)
+        self.assertIn("buildMemoryVaultGraphRows", app_js)
         self.assertIn("/obsidian/graph", app_js)
         self.assertIn("/obsidian/graph", memory_screen["read"])
-        self.assertIn('Obsidian 已同步', app_js)
+        self.assertIn('记忆仓已同步', app_js)
         self.assertIn("document_memory_candidates", app_js)
         self.assertIn("memory:candidate", app_js)
         self.assertIn("等待主人审核的长期记忆候选", app_js)
@@ -1689,19 +2323,58 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("social-targets-json", shell_js)
         self.assertIn("social-diagnostic-list", shell_js)
         self.assertIn("social-approval-list", shell_js)
-        self.assertIn("个人扫码渠道", shell_js)
-        self.assertIn("企业/机器人渠道字段", shell_js)
+        self.assertIn("social-review-list", shell_js)
+        self.assertIn("social-channel-flow", shell_js)
+        self.assertIn("social-commercial-trial-list", shell_js)
+        self.assertIn("commercial_trial", app_js)
+        self.assertIn("个人扫码通道", shell_js)
+        self.assertIn("订阅号客服通道", shell_js)
+        self.assertIn("企业群机器人", shell_js)
+        self.assertIn("群聊 Bot / NapCat", shell_js)
+        self.assertIn("协作应用通道", shell_js)
+        self.assertIn("海外群组 Bot", shell_js)
+        self.assertIn("social-qq-napcat-url", shell_js)
+        self.assertIn("qq_napcat_base_url", app_js)
+        self.assertIn("QQ_NAPCAT_BASE_URL", Path("src/hermes/config_status.py").read_text(encoding="utf-8"))
+        self.assertIn("social-build-wecom-target-btn", shell_js)
+        self.assertIn("social-send-test-btn", shell_js)
+        self.assertIn("upsertEnterpriseGroupTarget", app_js)
+        self.assertIn("/channels/send", app_js)
+        self.assertIn("/channels/approvals/review", app_js)
+        self.assertIn("data-channel-review", app_js)
         self.assertIn("/channels/status", app_js)
         self.assertIn("/channels/diagnostics", app_js)
         self.assertIn("/channels/approvals", app_js)
+        self.assertIn("/channels/approvals/reviews", app_js)
+        self.assertIn("/channels/receipts", app_js)
+        self.assertIn("channel_receipts", app_js)
+        self.assertIn("archived_receipt", app_js)
+        self.assertIn("/delivery/status", app_js)
+        self.assertIn("renderEnterpriseGroupChannelFlow", app_js)
+        self.assertIn("pending_review", app_js)
+        self.assertIn("deliverable_target_count", app_js)
+        self.assertIn("renderChannelReviewReceipts", app_js)
+        self.assertIn("delivery_evidence", app_js)
+        self.assertIn("receipt_path", app_js)
+        self.assertIn("receipt archived", app_js)
+        self.assertIn("回执已归档", app_js)
+        self.assertIn("external_message_id", app_js)
+        self.assertIn("raw_ok", app_js)
+        self.assertIn("secret_echo=false", app_js)
+        self.assertIn("platform=", app_js)
         self.assertIn("channel_targets_json", app_js)
         self.assertIn("channel_enabled", app_js)
         self.assertIn("/config/apply", app_js)
+        self.assertIn(".settings-channel-flow", Path("web/bairui-console/styles.css").read_text(encoding="utf-8"))
+        self.assertIn(".settings-channel-flow-step", Path("web/bairui-console/styles.css").read_text(encoding="utf-8"))
         self.assertIn("安全沙箱", shell_js)
         self.assertIn("渠道", popup_js)
         self.assertIn("向 bairui 发送消息", popup_js)
         self.assertIn("will_send", Path("src/hermes/config_status.py").read_text(encoding="utf-8"))
         self.assertIn("channel authorization is managed by bairui approvals", server_py)
+        self.assertIn("qq:napcat:private:", Path("vendor/bairui-social/src/social/targets.js").read_text(encoding="utf-8"))
+        self.assertIn("sendQQNapCat", Path("vendor/bairui-social/src/social/dispatch.js").read_text(encoding="utf-8"))
+        self.assertIn("真实渠道配置", popup_js + app_js)
 
     def test_channel_status_exposes_targets_and_approval_queue(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1718,8 +2391,11 @@ class RuntimeFoundationTests(unittest.TestCase):
                 status = channel_status(settings)
 
         self.assertTrue(status.enabled)
+        self.assertEqual(status.status, "approval_only")
         self.assertEqual(status.approval_queue_count, 1)
         self.assertEqual(status.configured_targets[0]["id"], "owner_review")
+        self.assertEqual(status.deliverable_target_count, 0)
+        self.assertIn("missing_deliverable_targets", status.warnings)
         self.assertEqual(status.supported_media_kinds, ("text", "image", "video", "file"))
 
     def test_codegraph_console_keeps_source_structure_separate_from_memory(self):
@@ -1741,6 +2417,30 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("initVoicePanel", app_js)
         self.assertIn("bairui.ttsfx", Path("web/bairui-console/tts-fx.js").read_text(encoding="utf-8"))
 
+    def test_voice_console_and_tts_use_bairui_backend_endpoints_instead_of_legacy_local_ports(self):
+        app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
+        voice_core_js = Path("web/bairui-console/voice-core.js").read_text(encoding="utf-8")
+        server_py = Path("src/hermes/server.py").read_text(encoding="utf-8")
+
+        self.assertIn('/settings/voice', app_js)
+        self.assertIn('/settings/tts', app_js)
+        self.assertIn('/voice/asr/upload', voice_core_js)
+        self.assertIn('/tts/stream', app_js)
+        self.assertNotIn('127.0.0.1:3721/settings/voice', app_js)
+        self.assertNotIn('ws://127.0.0.1:3721/voice/cloud', voice_core_js)
+        self.assertIn('if self.path == "/voice/asr/upload"', server_py)
+        self.assertIn('if self.path == "/tts/stream"', server_py)
+        self.assertIn('if self.path == "/settings/voice"', server_py)
+        self.assertIn('buildWavBlobFromInt16Chunks', voice_core_js)
+        self.assertIn('MediaRecorder.isTypeSupported', voice_core_js)
+        self.assertIn('mediaRecorder.requestData()', voice_core_js)
+        self.assertIn('recorder.onstop', voice_core_js)
+        self.assertIn('MIN_FINAL_AUDIO_BYTES', voice_core_js)
+        self.assertIn('MIN_FINAL_RECORDING_MS', voice_core_js)
+        self.assertIn('pendingFinalUpload', voice_core_js)
+        self.assertIn('"status": "no_speech"', server_py)
+        self.assertIn('parsed_path = urlparse(self.path).path', server_py)
+
     def test_settings_console_surfaces_runtime_readiness_and_safe_repair_actions(self):
         api_js = Path("web/bairui-console/api-client.js").read_text(encoding="utf-8")
         app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
@@ -1755,6 +2455,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/backup/status", settings_screen["read"])
         self.assertIn("/backup/plan", settings_screen["read"])
         self.assertIn("/model-gateway/models", {action["path"] for action in settings_screen["actions"]})
+        self.assertIn("/model-gateway/probe", {action["path"] for action in settings_screen["actions"]})
         self.assertIn("ownerAuthHeaders", api_js)
         self.assertIn("X-Bairui-Owner-Token", api_js)
         self.assertIn("设置", shell_js)
@@ -1770,6 +2471,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("settings-core-model-list", app_js)
         self.assertIn("settings-refresh-model-list", app_js)
         self.assertIn("/model-gateway/models", app_js)
+        self.assertIn("/model-gateway/probe", app_js)
         self.assertIn("settings-overview", app_js)
         self.assertIn("完整配置中心", app_js)
         for label in (
@@ -1952,6 +2654,11 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("python -m src.hermes backup plan", readme)
         self.assertIn("Customer-facing UI", doc)
         self.assertIn("only `bairui`", doc)
+        self.assertIn("python -m src.hermes delivery-status", doc)
+        self.assertIn("python -m src.hermes channels wecom-trial", doc)
+        self.assertIn("--approve", doc)
+        self.assertIn("-RequireWeComTrial", doc)
+        self.assertIn("scripts/commercial-go-no-go.sh", doc)
         self.assertIn(".\\scripts\\check-public-brand.ps1", doc)
         self.assertIn("http://127.0.0.1:8787/console", doc)
         self.assertIn("BAIRUI_OWNER_TOKEN", doc)
@@ -1967,6 +2674,8 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("/metrics", doc)
         self.assertIn("/errors", doc)
         self.assertIn("will_send=false", doc)
+        self.assertIn("channels receipts", doc)
+        self.assertIn("wecom-receipt.json", doc)
         self.assertIn("no automatic long-term memory write", doc)
         self.assertIn("data/readiness.json", doc)
         self.assertIn("PostgreSQL backup/restore", doc)
@@ -1981,7 +2690,29 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("docs/28-third-party-attribution-inventory.md", handoff)
         self.assertIn("APPLY BAIRUI CONFIG", handoff)
         self.assertIn("will_send=false", handoff)
+        self.assertIn("channels receipts", handoff)
+        self.assertIn("python -m src.hermes delivery-status", handoff)
+        self.assertIn("python -m src.hermes channels wecom-trial", handoff)
+        self.assertIn("-RequireWeComTrial", handoff)
+        self.assertIn("scripts/commercial-go-no-go.sh", handoff)
         self.assertIn("http://127.0.0.1:8787/console", handoff)
+
+    def test_channel_docs_match_real_wecom_dispatch_boundary(self):
+        docs = "\n".join(
+            Path(path).read_text(encoding="utf-8")
+            for path in (
+                "docs/21-backend-contract-freeze-for-frontend.md",
+                "docs/22-bairui-frontend-design-and-source-ui-modification.md",
+                "docs/24-bairui-frontend-screens-and-ui-design.md",
+                "docs/25-product-demo-acceptance.md",
+            )
+        )
+        self.assertIn("Enterprise WeCom", docs)
+        self.assertIn("will_send=true", docs)
+        self.assertIn("secret-safe receipt", docs)
+        self.assertNotIn("Backend currently records approval and", docs)
+        self.assertNotIn("records approval only and will_send=false", docs)
+        self.assertNotIn("Always show that current backend records approval only", docs)
 
     def test_third_party_attribution_inventory_covers_trial_license_boundaries(self):
         doc = Path("docs/28-third-party-attribution-inventory.md").read_text(encoding="utf-8")
@@ -2233,6 +2964,74 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(diagnostics[0].supports, ("text", "file"))
         self.assertEqual(diagnostics[0].blockers, ())
 
+    def test_channel_status_is_ready_when_deliverable_target_is_configured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "FEISHU_APP_ID": "cli_a",
+                "FEISHU_APP_SECRET": "secret",
+                "BAIRUI_CHANNEL_TARGETS_JSON": json.dumps(
+                    [
+                        {
+                            "id": "feishu:test",
+                            "label": "Feishu Test",
+                            "channel_type": "feishu",
+                            "supports": ["text"],
+                        }
+                    ]
+                ),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                status = channel_status(load_settings())
+        self.assertEqual(status.status, "ready")
+        self.assertEqual(status.deliverable_target_count, 1)
+        self.assertNotIn("missing_deliverable_targets", status.warnings)
+
+    def test_channel_targets_auto_add_safe_wecom_target_when_bot_key_is_configured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "WECOM_BOT_KEY": "secret-wecom-key",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                status = channel_status(load_settings())
+
+        raw = json.dumps(status.configured_targets, ensure_ascii=False)
+        self.assertEqual(status.status, "ready")
+        self.assertEqual(status.deliverable_target_count, 1)
+        self.assertIn("wecom:webhook:", raw)
+        self.assertIn("auto_generated", raw)
+        self.assertNotIn("secret-wecom-key", raw)
+
+    def test_config_apply_wecom_bot_key_creates_safe_auto_target_after_reload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                result = apply_local_config(settings, {"values": {"wecom_bot_key": "saved-wecom-key"}})
+                reloaded = load_settings()
+                status = channel_status(reloaded)
+
+        raw = json.dumps(status.configured_targets, ensure_ascii=False)
+        self.assertEqual(result["status"], "saved")
+        self.assertEqual(result["applied"]["wecom_bot_key"], "configured")
+        self.assertEqual(status.status, "ready")
+        self.assertEqual(status.deliverable_target_count, 1)
+        self.assertIn("Enterprise Group Bot", raw)
+        self.assertIn("wecom:webhook:", raw)
+        self.assertNotIn("saved-wecom-key", raw)
+
     def test_channel_send_plan_is_audited_and_never_sends(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "data"
@@ -2256,6 +3055,64 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(audit[-1]["payload"]["will_send"], False)
         self.assertEqual(requests[-1]["status"], "pending_review")
         self.assertEqual(result.approval_request_id, requests[-1]["id"])
+
+    def test_channel_send_plan_blocks_deliverable_target_missing_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "BAIRUI_CHANNEL_TARGETS_JSON": json.dumps(
+                    [
+                        {
+                            "id": "wecom:webhook:",
+                            "label": "WeCom Trial",
+                            "channel_type": "wecom-webhook",
+                            "supports": ["text"],
+                            "requires_owner_confirmation": True,
+                        }
+                    ]
+                ),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                result = plan_channel_send(settings, {"target_id": "wecom:webhook:", "text": "hello", "media_kind": "text"})
+                approvals = list_channel_approval_requests(data_dir)
+        self.assertEqual(result.status, "blocked")
+        self.assertEqual(result.reason, "missing_wecom_bot_key")
+        self.assertEqual(result.approval_request_id, "")
+        self.assertEqual(approvals, [])
+
+    def test_channel_send_plan_creates_approval_for_configured_wecom_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "WECOM_BOT_KEY": "key-1",
+                "BAIRUI_CHANNEL_TARGETS_JSON": json.dumps(
+                    [
+                        {
+                            "id": "wecom:webhook:",
+                            "label": "WeCom Trial",
+                            "channel_type": "wecom-webhook",
+                            "supports": ["text"],
+                            "requires_owner_confirmation": True,
+                        }
+                    ]
+                ),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                result = plan_channel_send(settings, {"target_id": "wecom:webhook:", "text": "hello", "media_kind": "text"})
+                approvals = list_channel_approval_requests(data_dir)
+        self.assertEqual(result.status, "approval_required")
+        self.assertEqual(result.reason, "owner_confirmation_required")
+        self.assertEqual(result.approval_request_id, approvals[-1]["id"])
 
     def test_channel_approvals_list_and_review_do_not_send(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2328,15 +3185,272 @@ class RuntimeFoundationTests(unittest.TestCase):
                     review = review_channel_approval(
                         settings,
                         {"request_id": plan.approval_request_id, "decision": "approve", "reviewer_ref": "owner", "note": "ok"},
-                    )
+                )
                 reviews = list_channel_approval_reviews(data_dir)
+                listed_receipts = list_channel_delivery_receipts(settings)
+                audit_events = list_audit_events(data_dir, limit=50)
+                receipt = json.loads(Path(review.delivery_evidence["receipt_path"]).read_text(encoding="utf-8"))
         self.assertEqual(review.status, "reviewed")
         self.assertTrue(review.will_send)
         self.assertEqual(review.reason, "approved_and_dispatched")
         self.assertEqual(review.delivery_status, "sent")
         self.assertEqual(review.external_message_id, "msg-1")
+        self.assertEqual(review.delivery_evidence["external_message_id"], "msg-1")
+        self.assertIn("receipt_path", review.delivery_evidence)
+        receipt_raw = json.dumps(receipt, ensure_ascii=False)
+        self.assertEqual(receipt["service"], "bairui")
+        self.assertEqual(receipt["receipt_type"], "channel_delivery")
+        self.assertEqual(receipt["request_id"], plan.approval_request_id)
+        self.assertEqual(receipt["review_id"], review.review_id)
+        self.assertEqual(receipt["delivery_status"], "sent")
+        self.assertEqual(receipt["external_message_id"], "msg-1")
+        self.assertFalse(receipt["secret_echo"])
+        self.assertNotIn("test-key", receipt_raw)
+        listed_raw = json.dumps(listed_receipts, ensure_ascii=False)
+        self.assertEqual(listed_receipts[0]["external_message_id"], "msg-1")
+        self.assertEqual(listed_receipts[0]["target_id"], "wecom:webhook:")
+        self.assertFalse(listed_receipts[0]["secret_echo"])
+        self.assertNotIn("test-key", listed_raw)
+        self.assertFalse(review.delivery_evidence["secret_echo"])
         self.assertEqual(reviews[-1]["external_message_id"], "msg-1")
+        self.assertEqual(reviews[-1]["delivery_evidence"]["external_message_id"], "msg-1")
+        self.assertIn("channel.external_send_recorded", {event["action"] for event in audit_events})
         dispatch_mock.assert_called_once()
+
+    def test_channel_wecom_trial_cli_blocks_without_bot_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+            }
+            with patch.dict(os.environ, env, clear=False), patch("src.hermes.cli.print_json") as print_json:
+                code = run(["channels", "wecom-trial", "--text", "hello"])
+
+        payload = print_json.call_args.args[0]["wecom_trial"]
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(code, 1)
+        self.assertEqual(payload["status"], "blocked")
+        self.assertEqual(payload["plan"]["reason"], "target_not_found")
+        self.assertIn("wecom:webhook:", raw)
+        self.assertNotIn("WECOM_BOT_KEY=", raw)
+
+    def test_channel_wecom_trial_cli_creates_approval_without_dispatch_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "WECOM_BOT_KEY": "trial-secret-key",
+            }
+            with patch.dict(os.environ, env, clear=False), patch("src.hermes.cli.print_json") as print_json:
+                code = run(["channels", "wecom-trial", "--text", "hello"])
+                approvals = list_channel_approval_requests(data_dir)
+
+        payload = print_json.call_args.args[0]["wecom_trial"]
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["status"], "ready_to_approve")
+        self.assertEqual(payload["plan"]["status"], "approval_required")
+        self.assertEqual(payload["review"], None)
+        self.assertEqual(approvals[-1]["target_id"], "wecom:webhook:")
+        self.assertNotIn("trial-secret-key", raw)
+
+    def test_channel_wecom_trial_cli_approve_records_dispatch_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "WECOM_BOT_KEY": "trial-secret-key",
+            }
+            fake = SocialDispatchResult(
+                status="dispatched",
+                will_send=True,
+                delivery_status="sent",
+                delivery_reason="",
+                external_message_id="wecom-msg-1",
+                platform="wecom-webhook",
+                raw={"ok": True},
+            )
+            with (
+                patch.dict(os.environ, env, clear=False),
+                patch("src.hermes.channels.dispatch_channel_target", return_value=fake),
+                patch("src.hermes.cli.print_json") as print_json,
+            ):
+                code = run(["channels", "wecom-trial", "--text", "hello", "--approve"])
+                payload = print_json.call_args.args[0]["wecom_trial"]
+                receipts_code = run(["channels", "receipts"])
+                receipts_payload = print_json.call_args.args[0]
+                reviews = list_channel_approval_reviews(data_dir)
+                receipt = json.loads(Path(payload["review"]["delivery_evidence"]["receipt_path"]).read_text(encoding="utf-8"))
+
+        raw = json.dumps(payload, ensure_ascii=False)
+        receipts_raw = json.dumps(receipts_payload, ensure_ascii=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(receipts_code, 0)
+        self.assertEqual(payload["status"], "reviewed")
+        self.assertTrue(payload["review"]["will_send"])
+        self.assertEqual(payload["review"]["delivery_status"], "sent")
+        self.assertEqual(payload["review"]["external_message_id"], "wecom-msg-1")
+        self.assertEqual(payload["review"]["delivery_evidence"]["external_message_id"], "wecom-msg-1")
+        self.assertIn("receipt_path", payload["review"]["delivery_evidence"])
+        self.assertEqual(receipt["delivery_status"], "sent")
+        self.assertEqual(receipt["external_message_id"], "wecom-msg-1")
+        self.assertFalse(receipt["secret_echo"])
+        self.assertEqual(receipts_payload["channel_receipts"][0]["external_message_id"], "wecom-msg-1")
+        self.assertEqual(receipts_payload["channel_receipts"][0]["target_id"], "wecom:webhook:")
+        self.assertFalse(receipts_payload["channel_receipts"][0]["secret_echo"])
+        self.assertFalse(payload["review"]["delivery_evidence"]["secret_echo"])
+        self.assertEqual(reviews[-1]["external_message_id"], "wecom-msg-1")
+        self.assertEqual(reviews[-1]["delivery_evidence"]["external_message_id"], "wecom-msg-1")
+        self.assertNotIn("trial-secret-key", raw)
+        self.assertNotIn("trial-secret-key", receipts_raw)
+
+    def test_run_wecom_trial_shared_helper_does_not_echo_secret(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "WECOM_BOT_KEY": "shared-helper-secret",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                result = run_wecom_trial(load_settings(), {"text": "hello"})
+                approvals = list_channel_approval_requests(data_dir)
+
+        raw = json.dumps(result, ensure_ascii=False)
+        self.assertEqual(result["status"], "ready_to_approve")
+        self.assertEqual(result["plan"]["status"], "approval_required")
+        self.assertEqual(approvals[-1]["target_id"], "wecom:webhook:")
+        self.assertNotIn("shared-helper-secret", raw)
+
+    def test_saved_wecom_bot_key_auto_generates_deliverable_target_without_restart(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                result = apply_local_config(
+                    settings,
+                    {
+                        "values": {
+                            "channel_enabled": "1",
+                            "channel_targets_json": "[]",
+                            "wecom_bot_key": "saved-local-wecom-secret",
+                        },
+                        "danger_confirmation": DANGEROUS_CONFIRMATION_PHRASE,
+                    },
+                )
+                next_settings = load_settings()
+                status = channel_status(next_settings)
+                trial = run_wecom_trial(next_settings, {"text": "hello"})
+
+        raw = json.dumps(trial, ensure_ascii=False)
+        self.assertEqual(result["status"], "saved")
+        self.assertEqual(status.status, "ready")
+        self.assertTrue(status.enabled)
+        self.assertEqual(status.deliverable_target_count, 1)
+        self.assertIn("wecom:webhook:", [target["id"] for target in status.configured_targets])
+        self.assertEqual(trial["status"], "ready_to_approve")
+        self.assertEqual(trial["plan"]["status"], "approval_required")
+        self.assertNotIn("saved-local-wecom-secret", raw)
+
+    def test_channel_wecom_trial_http_endpoint_creates_approval(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "WECOM_BOT_KEY": "http-trial-secret",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, _, body = _http_post(
+                        server.server_port,
+                        "/channels/wecom-trial",
+                        {"text": "hello from http", "approve": False},
+                    )
+                    approvals = list_channel_approval_requests(data_dir)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        payload = json.loads(body.decode("utf-8"))["wecom_trial"]
+        raw = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(status, 202)
+        self.assertEqual(payload["status"], "ready_to_approve")
+        self.assertEqual(payload["plan"]["approval_request_id"], approvals[-1]["id"])
+        self.assertNotIn("http-trial-secret", raw)
+
+    def test_channel_wecom_trial_http_endpoint_approve_records_receipt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / "data"
+            env = {
+                "HERMES_DATA_DIR": str(data_dir),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "WECOM_BOT_KEY": "http-trial-secret",
+            }
+            fake = SocialDispatchResult(
+                status="dispatched",
+                will_send=True,
+                delivery_status="sent",
+                delivery_reason="",
+                external_message_id="http-wecom-msg-1",
+                platform="wecom-webhook",
+                raw={"ok": True},
+            )
+            with patch.dict(os.environ, env, clear=False), patch("src.hermes.channels.dispatch_channel_target", return_value=fake):
+                server = ThreadingHTTPServer(("127.0.0.1", 0), HermesHandler)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, _, body = _http_post(
+                        server.server_port,
+                        "/channels/wecom-trial",
+                        {"text": "hello from http", "approve": True},
+                    )
+                    receipt_status, _, receipt_body = _http_get(server.server_port, "/channels/receipts")
+                    reviews = list_channel_approval_reviews(data_dir)
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+        payload = json.loads(body.decode("utf-8"))["wecom_trial"]
+        receipt_payload = json.loads(receipt_body.decode("utf-8"))
+        raw = json.dumps(payload, ensure_ascii=False)
+        receipt_raw = json.dumps(receipt_payload, ensure_ascii=False)
+        self.assertEqual(status, 200)
+        self.assertEqual(receipt_status, 200)
+        self.assertEqual(payload["status"], "reviewed")
+        self.assertTrue(payload["review"]["will_send"])
+        self.assertEqual(payload["review"]["delivery_status"], "sent")
+        self.assertEqual(payload["review"]["external_message_id"], "http-wecom-msg-1")
+        self.assertEqual(receipt_payload["channel_receipts"][0]["external_message_id"], "http-wecom-msg-1")
+        self.assertFalse(receipt_payload["channel_receipts"][0]["secret_echo"])
+        self.assertEqual(reviews[-1]["external_message_id"], "http-wecom-msg-1")
+        self.assertNotIn("http-trial-secret", raw)
+        self.assertNotIn("http-trial-secret", receipt_raw)
 
     def test_channel_diagnostics_report_missing_social_credentials(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2361,6 +3475,30 @@ class RuntimeFoundationTests(unittest.TestCase):
                 diagnostics = diagnose_channel_targets(load_settings())
         self.assertEqual(diagnostics[0].status, "missing_config")
         self.assertIn("missing_feishu_app_id", diagnostics[0].blockers)
+
+    def test_channel_diagnostics_report_missing_qq_napcat_runtime(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_CHANNELS_ENABLED": "1",
+                "BAIRUI_CHANNEL_TARGETS_JSON": json.dumps(
+                    [
+                        {
+                            "id": "qq:napcat:private:10001",
+                            "label": "QQ Test User",
+                            "channel_type": "qq-napcat",
+                            "supports": ["text"],
+                            "requires_owner_confirmation": True,
+                        }
+                    ]
+                ),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                diagnostics = diagnose_channel_targets(load_settings())
+        self.assertEqual(diagnostics[0].status, "missing_config")
+        self.assertIn("missing_qq_napcat_base_url", diagnostics[0].blockers)
 
     def test_channel_approval_reviews_http_endpoint_lists_review_records(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2719,12 +3857,12 @@ class RuntimeFoundationTests(unittest.TestCase):
             with patch.dict(os.environ, env, clear=False):
                 result = index_document_artifacts(load_settings(), ingest.id)
             runs = list_document_index_runs(data_dir)
-        self.assertEqual(result.status, "failed")
-        self.assertEqual(result.run.failed_count, 1)
-        self.assertEqual(result.run.skipped_count, 1)
-        self.assertEqual(runs[0]["status"], "failed")
+        self.assertEqual(result.status, "skipped")
+        self.assertEqual(result.run.failed_count, 0)
+        self.assertEqual(result.run.skipped_count, 2)
+        self.assertEqual(runs[0]["status"], "skipped")
         self.assertEqual(runs[0]["provider"], "sonic")
-        self.assertEqual(runs[0]["results"][0]["status"], "missing_config")
+        self.assertIn("missing_config", runs[0]["error"])
 
     def test_index_document_artifacts_pushes_text_artifacts_to_sonic(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2810,6 +3948,30 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(result.status, "skipped")
         self.assertEqual(result.candidates, ())
         self.assertEqual(result.skipped_count, 1)
+
+    def test_generate_document_memory_candidates_falls_back_for_reviewable_plain_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            output_dir = root / "mineru-output"
+            output_dir.mkdir()
+            (output_dir / "plain.txt").write_text(
+                "这是一段普通说明文字，用于验证上传文本也会进入人工审核队列，而不是卡在候选生成步骤。",
+                encoding="utf-8",
+            )
+            ingest = create_document_ingest(
+                data_dir,
+                title="Plain Text",
+                input_path="plain.txt",
+                output_dir=str(output_dir),
+                parser_command=("bairui-internal-text-parser", "plain.txt", str(output_dir), "plain.txt"),
+            )
+            register_document_artifacts(data_dir, ingest.id)
+            result = generate_document_memory_candidates(data_dir, ingest.id)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(len(result.candidates), 1)
+        self.assertIn("owner decision", result.candidates[0].reason)
 
     def test_review_document_memory_candidate_rejects_and_writes_obsidian_graph_note(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3063,7 +4225,7 @@ class RuntimeFoundationTests(unittest.TestCase):
             output_dir = root / "mineru-output"
             output_dir.mkdir()
             (output_dir / "sample.md").write_text(
-                "Bairui Hermes ingest reports should summarize artifacts, Sonic indexing, memory review, and source refs.",
+                "bairui ingest reports should summarize artifacts, local indexing, memory review, and source refs.",
                 encoding="utf-8",
             )
             ingest = create_document_ingest(
@@ -3190,7 +4352,7 @@ class RuntimeFoundationTests(unittest.TestCase):
                 create_document_source_refs(load_settings(), ingest.id)
                 create_document_ingest_report(load_settings(), ingest.id)
                 state = build_document_workbench_state(load_settings(), ingest.id)
-        self.assertEqual(state.status, "partial")
+        self.assertEqual(state.status, "ready")
         self.assertEqual(state.pipeline["artifact_registration"], "completed")
         self.assertEqual(state.pipeline["memory_reviews"], "completed")
         self.assertEqual(state.pipeline["source_refs"], "completed")
@@ -3199,7 +4361,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(state.counts["memory_reviews"], 1)
         self.assertEqual(state.next_actions[0]["command"], "done")
         self.assertFalse(state.blockers)
-        self.assertTrue(any("local index" in warning for warning in state.warnings))
+        self.assertFalse(state.warnings)
 
     def test_document_ingest_session_summary_is_frontend_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3381,8 +4543,15 @@ class RuntimeFoundationTests(unittest.TestCase):
             self.assertEqual(list_audit_events(root / "data")[0]["action"], "obsidian.report_written")
 
     def test_model_gateway_reports_missing_config(self):
-        settings = load_settings()
-        result = complete_chat(settings, "hello")
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                result = complete_chat(settings, "hello")
         self.assertEqual(result.status, "missing_config")
 
     def test_build_chat_payload(self):
@@ -3421,6 +4590,332 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(result.models, ("bairui-main", "bairui-fast"))
         self.assertEqual(seen["url"], "https://models.example.test/v1/models")
         self.assertEqual(seen["authorization"], "Bearer secret-key")
+
+    def test_model_gateway_models_cli_is_secret_safe(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps({"data": [{"id": "gpt-5.5"}, {"id": "bairui-fast"}]}).encode("utf-8")
+
+        seen = {}
+
+        def fake_open(request, timeout):
+            seen["url"] = request.full_url
+            seen["authorization"] = request.headers.get("Authorization")
+            return FakeResponse()
+
+        with patch("src.hermes.model_gateway.urllib.request.urlopen", side_effect=fake_open):
+            with patch("src.hermes.cli.print_json") as print_json:
+                code = run(["model-gateway", "models", "--base-url", "https://models.example.test", "--api-key", "temporary-secret"])
+
+        payload = print_json.call_args.args[0]
+        raw = json.dumps({**payload, "model_gateway_models": asdict(payload["model_gateway_models"])}, ensure_ascii=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["service"], "bairui")
+        self.assertEqual(payload["model_gateway_models"].status, "completed")
+        self.assertEqual(payload["model_gateway_models"].models, ("gpt-5.5", "bairui-fast"))
+        self.assertEqual(seen["authorization"], "Bearer temporary-secret")
+        self.assertNotIn("temporary-secret", raw)
+
+    def test_model_gateway_probe_blocks_empty_chat(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return self.payload
+
+        def fake_open(request, timeout):
+            if request.full_url == "https://models.example.test/v1/models":
+                return FakeResponse(json.dumps({"data": [{"id": "gpt-5.5"}]}).encode("utf-8"))
+            if request.full_url == "https://models.example.test/v1/chat/completions":
+                return FakeResponse(json.dumps({"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]}).encode("utf-8"))
+            raise AssertionError(f"unexpected url {request.full_url}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                result = probe_model_gateway(
+                    load_settings(),
+                    {"base_url": "https://models.example.test/v1", "api_key": "secret-key", "model": "gpt-5.5"},
+                    opener=fake_open,
+                )
+
+        self.assertEqual(result.status, "blocked")
+        self.assertEqual(result.chat_status, "failed")
+        self.assertIn("empty content", result.error)
+        self.assertFalse(result.secret_echo)
+
+    def test_model_gateway_probe_falls_back_to_available_chat_model(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return self.payload
+
+        seen_models = []
+
+        def fake_open(request, timeout):
+            if request.full_url == "https://models.example.test/v1/models":
+                return FakeResponse(json.dumps({"data": [{"id": "gpt-5.5"}, {"id": "gpt-5.5-openai-compact"}]}).encode("utf-8"))
+            if request.full_url == "https://models.example.test/v1/chat/completions":
+                body = json.loads(request.data.decode("utf-8"))
+                seen_models.append(body["model"])
+                content = "" if body["model"] == "gpt-5.5" else "bairui-ok"
+                return FakeResponse(json.dumps({"choices": [{"message": {"content": content}, "finish_reason": "stop"}]}).encode("utf-8"))
+            raise AssertionError(f"unexpected url {request.full_url}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                result = probe_model_gateway(
+                    load_settings(),
+                    {"base_url": "https://models.example.test/v1", "api_key": "secret-key", "model": "gpt-5.5"},
+                    opener=fake_open,
+                )
+
+        self.assertEqual(result.status, "ready")
+        self.assertEqual(result.model, "gpt-5.5-openai-compact")
+        self.assertEqual(seen_models, ["gpt-5.5", "gpt-5.5-openai-compact"])
+
+    def test_model_gateway_probe_summarizes_upstream_503_failures(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return self.payload
+
+        def fake_open(request, timeout):
+            if request.full_url == "https://models.example.test/v1/models":
+                return FakeResponse(
+                    json.dumps(
+                        {"data": [{"id": "gpt-5.5"}, {"id": "gpt-5.4"}, {"id": "gpt-4o"}, {"id": "bairui-extra"}]}
+                    ).encode("utf-8")
+                )
+            if request.full_url == "https://models.example.test/v1/chat/completions":
+                raise urllib.error.HTTPError(request.full_url, 503, "Service Unavailable", hdrs=None, fp=BytesIO(b""))
+            raise AssertionError(f"unexpected url {request.full_url}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                result = probe_model_gateway(
+                    load_settings(),
+                    {"base_url": "https://models.example.test/v1", "api_key": "secret-key", "model": "gpt-5.5"},
+                    opener=fake_open,
+                )
+
+        raw = json.dumps(asdict(result), ensure_ascii=False)
+        self.assertEqual(result.status, "blocked")
+        self.assertEqual(result.chat_status, "failed")
+        self.assertIn("upstream chat service is unavailable", result.detail)
+        self.assertIn("upstream_service_unavailable", result.error)
+        self.assertIn("more models also returned 503", result.error)
+        self.assertLess(len(result.error), 260)
+        self.assertNotIn("secret-key", raw)
+
+    def test_model_gateway_probe_cli_is_secret_safe(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return self.payload
+
+        def fake_open(request, timeout):
+            if request.full_url == "https://models.example.test/v1/models":
+                return FakeResponse(json.dumps({"data": [{"id": "gpt-5.5"}]}).encode("utf-8"))
+            if request.full_url == "https://models.example.test/v1/chat/completions":
+                return FakeResponse(json.dumps({"choices": [{"message": {"content": "bairui-ok"}}]}).encode("utf-8"))
+            raise AssertionError(f"unexpected url {request.full_url}")
+
+        with patch("src.hermes.model_gateway.urllib.request.urlopen", side_effect=fake_open):
+            with patch("src.hermes.cli.print_json") as print_json:
+                code = run(["model-gateway", "probe", "--base-url", "https://models.example.test/v1", "--api-key", "temporary-secret", "--model", "gpt-5.5"])
+
+        payload = print_json.call_args.args[0]
+        raw = json.dumps({**payload, "model_gateway_probe": asdict(payload["model_gateway_probe"])}, ensure_ascii=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["model_gateway_probe"].status, "ready")
+        self.assertEqual(payload["model_gateway_probe"].chat_status, "completed")
+        self.assertNotIn("temporary-secret", raw)
+
+    def test_model_gateway_models_falls_back_to_v1_when_root_returns_invalid_json(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return self.payload
+
+        seen_urls = []
+
+        def fake_open(request, timeout):
+            seen_urls.append(request.full_url)
+            if request.full_url == "https://models.example.test/models":
+                return FakeResponse(b"<html>not json</html>")
+            if request.full_url == "https://models.example.test/v1/models":
+                return FakeResponse(json.dumps({"data": [{"id": "bairui-main"}]}).encode("utf-8"))
+            raise AssertionError(f"unexpected url {request.full_url}")
+
+        settings = load_settings()
+        result = list_models(
+            settings,
+            {"base_url": "https://models.example.test", "api_key": "secret-key"},
+            opener=fake_open,
+        )
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.base_url, "https://models.example.test/v1")
+        self.assertEqual(result.models, ("bairui-main",))
+        self.assertEqual(
+            seen_urls,
+            [
+                "https://models.example.test/models",
+                "https://models.example.test/v1/models",
+            ],
+        )
+
+    def test_model_gateway_chat_falls_back_to_v1_when_root_returns_invalid_json(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return self.payload
+
+        seen_urls = []
+
+        def fake_open(request, timeout):
+            seen_urls.append(request.full_url)
+            if request.full_url == "https://models.example.test/chat/completions":
+                return FakeResponse(b"<html>not json</html>")
+            if request.full_url == "https://models.example.test/v1/chat/completions":
+                return FakeResponse(
+                    json.dumps({"choices": [{"message": {"content": "smoke-ok"}}]}).encode("utf-8")
+                )
+            raise AssertionError(f"unexpected url {request.full_url}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(
+                os.environ,
+                {
+                    "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                    "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                    "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                    "BAIRUI_MODEL_BASE_URL": "https://models.example.test",
+                    "BAIRUI_MODEL_API_KEY": "secret-key",
+                    "BAIRUI_MODEL_NAME": "bairui-main",
+                },
+                clear=False,
+            ):
+                settings = load_settings()
+                result = complete_chat(settings, "hello", opener=fake_open)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.content, "smoke-ok")
+        self.assertEqual(result.provider, "https://models.example.test/v1")
+        self.assertEqual(
+            seen_urls,
+            [
+                "https://models.example.test/chat/completions",
+                "https://models.example.test/v1/chat/completions",
+            ],
+        )
+
+    def test_model_gateway_chat_rejects_empty_content(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    {
+                        "choices": [
+                            {
+                                "message": {"role": "assistant", "content": ""},
+                                "finish_reason": "stop",
+                            }
+                        ]
+                    }
+                ).encode("utf-8")
+
+        def fake_open(request, timeout):
+            return FakeResponse()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "BAIRUI_MODEL_BASE_URL": "https://models.example.test/v1",
+                "BAIRUI_MODEL_API_KEY": "secret-key",
+                "BAIRUI_MODEL_NAME": "gpt-5.5",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                result = complete_chat(load_settings(), "hello", opener=fake_open)
+
+        self.assertEqual(result.status, "failed")
+        self.assertIn("empty content", result.error)
+        self.assertIn("finish_reason=stop", result.error)
 
     def test_database_status_without_url_is_missing_config(self):
         settings = load_settings()
@@ -3551,6 +5046,21 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("runtime-readiness", help_text)
         self.assertIn("backup", help_text)
 
+    def test_runtime_installation_surface_is_allowlisted_and_progress_visible(self):
+        app_js = Path("web/bairui-console/app.js").read_text(encoding="utf-8")
+        server_py = Path("src/hermes/server.py").read_text(encoding="utf-8")
+        installer_py = Path("src/hermes/runtime_installer.py").read_text(encoding="utf-8")
+        styles_css = Path("web/bairui-console/styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("/runtime/installations", server_py)
+        self.assertIn("/runtime/installations/start", server_py)
+        self.assertIn("ALLOWED_RUNTIME_IDS", installer_py)
+        self.assertIn("INSTALL BAIRUI RUNTIME", installer_py)
+        self.assertIn("runtime-install-btn", app_js)
+        self.assertIn("settings-install-progress", app_js)
+        self.assertIn("progress_percent", installer_py)
+        self.assertIn("settings-install-progress", styles_css)
+
     def test_cli_frontend_contract_prints_product_contract(self):
         with patch("src.hermes.cli.print_json") as print_json:
             code = run(["frontend-contract"])
@@ -3663,6 +5173,9 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("bairui server trial acceptance failed", script)
         self.assertIn("scripts/run-server-trial-acceptance.ps1", assets)
         self.assertIn("scripts/run-server-trial-acceptance.sh", assets)
+        self.assertIn("scripts/commercial-go-no-go.sh", assets)
+        self.assertIn("scripts/check-public-brand.sh", assets)
+        self.assertIn("scripts/check-repo-hygiene.sh", assets)
         self.assertIn("server_trial_acceptance", bash_script)
         self.assertIn("FAILURE_SUMMARY_PATH", bash_script)
         self.assertIn("EXECUTION_PLAN_PATH", bash_script)
@@ -3729,8 +5242,54 @@ class RuntimeFoundationTests(unittest.TestCase):
         ci = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
 
         self.assertIn("artifacts/commercial-go-no-go.json", script)
+        bash_script = Path("scripts/commercial-go-no-go.sh").read_text(encoding="utf-8")
         self.assertIn("RequireServerEvidence", script)
         self.assertIn("RequirePostgresEvidence", script)
+        self.assertIn("RequireWeComTrial", script)
+        self.assertIn("SummaryOnly", script)
+        self.assertIn("channels wecom-trial", script)
+        self.assertIn("wecom_trial", script)
+        self.assertIn("delivery_evidence", script)
+        self.assertIn("external_message_id", script)
+        self.assertIn("document parse memory-trial", script)
+        self.assertIn("document_memory_trial", script)
+        self.assertIn("deployment-checklist", script)
+        self.assertIn("deployment_checklist", script)
+        self.assertIn("model-gateway probe", script)
+        self.assertIn("model_gateway_probe", script)
+        self.assertIn("Model gateway chat probe", script)
+        self.assertIn("DeliveryStatusPath", script)
+        self.assertIn("artifacts/delivery-status.json", script)
+        self.assertIn("WeComTrialPath", script)
+        self.assertIn("artifacts/wecom-trial.json", script)
+        self.assertIn("WeComReceiptPath", script)
+        self.assertIn("artifacts/wecom-receipt.json", script)
+        self.assertIn("wecom_receipt", script)
+        self.assertIn("receipt_path", script)
+        self.assertIn("Commercial delivery status", script)
+        self.assertIn("REQUIRE_WECOM_TRIAL", bash_script)
+        self.assertIn("DELIVERY_STATUS_PATH", bash_script)
+        self.assertIn("WECOM_TRIAL_PATH", bash_script)
+        self.assertIn("WECOM_RECEIPT_PATH", bash_script)
+        self.assertIn("delivery_status_path.write_text", bash_script)
+        self.assertIn("wecom_trial_path.write_text", bash_script)
+        self.assertIn("wecom_receipt_path.write_text", bash_script)
+        self.assertIn("wecom_receipt", bash_script)
+        self.assertIn("receipt_path", bash_script)
+        self.assertIn("wecom_evidence", bash_script)
+        self.assertIn("external_message_id", bash_script)
+        self.assertIn("SUMMARY_ONLY", bash_script)
+        self.assertIn("DEPLOYMENT_CHECKLIST_PATH", bash_script)
+        self.assertIn("deployment-checklist", bash_script)
+        self.assertIn("model-gateway\", \"probe", bash_script)
+        self.assertIn("model_gateway_probe", bash_script)
+        self.assertIn("Model gateway chat probe", bash_script)
+        self.assertIn("channels\", \"wecom-trial", bash_script)
+        self.assertIn("\"document\",", bash_script)
+        self.assertIn("\"memory-trial\"", bash_script)
+        self.assertIn("delivery-status", bash_script)
+        self.assertIn("artifacts/wecom-receipt.json", handoff)
+        self.assertIn("artifacts/wecom-receipt.json", report)
         self.assertIn("check-public-brand.ps1", script)
         self.assertIn("check-repo-hygiene.ps1", script)
         self.assertIn("check-deploy-assets.ps1", script)
@@ -3742,10 +5301,13 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("BAIRUI_ENABLE_ACUI_WS", script)
         self.assertIn("server-deployment-verification.json", script)
         self.assertIn("postgres-production-verification.json", script)
+        self.assertIn("deployment-checklist.json", script)
+        self.assertIn("deployment-checklist.md", script)
         self.assertIn("commercial_go_no_go", script)
         self.assertIn("status = if ($failed.Count)", script)
         self.assertIn("bairui commercial Go/No-Go failed", script)
         self.assertIn("scripts/commercial-go-no-go.ps1", assets)
+        self.assertIn("scripts/commercial-go-no-go.sh", assets)
         self.assertIn("Run commercial Go/No-Go dry-run", ci)
         self.assertIn("./scripts/commercial-go-no-go.ps1 -OutputPath artifacts/commercial-go-no-go.json", ci)
         self.assertIn("Upload commercial Go/No-Go report", ci)
@@ -3754,10 +5316,15 @@ class RuntimeFoundationTests(unittest.TestCase):
         for doc in (readme, handoff, report):
             self.assertIn("commercial-go-no-go.ps1", doc)
             self.assertIn("commercial-go-no-go.json", doc)
+            self.assertIn("delivery-status.json", doc)
+            self.assertIn("wecom-trial.json", doc)
 
         self.assertIn("Go Criteria", report)
         self.assertIn("No-Go Criteria", report)
         self.assertIn("-RequireServerEvidence -RequirePostgresEvidence", report)
+        self.assertIn("python -m src.hermes document parse memory-trial", report)
+        self.assertIn("document memory trial passes", report)
+        self.assertIn("deployment-checklist", report)
 
     def test_commercial_handoff_bundle_exports_safe_operator_evidence(self):
         script = Path("scripts/export-commercial-handoff-bundle.ps1").read_text(encoding="utf-8")
@@ -3771,11 +5338,16 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("product-acceptance.json", script)
         self.assertIn("server-deployment-verification.json", script)
         self.assertIn("postgres-production-verification.json", script)
+        self.assertIn("deployment-checklist.json", script)
+        self.assertIn("deployment-checklist.md", script)
+        self.assertIn("delivery-status.json", script)
+        self.assertIn("wecom-trial.json", script)
         self.assertIn("commercial-go-no-go.json", script)
         self.assertIn("commercial_handoff_bundle", script)
         self.assertIn("SkipLocalEvidenceGeneration", script)
         self.assertIn("Test-SafeEvidencePath", script)
         self.assertIn("unsafe evidence path rejected", script)
+        self.assertIn('GetExtension($full).ToLowerInvariant() -eq ".json"', script)
         self.assertIn("product-acceptance.ps1 -OutputPath", script)
         self.assertIn("commercial-go-no-go.ps1 -OutputPath", script)
         self.assertIn("missing", script)
@@ -3814,7 +5386,56 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(state.source, "https://github.com/modelscope/FunASR")
         self.assertIn("POST /v1/audio/transcriptions", state.api_contract)
         self.assertIn("funasr-server --device cuda", state.cli_contract)
-        self.assertIn(state.status, {"missing_config", "configured"})
+        self.assertIn(state.status, {"missing_config", "ready", "configured_unreachable"})
+
+    def test_funasr_adapter_reports_ready_when_health_endpoint_is_reachable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "FUNASR_BASE_URL": "http://127.0.0.1:8000",
+                "FUNASR_MODEL": "whisper-tiny",
+            }
+
+            class _Resp:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+                def read(self):
+                    return b'{"status":"ok","engine":"openai-whisper","model":"tiny"}'
+
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                with patch("src.hermes.adapters.funasr.urllib.request.urlopen", return_value=_Resp()):
+                    state = funasr_status(settings)
+
+        self.assertEqual(state.status, "ready")
+        self.assertTrue(state.reachable)
+        self.assertEqual(state.runtime_engine, "openai-whisper")
+        self.assertEqual(state.runtime_model, "tiny")
+
+    def test_funasr_adapter_reports_configured_unreachable_when_health_probe_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HERMES_DATA_DIR": str(Path(tmp) / "data"),
+                "HERMES_LOG_DIR": str(Path(tmp) / "logs"),
+                "HERMES_OBSIDIAN_VAULT_DIR": str(Path(tmp) / "vault"),
+                "FUNASR_BASE_URL": "http://127.0.0.1:8000",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                settings = load_settings()
+                with patch(
+                    "src.hermes.adapters.funasr.urllib.request.urlopen",
+                    side_effect=urllib.error.URLError("connection refused"),
+                ):
+                    state = funasr_status(settings)
+
+        self.assertEqual(state.status, "configured_unreachable")
+        self.assertFalse(state.reachable)
 
     def test_build_funasr_server_command_uses_upstream_entrypoint(self):
         settings = load_settings()
@@ -3828,6 +5449,41 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertEqual(payload["model"], "sensevoice")
         self.assertEqual(payload["language"], "zh")
         self.assertEqual(payload["response_format"], "json")
+
+    def test_vendor_openai_asr_server_normalizes_browser_language_tags(self):
+        module_path = Path(__file__).resolve().parents[1] / "vendor" / "runtimes" / "funasr" / "openai_asr_server.py"
+        spec = importlib.util.spec_from_file_location("test_openai_asr_server", module_path)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        whisper_stub = types.SimpleNamespace(load_model=lambda *args, **kwargs: object())
+        class _FastAPIStub:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def get(self, *args, **kwargs):
+                return lambda fn: fn
+
+            def post(self, *args, **kwargs):
+                return lambda fn: fn
+
+        fastapi_stub = types.SimpleNamespace(
+            FastAPI=_FastAPIStub,
+            File=lambda *args, **kwargs: None,
+            Form=lambda *args, **kwargs: None,
+            UploadFile=object,
+        )
+        fastapi_responses_stub = types.SimpleNamespace(
+            JSONResponse=lambda *args, **kwargs: None,
+            PlainTextResponse=lambda *args, **kwargs: None,
+        )
+        with patch.dict(sys.modules, {"whisper": whisper_stub, "fastapi": fastapi_stub, "fastapi.responses": fastapi_responses_stub}):
+            assert spec.loader is not None
+            spec.loader.exec_module(module)
+        self.assertEqual(module._normalize_language_tag("zh-CN"), "zh")
+        self.assertEqual(module._normalize_language_tag("zh_tw"), "zh")
+        self.assertEqual(module._normalize_language_tag("en-US"), "en")
+        self.assertEqual(module._normalize_language_tag("ja-JP"), "ja")
+        self.assertIsNone(module._normalize_language_tag(""))
 
     def test_cli_voice_asr_status_prints_funasr_status(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -4021,11 +5677,11 @@ class RuntimeFoundationTests(unittest.TestCase):
                     code = run(["document", "parse", "index-artifacts", "--ingest-id", ingest.id])
                 with patch("src.hermes.cli.print_json") as list_print_json:
                     list_code = run(["document-index-runs"])
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 0)
         self.assertEqual(list_code, 0)
         payload = print_json.call_args.args[0]
-        self.assertEqual(payload["document_index"].status, "failed")
-        self.assertEqual(list_print_json.call_args.args[0]["document_index_runs"][0]["status"], "failed")
+        self.assertEqual(payload["document_index"].status, "skipped")
+        self.assertEqual(list_print_json.call_args.args[0]["document_index_runs"][0]["status"], "skipped")
 
     def test_cli_document_memory_candidates_lists_pending_candidates(self):
         with tempfile.TemporaryDirectory() as tmp:

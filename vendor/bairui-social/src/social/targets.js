@@ -18,6 +18,15 @@ export function parseSocialTarget(targetId = '') {
   if (raw.startsWith('wechat:clawbot:')) {
     return { platform: 'wechat-clawbot', userId: raw.slice('wechat:clawbot:'.length), raw }
   }
+  if (raw.startsWith('qq:napcat:private:')) {
+    return { platform: 'qq-napcat', messageType: 'private', userId: raw.slice('qq:napcat:private:'.length), raw }
+  }
+  if (raw.startsWith('qq:napcat:group:')) {
+    return { platform: 'qq-napcat', messageType: 'group', groupId: raw.slice('qq:napcat:group:'.length), raw }
+  }
+  if (raw.startsWith('qq:napcat:')) {
+    return { platform: 'qq-napcat', messageType: 'private', userId: raw.slice('qq:napcat:'.length), raw }
+  }
   return null
 }
 

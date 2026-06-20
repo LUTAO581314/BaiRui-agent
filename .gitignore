@@ -12,6 +12,7 @@ obsidian-vault/
 backups/
 graphify-out/
 tmp/
+tmp-smoke-logs/
 output/
 artifacts/
 *.log

@@ -110,6 +110,7 @@ python -m src.hermes channels status
 python -m src.hermes channels targets
 python -m src.hermes channels diagnostics
 python -m src.hermes channels approvals --pending
+python -m src.hermes channels receipts
 python -m src.hermes channels plan-send --target-id owner_review --text "Review this update"
 python -m src.hermes channels review-approval --request-id <request_id> --decision approve
 python -m src.hermes codegraph status
@@ -219,11 +220,18 @@ PostgreSQL database is ready. It writes
 `artifacts\postgres-production-verification.json` and
 `artifacts\postgres-production-failure-summary.md`.
 
-Use `scripts/commercial-go-no-go.ps1` as the final commercial trial gate. Local
-mode checks repository hygiene, public brand, deployment assets, product
-acceptance, frontend commercial closure hooks, and handoff docs. Add
-`-RequireServerEvidence -RequirePostgresEvidence` when target-server and
-database evidence are present. It writes `artifacts\commercial-go-no-go.json`.
+Use `scripts/commercial-go-no-go.ps1` as the Windows final commercial trial
+gate, or `scripts/commercial-go-no-go.sh` on Linux servers where PowerShell is
+not installed. Local mode checks repository hygiene, public brand, deployment
+assets, product acceptance, delivery status, the Enterprise WeCom trial gate,
+and handoff docs. Add `-RequireServerEvidence -RequirePostgresEvidence
+-RequireWeComTrial` on Windows, or `REQUIRE_SERVER_EVIDENCE=1
+REQUIRE_POSTGRES_EVIDENCE=1 REQUIRE_WECOM_TRIAL=1 bash
+scripts/commercial-go-no-go.sh` on Linux, when target-server, database, and
+real channel evidence are present. It writes `artifacts\commercial-go-no-go.json`.
+It also writes `artifacts\delivery-status.json` and
+`artifacts\wecom-trial.json` / `artifacts\wecom-receipt.json` as standalone
+operator evidence for the delivery gate and enterprise group bot receipt.
 
 Use `scripts/export-commercial-handoff-bundle.ps1` after collecting server and
 PostgreSQL evidence. It regenerates local product acceptance and Go/No-Go
@@ -242,6 +250,9 @@ The demo seed creates one job, one draft report, one memory candidate, and one
 channel approval draft. It does not send external messages or write long-term
 memory. The Dashboard also has a `Run Demo Flow` button that calls the real
 `POST /demo/flow` backend contract and shows checkpoint evidence.
+For the real Enterprise WeCom pilot, use `python -m src.hermes channels
+wecom-trial --approve`, then inspect archived delivery receipts with
+`python -m src.hermes channels receipts`.
 
 ## Multi-Agent Command Boundary
 

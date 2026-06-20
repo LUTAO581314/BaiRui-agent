@@ -209,6 +209,7 @@ class ChannelApprovalReview:
     delivery_status: str
     delivery_reason: str
     external_message_id: str
+    delivery_evidence: dict[str, Any]
     created_at: str
 
 
@@ -296,6 +297,7 @@ def create_channel_approval_review(
     delivery_status: str = "not_sent",
     delivery_reason: str = "",
     external_message_id: str = "",
+    delivery_evidence: dict[str, Any] | None = None,
 ) -> ChannelApprovalReview:
     review = ChannelApprovalReview(
         id=str(uuid.uuid4()),
@@ -308,6 +310,7 @@ def create_channel_approval_review(
         delivery_status=delivery_status,
         delivery_reason=delivery_reason,
         external_message_id=external_message_id,
+        delivery_evidence=delivery_evidence or {},
         created_at=utc_now(),
     )
     _append_jsonl(data_dir / "channel_approval_reviews.jsonl", asdict(review))
@@ -325,6 +328,7 @@ def create_channel_approval_review(
             "delivery_status": delivery_status,
             "delivery_reason": delivery_reason,
             "external_message_id": external_message_id,
+            "delivery_evidence": review.delivery_evidence,
         },
     )
     return review

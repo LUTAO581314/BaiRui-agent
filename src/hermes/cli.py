@@ -78,8 +78,10 @@ from .channels import (
     channel_targets,
     diagnose_channel_targets,
     list_channel_approvals,
+    list_channel_delivery_receipts,
     plan_channel_send,
     review_channel_approval,
+    run_wecom_trial,
 )
 from .codegraph import (
     as_payload as codegraph_payload,
@@ -92,10 +94,11 @@ from .codegraph import (
     scan_codegraph_repo,
 )
 from .config import ensure_runtime_dirs, load_settings
-from .config_status import build_config_status
+from .config_status import build_config_status, build_deployment_checklist
 from .db import database_status, run_migrations
 from .demo import seed_demo_data
 from .demo_flow import run_demo_flow
+from .delivery_status import build_delivery_status
 from .diagnostics import build_diagnostic_bundle
 from .document_pipeline import (
     build_document_ingest_session_summary,
@@ -110,13 +113,14 @@ from .document_pipeline import (
     register_document_artifacts,
     review_document_memory_candidate,
     review_document_memory_candidates_batch,
+    run_document_memory_trial,
     run_document_workbench_until_blocked,
     run_document_ingest,
 )
 from .events import list_frontend_events
 from .frontend_contract import build_frontend_contract
 from .license import load_license
-from .model_gateway import complete_chat
+from .model_gateway import complete_chat, list_models, probe_model_gateway
 from .observability import build_metrics_summary, list_error_logs
 from .platform import build_platform_heartbeat
 from .runtime_readiness import collect_runtime_readiness
@@ -184,6 +188,22 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands.add_parser("heartbeat", help="Print the platform heartbeat payload")
     subcommands.add_parser("paths", help="Print runtime paths and key configuration")
     subcommands.add_parser("config-status", help="Print operator-safe configuration diagnostics")
+    config_parser = subcommands.add_parser("config", help="Inspect operator-safe configuration diagnostics")
+    config_subcommands = config_parser.add_subparsers(dest="config_command")
+    config_subcommands.add_parser("status", help="Print operator-safe configuration diagnostics")
+    model_gateway_parser = subcommands.add_parser("model-gateway", help="Operate the OpenAI-compatible model gateway")
+    model_gateway_subcommands = model_gateway_parser.add_subparsers(dest="model_gateway_command")
+    model_gateway_models = model_gateway_subcommands.add_parser("models", help="List upstream model ids without exposing the API key")
+    model_gateway_models.add_argument("--base-url", default="", help="Optional OpenAI-compatible base URL")
+    model_gateway_models.add_argument("--api-key", default="", help="Optional API key; never echoed")
+    model_gateway_probe = model_gateway_subcommands.add_parser("probe", help="List models and run a non-empty chat probe without exposing the API key")
+    model_gateway_probe.add_argument("--base-url", default="", help="Optional OpenAI-compatible base URL")
+    model_gateway_probe.add_argument("--api-key", default="", help="Optional API key; never echoed")
+    model_gateway_probe.add_argument("--model", default="", help="Optional model id to probe")
+    model_gateway_probe.add_argument("--prompt", default="Reply exactly: bairui-ok")
+    deployment_checklist = subcommands.add_parser("deployment-checklist", help="Print a secret-safe deployment checklist")
+    deployment_checklist.add_argument("--format", choices=["json", "markdown"], default="json")
+    subcommands.add_parser("delivery-status", help="Print commercial trial delivery gate status")
     subcommands.add_parser("admin-session", help="Print local owner admin session status without exposing secrets")
     subcommands.add_parser("runtime-readiness", help="Print unified vendor runtime readiness")
     subcommands.add_parser("diagnostics", help="Print a redacted customer support diagnostic bundle")
@@ -204,6 +224,8 @@ def build_parser() -> argparse.ArgumentParser:
     channels_subcommands.add_parser("diagnostics", help="Explain target readiness and blockers")
     channel_approvals = channels_subcommands.add_parser("approvals", help="List outbound send approval requests")
     channel_approvals.add_argument("--pending", action="store_true")
+    channel_receipts = channels_subcommands.add_parser("receipts", help="List archived outbound delivery receipts")
+    channel_receipts.add_argument("--limit", type=int, default=50)
     channel_send = channels_subcommands.add_parser("plan-send", help="Create an owner-approved outbound send plan")
     channel_send.add_argument("--target-id", required=True)
     channel_send.add_argument("--text", default="")
@@ -214,6 +236,11 @@ def build_parser() -> argparse.ArgumentParser:
     channel_review.add_argument("--decision", choices=["approve", "reject"], required=True)
     channel_review.add_argument("--reviewer-ref", default="owner")
     channel_review.add_argument("--note", default="")
+    channel_wecom_trial = channels_subcommands.add_parser("wecom-trial", help="Run the Enterprise WeCom commercial channel trial gate")
+    channel_wecom_trial.add_argument("--text", default="bairui 企业微信渠道验收消息")
+    channel_wecom_trial.add_argument("--approve", action="store_true", help="Approve the generated request and dispatch to Enterprise WeCom")
+    channel_wecom_trial.add_argument("--reviewer-ref", default="owner")
+    channel_wecom_trial.add_argument("--note", default="wecom-trial")
 
     memory_parser = subcommands.add_parser("memory", help="Operate the EverOS-backed memory adapter")
     memory_subcommands = memory_parser.add_subparsers(dest="memory_command")
@@ -429,6 +456,13 @@ def build_parser() -> argparse.ArgumentParser:
     workbench_run.add_argument("--lang", default="")
     workbench_run.add_argument("--max-candidates", type=int, default=20)
     workbench_run.add_argument("--max-steps", type=int, default=10)
+    memory_trial = parse_subcommands.add_parser("memory-trial", help="Run a safe local document memory closure trial")
+    memory_trial.add_argument("--text", default="")
+    memory_trial.add_argument("--title", default="bairui document memory trial")
+    memory_trial.add_argument("--decision", choices=["approve", "reject"], default="reject")
+    memory_trial.add_argument("--reviewer-ref", default="owner")
+    memory_trial.add_argument("--timeout-seconds", type=int, default=0)
+    memory_trial.add_argument("--max-steps", type=int, default=10)
 
     job_parser = subcommands.add_parser("job", help="Create a queued job")
     job_parser.add_argument("--title", default="CLI job")
@@ -573,10 +607,51 @@ def run(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    if command == "config-status":
+    if command == "config-status" or command == "config":
+        if command == "config" and (args.config_command or "status") != "status":
+            parser.error(f"unknown config command: {args.config_command}")
         status = build_config_status(settings)
         print_json({"service": "bairui", "config_status": status})
         return 0 if status["status"] in {"ready", "partial"} else 1
+
+    if command == "model-gateway":
+        gateway_command = args.model_gateway_command or "models"
+        if gateway_command == "models":
+            result = list_models(
+                settings,
+                {
+                    "base_url": args.base_url,
+                    "api_key": args.api_key,
+                },
+            )
+            print_json({"service": "bairui", "model_gateway_models": result, "secret_echo": False})
+            return 0 if result.status == "completed" else 1
+        if gateway_command == "probe":
+            result = probe_model_gateway(
+                settings,
+                {
+                    "base_url": args.base_url,
+                    "api_key": args.api_key,
+                    "model": args.model,
+                    "prompt": args.prompt,
+                },
+            )
+            print_json({"service": "bairui", "model_gateway_probe": result, "secret_echo": False})
+            return 0 if result.status == "ready" else 1
+        parser.error(f"unknown model-gateway command: {gateway_command}")
+
+    if command == "deployment-checklist":
+        checklist = build_deployment_checklist(settings)
+        if args.format == "markdown":
+            print(checklist["markdown"])
+        else:
+            print_json({"service": "bairui", "deployment_checklist": checklist})
+        return 0 if checklist["status"] != "blocked" else 1
+
+    if command == "delivery-status":
+        status = build_delivery_status(settings)
+        print_json({"service": "bairui", "delivery_status": status})
+        return 0 if status["status"] == "ready" else 1
 
     if command == "admin-session":
         session = build_admin_session_status(settings)
@@ -660,6 +735,9 @@ def run(argv: list[str] | None = None) -> int:
         if channels_command == "approvals":
             print_json({"service": "bairui", "channel_approvals": list_channel_approvals(settings, only_pending=args.pending)})
             return 0
+        if channels_command == "receipts":
+            print_json({"service": "bairui", "channel_receipts": list_channel_delivery_receipts(settings, limit=args.limit)})
+            return 0
         if channels_command == "plan-send":
             result = plan_channel_send(
                 settings,
@@ -684,6 +762,26 @@ def run(argv: list[str] | None = None) -> int:
             )
             print_json({"service": "bairui", "channel_approval_review": channel_payload(result)})
             return 0 if result.status == "reviewed" else 1
+        if channels_command == "wecom-trial":
+            trial = run_wecom_trial(
+                settings,
+                {
+                    "text": args.text,
+                    "approve": args.approve,
+                    "reviewer_ref": args.reviewer_ref,
+                    "note": args.note,
+                },
+            )
+            payload = {
+                "service": "bairui",
+                "wecom_trial": trial,
+            }
+            print_json(payload)
+            review = trial.get("review") or {}
+            plan = trial.get("plan") or {}
+            if review:
+                return 0 if review.get("status") == "reviewed" and review.get("will_send") else 1
+            return 0 if plan.get("status") == "approval_required" else 1
         parser.error(f"unknown channels command: {channels_command}")
         return 2
 
@@ -1050,6 +1148,18 @@ def run(argv: list[str] | None = None) -> int:
             )
             print_json({"service": "bairui", "document_workbench_run": result})
             return 0 if result.status in {"completed", "needs_review", "step_limit_reached"} else 1
+        if parse_command == "memory-trial":
+            result = run_document_memory_trial(
+                settings,
+                text=args.text,
+                title=args.title,
+                decision=args.decision,
+                reviewer_ref=args.reviewer_ref,
+                timeout_seconds=args.timeout_seconds or settings.mineru_timeout_seconds,
+                max_steps=args.max_steps,
+            )
+            print_json({"service": "bairui", "document_memory_trial": result})
+            return 0 if result["status"] == "completed" else 1
         parser.error(f"unknown document parse command: {parse_command}")
         return 2
 

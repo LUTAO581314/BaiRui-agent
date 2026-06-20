@@ -2,9 +2,16 @@ param(
     [string]$OutputPath = "artifacts/commercial-go-no-go.json",
     [string]$ServerVerificationPath = "artifacts/server-deployment-verification.json",
     [string]$PostgresVerificationPath = "artifacts/postgres-production-verification.json",
+    [string]$DeploymentChecklistPath = "artifacts/deployment-checklist.json",
+    [string]$DeploymentChecklistMarkdownPath = "artifacts/deployment-checklist.md",
+    [string]$DeliveryStatusPath = "artifacts/delivery-status.json",
+    [string]$WeComTrialPath = "artifacts/wecom-trial.json",
+    [string]$WeComReceiptPath = "artifacts/wecom-receipt.json",
     [switch]$RequireServerEvidence,
     [switch]$RequirePostgresEvidence,
-    [switch]$SkipAcceptance
+    [switch]$RequireWeComTrial,
+    [switch]$SkipAcceptance,
+    [switch]$SummaryOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -121,6 +128,60 @@ else {
     $checks += New-Check "deploy_assets" "Deployment assets" "failed" $detail "Restore missing deployment assets before trial."
 }
 
+$deploymentChecklist = Invoke-JsonCommand "deployment checklist" { python -m src.hermes deployment-checklist }
+$evidence["deployment_checklist"] = $deploymentChecklist.payload
+if ($deploymentChecklist.payload) {
+    $checklistParent = Split-Path -Parent $DeploymentChecklistPath
+    if ($checklistParent) {
+        New-Item -ItemType Directory -Force -Path $checklistParent | Out-Null
+    }
+    $deploymentChecklist.payload | ConvertTo-Json -Depth 40 | Set-Content -LiteralPath $DeploymentChecklistPath -Encoding UTF8
+    $markdown = $deploymentChecklist.payload.deployment_checklist.markdown
+    if ($markdown) {
+        $markdownParent = Split-Path -Parent $DeploymentChecklistMarkdownPath
+        if ($markdownParent) {
+            New-Item -ItemType Directory -Force -Path $markdownParent | Out-Null
+        }
+        $markdown | Set-Content -LiteralPath $DeploymentChecklistMarkdownPath -Encoding UTF8
+    }
+}
+if ($deploymentChecklist.ok -and $deploymentChecklist.payload.deployment_checklist.status -ne "blocked") {
+    $checks += New-Check "deployment_checklist" "Deployment checklist" "passed" "checklist=$DeploymentChecklistPath; markdown=$DeploymentChecklistMarkdownPath; status=$($deploymentChecklist.payload.deployment_checklist.status)" "Attach the checklist to the operator handoff."
+}
+else {
+    $detail = if ($deploymentChecklist.error) { $deploymentChecklist.error } elseif ($deploymentChecklist.payload) { "status=$($deploymentChecklist.payload.deployment_checklist.status); missing_required=$($deploymentChecklist.payload.deployment_checklist.missing_required -join ',')" } else { "deployment checklist evidence missing" }
+    $checks += New-Check "deployment_checklist" "Deployment checklist" "blocked" $detail "Fill required activation/configuration values, then rerun deployment-checklist."
+}
+
+$modelProbe = Invoke-JsonCommand "model gateway probe" { python -m src.hermes model-gateway probe }
+$evidence["model_gateway_probe"] = $modelProbe.payload
+$modelProbePayload = if ($modelProbe.payload) { $modelProbe.payload.model_gateway_probe } else { $null }
+if ($modelProbe.ok -and $modelProbePayload.status -eq "ready" -and $modelProbePayload.chat_status -eq "completed" -and $modelProbePayload.secret_echo -eq $false) {
+    $checks += New-Check "model_gateway_probe" "Model gateway chat probe" "passed" "model=$($modelProbePayload.model); base_url=$($modelProbePayload.base_url); chat_status=$($modelProbePayload.chat_status)" "Keep this probe evidence with activation and handoff outputs."
+}
+else {
+    $detail = if ($modelProbe.error) { $modelProbe.error } elseif ($modelProbePayload) { "status=$($modelProbePayload.status); chat_status=$($modelProbePayload.chat_status); error=$($modelProbePayload.error)" } else { "model gateway probe evidence missing" }
+    $checks += New-Check "model_gateway_probe" "Model gateway chat probe" "blocked" $detail "Configure model gateway and run python -m src.hermes model-gateway probe until it returns ready."
+}
+
+$deliveryStatus = Invoke-JsonCommand "delivery status" { python -m src.hermes delivery-status }
+$evidence["delivery_status"] = $deliveryStatus.payload
+if ($deliveryStatus.payload) {
+    $deliveryParent = Split-Path -Parent $DeliveryStatusPath
+    if ($deliveryParent) {
+        New-Item -ItemType Directory -Force -Path $deliveryParent | Out-Null
+    }
+    $deliveryStatus.payload | ConvertTo-Json -Depth 40 | Set-Content -LiteralPath $DeliveryStatusPath -Encoding UTF8
+}
+$deliveryPayload = if ($deliveryStatus.payload) { $deliveryStatus.payload.delivery_status } else { $null }
+if ($deliveryStatus.ok -and $deliveryPayload.status -eq "ready") {
+    $checks += New-Check "delivery_status" "Commercial delivery status" "passed" "delivery-status=$DeliveryStatusPath; status=ready" "Keep this delivery status with the handoff evidence."
+}
+else {
+    $detail = if ($deliveryStatus.error) { $deliveryStatus.error } elseif ($deliveryPayload) { "status=$($deliveryPayload.status); blockers=$($deliveryPayload.blockers -join ',')" } else { "delivery status evidence missing" }
+    $checks += New-Check "delivery_status" "Commercial delivery status" "blocked" $detail "Resolve delivery blockers, then rerun delivery-status."
+}
+
 if (-not $SkipAcceptance) {
     $acceptance = Invoke-JsonCommand "product acceptance" { .\scripts\product-acceptance.ps1 }
     $evidence["product_acceptance"] = $acceptance.payload
@@ -165,10 +226,10 @@ $requiredFrontend = @(
 )
 $missingFrontend = @($requiredFrontend | Where-Object { $frontendText -notmatch [regex]::Escape($_) })
 if ($missingFrontend.Count -eq 0) {
-    $checks += New-Check "frontend_closure" "Frontend commercial closure" "passed" "BaiLongma brain-ui shell, chat bridge, memory graph, entity card, channel approval boundary, owner token, and ACUI safety gate are present" "Do visual QA on the target browser before customer use."
+    $checks += New-Check "frontend_closure" "Frontend commercial closure" "passed" "bairui console shell, chat bridge, memory graph, entity card, channel approval boundary, owner token, and ACUI safety gate are present" "Do visual QA on the target browser before customer use."
 }
 else {
-    $checks += New-Check "frontend_closure" "Frontend commercial closure" "failed" "missing UI hooks: $($missingFrontend -join ', ')" "Restore required BaiLongma-based bairui frontend closure hooks."
+    $checks += New-Check "frontend_closure" "Frontend commercial closure" "failed" "missing UI hooks: $($missingFrontend -join ', ')" "Restore required bairui frontend closure hooks."
 }
 
 $serverEvidence = Read-OptionalJson $ServerVerificationPath
@@ -195,6 +256,62 @@ elseif ($RequirePostgresEvidence) {
 }
 else {
     $checks += New-Check "postgres_verification" "PostgreSQL production verification" "blocked" "not required for local dry-run; production database evidence missing or dry-run only" "Use -RequirePostgresEvidence for real customer Go/No-Go."
+}
+
+$wecomTrial = Invoke-JsonCommand "Enterprise group bot trial" { python -m src.hermes channels wecom-trial --text "bairui commercial go/no-go channel trial" --approve }
+$evidence["wecom_trial"] = $wecomTrial.payload
+if ($wecomTrial.payload) {
+    $wecomParent = Split-Path -Parent $WeComTrialPath
+    if ($wecomParent) {
+        New-Item -ItemType Directory -Force -Path $wecomParent | Out-Null
+    }
+    $wecomTrial.payload | ConvertTo-Json -Depth 40 | Set-Content -LiteralPath $WeComTrialPath -Encoding UTF8
+}
+$wecomReview = if ($wecomTrial.payload) { $wecomTrial.payload.wecom_trial.review } else { $null }
+$wecomEvidence = if ($wecomReview) { $wecomReview.delivery_evidence } else { $null }
+$wecomReceiptSource = if ($wecomEvidence) { [string]$wecomEvidence.receipt_path } else { "" }
+$wecomReceipt = $null
+if (-not [string]::IsNullOrWhiteSpace($wecomReceiptSource) -and (Test-Path -LiteralPath $wecomReceiptSource)) {
+    $wecomReceipt = Read-OptionalJson $wecomReceiptSource
+    $receiptParent = Split-Path -Parent $WeComReceiptPath
+    if ($receiptParent) {
+        New-Item -ItemType Directory -Force -Path $receiptParent | Out-Null
+    }
+    Copy-Item -LiteralPath $wecomReceiptSource -Destination $WeComReceiptPath -Force
+}
+$evidence["wecom_receipt"] = $wecomReceipt
+$wecomPassed = $wecomTrial.ok `
+    -and $wecomTrial.payload.wecom_trial.status -eq "reviewed" `
+    -and $wecomReview.will_send -eq $true `
+    -and $wecomReview.delivery_status -eq "sent" `
+    -and -not [string]::IsNullOrWhiteSpace([string]$wecomReview.external_message_id) `
+    -and $wecomEvidence `
+    -and $wecomEvidence.secret_echo -eq $false `
+    -and $wecomReceipt `
+    -and $wecomReceipt.secret_echo -eq $false `
+    -and $wecomReceipt.delivery_status -eq "sent" `
+    -and -not [string]::IsNullOrWhiteSpace([string]$wecomReceipt.external_message_id)
+if ($wecomPassed) {
+    $checks += New-Check "wecom_trial" "Enterprise group bot channel trial" "passed" "enterprise-group trial dispatched and recorded receipt: external_message_id=$($wecomReview.external_message_id); receipt=$WeComReceiptPath" "Verify the enterprise group received the message and keep the receipt with the handoff package."
+}
+elseif ($RequireWeComTrial) {
+    $detail = if ($wecomTrial.error) { $wecomTrial.error } elseif ($wecomTrial.payload) { "status=$($wecomTrial.payload.wecom_trial.status); next=$($wecomTrial.payload.wecom_trial.next_step)" } else { "wecom trial evidence missing" }
+    $checks += New-Check "wecom_trial" "Enterprise group bot channel trial" "failed" $detail "Configure the enterprise group Bot Key, rerun channels wecom-trial --approve, and confirm the external group receipt."
+}
+else {
+    $detail = if ($wecomTrial.payload) { "status=$($wecomTrial.payload.wecom_trial.status); next=$($wecomTrial.payload.wecom_trial.next_step)" } else { "not required for local dry-run" }
+    $checks += New-Check "wecom_trial" "Enterprise group bot channel trial" "blocked" $detail "Use -RequireWeComTrial for real customer Go/No-Go after the enterprise group Bot Key is configured."
+}
+
+$documentMemoryTrial = Invoke-JsonCommand "Document memory trial" { python -m src.hermes document parse memory-trial --text "bairui commercial go/no-go document memory trial verifies ingest, review, graph sync, report, and source references." }
+$evidence["document_memory_trial"] = $documentMemoryTrial.payload
+if ($documentMemoryTrial.ok -and $documentMemoryTrial.payload.document_memory_trial.status -eq "completed") {
+    $trialEvidence = $documentMemoryTrial.payload.document_memory_trial.evidence
+    $checks += New-Check "document_memory_trial" "Document memory closure trial" "passed" "current_stage=$($trialEvidence.current_stage); candidates=$($trialEvidence.candidate_count); reviews=$($trialEvidence.review_count); source_refs=$($trialEvidence.source_ref_count); reports=$($trialEvidence.report_count)" "Keep the generated report and source references with the handoff evidence."
+}
+else {
+    $detail = if ($documentMemoryTrial.error) { $documentMemoryTrial.error } elseif ($documentMemoryTrial.payload) { "status=$($documentMemoryTrial.payload.document_memory_trial.status); next=$($documentMemoryTrial.payload.document_memory_trial.next_step)" } else { "document memory trial evidence missing" }
+    $checks += New-Check "document_memory_trial" "Document memory closure trial" "failed" $detail "Run python -m src.hermes document parse memory-trial and fix document ingestion, memory review, graph sync, report, or source reference blockers."
 }
 
 $docs = @(
@@ -238,7 +355,20 @@ if ($parent) {
 }
 $json = $report | ConvertTo-Json -Depth 40
 $json | Set-Content -LiteralPath $OutputPath -Encoding UTF8
-$json
+if ($SummaryOnly) {
+    $summary = [pscustomobject]@{
+        service = $report.service
+        mode = $report.mode
+        status = $report.status
+        output_path = $OutputPath
+        checks = @($checks | ForEach-Object { [pscustomobject]@{ id = $_.id; status = $_.status; evidence = $_.evidence } })
+        decision = $report.decision
+    }
+    $summary | ConvertTo-Json -Depth 20
+}
+else {
+    $json
+}
 
 if ($status -eq "no_go") {
     throw "bairui commercial Go/No-Go failed"

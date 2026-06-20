@@ -10,7 +10,7 @@ from typing import Any
 from .config import Settings
 
 
-DELIVERABLE_CHANNEL_TYPES = {"discord", "feishu", "wechat-official", "wecom-webhook", "wechat-clawbot"}
+DELIVERABLE_CHANNEL_TYPES = {"discord", "feishu", "wechat-official", "wecom-webhook", "wechat-clawbot", "qq-napcat"}
 
 
 @dataclass(frozen=True)
@@ -187,6 +187,8 @@ def _bridge_env(settings: Settings) -> dict[str, str]:
             "WECOM_INCOMING_TOKEN": settings.wecom_incoming_token,
             "WECOM_BOT_KEY": settings.wecom_bot_key,
             "DISCORD_BOT_TOKEN": settings.discord_bot_token,
+            "QQ_NAPCAT_BASE_URL": settings.qq_napcat_base_url,
+            "QQ_NAPCAT_TOKEN": settings.qq_napcat_token,
             "PYTHONUTF8": "1",
         }
     )

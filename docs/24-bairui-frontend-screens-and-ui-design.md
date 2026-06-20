@@ -1263,8 +1263,9 @@ Error state:
 
 Permissions and safety:
 
-- Never show sent/delivered success.
-- Always show that current backend records approval only.
+- Never show optimistic sent/delivered success.
+- Generic channel drafts remain approval-first; Enterprise WeCom may show
+  sent/delivered only after owner approval returns a real receipt.
 - Attachment path must be explicit and owner-reviewed.
 
 Reusable source UI:

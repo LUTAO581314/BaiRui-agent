@@ -30,6 +30,13 @@ FIELD_TO_ENV = {
     "wecom_incoming_token": "WECOM_INCOMING_TOKEN",
     "wecom_bot_key": "WECOM_BOT_KEY",
     "discord_bot_token": "DISCORD_BOT_TOKEN",
+    "qq_napcat_base_url": "QQ_NAPCAT_BASE_URL",
+    "qq_napcat_token": "QQ_NAPCAT_TOKEN",
+    "funasr_base_url": "FUNASR_BASE_URL",
+    "voice_provider": "BAIRUI_VOICE_PROVIDER",
+    "tts_provider": "BAIRUI_TTS_PROVIDER",
+    "tts_voice_id": "BAIRUI_TTS_VOICE_ID",
+    "openai_tts_base_url": "BAIRUI_OPENAI_TTS_BASE_URL",
 }
 
 SECRET_FIELDS = {
@@ -45,6 +52,8 @@ SECRET_FIELDS = {
     "wecom_incoming_token",
     "wecom_bot_key",
     "discord_bot_token",
+    "qq_napcat_token",
+    "funasr_base_url",
 }
 PATH_FIELDS = {"document_output_dir", "memory_vault_dir", "avatar_assets_dir", "codegraph_root"}
 HIGH_RISK_FIELDS = {"database_url", "owner_token", "memory_vault_dir", "channel_enabled", "channel_targets_json", "codegraph_root"}

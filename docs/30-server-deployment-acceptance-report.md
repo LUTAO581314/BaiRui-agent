@@ -34,6 +34,14 @@ On Linux servers:
 MODE=domain DOMAIN=bairui.example.com BASE_URL=https://bairui.example.com REQUIRE_POSTGRES=1 INCLUDE_DOCS=1 bash scripts/run-server-trial-acceptance.sh
 ```
 
+If PowerShell is not installed on the target Linux server, run the native Bash
+Go/No-Go gate directly after deployment verification:
+
+```bash
+OUTPUT_PATH=artifacts/commercial-go-no-go.json bash scripts/commercial-go-no-go.sh
+REQUIRE_SERVER_EVIDENCE=1 REQUIRE_POSTGRES_EVIDENCE=1 REQUIRE_WECOM_TRIAL=1 bash scripts/commercial-go-no-go.sh
+```
+
 For a rehearsal where deployment or database proof is intentionally skipped:
 
 ```powershell
