@@ -152,6 +152,17 @@ python -m src.hermes channels receipts
 .\scripts\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence -RequireWeComTrial
 ```
 
+When the operator has the Enterprise WeCom Bot Key and wants the guarded
+one-command path, use:
+
+```powershell
+.\scripts\run-wecom-channel-trial.ps1 -BotKey "<enterprise-wecom-bot-key>" -Text "bairui commercial channel trial"
+```
+
+The script saves the Bot Key locally without echoing it, creates the governed
+approval, approves and sends the test message, then writes
+`artifacts/wecom-trial.json` and `artifacts/wecom-receipt.json`.
+
 Export the operator handoff bundle:
 
 ```powershell
@@ -213,6 +224,8 @@ Enterprise WeCom trial blocked
   creates an approval without external send.
 - Final evidence: rerun with `--approve`, confirm the group received the
   message, and keep the recorded `delivery_status` / `external_message_id`.
+- Shortcut evidence: `.\scripts\run-wecom-channel-trial.ps1 -BotKey "<enterprise-wecom-bot-key>"`
+  creates the same trial and receipt files without printing the Bot Key.
 
 Path scope error
 

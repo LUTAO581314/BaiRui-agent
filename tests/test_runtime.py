@@ -5109,6 +5109,7 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("scripts/check-server-prereqs.ps1", assets)
         self.assertIn("scripts/verify-server-deployment.ps1", assets)
         self.assertIn("scripts/verify-postgres-production.ps1", assets)
+        self.assertIn("scripts/run-wecom-channel-trial.ps1", assets)
         self.assertIn("scripts/commercial-go-no-go.ps1", assets)
 
         for doc in (readme, deploy_doc, handoff, report):
@@ -5235,6 +5236,7 @@ class RuntimeFoundationTests(unittest.TestCase):
 
     def test_commercial_go_no_go_collects_final_trial_gates(self):
         script = Path("scripts/commercial-go-no-go.ps1").read_text(encoding="utf-8")
+        wecom_trial_script = Path("scripts/run-wecom-channel-trial.ps1").read_text(encoding="utf-8")
         readme = Path("README.md").read_text(encoding="utf-8")
         handoff = Path("docs/29-commercial-trial-handoff-pack.md").read_text(encoding="utf-8")
         report = Path("docs/32-commercial-go-no-go-report.md").read_text(encoding="utf-8")
@@ -5290,6 +5292,19 @@ class RuntimeFoundationTests(unittest.TestCase):
         self.assertIn("delivery-status", bash_script)
         self.assertIn("artifacts/wecom-receipt.json", handoff)
         self.assertIn("artifacts/wecom-receipt.json", report)
+        self.assertIn("run-wecom-channel-trial.ps1", readme)
+        self.assertIn("run-wecom-channel-trial.ps1", handoff)
+        self.assertIn("run-wecom-channel-trial.ps1", report)
+        self.assertIn("BAIRUI_WECOM_TRIAL_BOT_KEY", wecom_trial_script)
+        self.assertIn("apply_local_config", wecom_trial_script)
+        self.assertIn("DANGEROUS_CONFIRMATION_PHRASE", wecom_trial_script)
+        self.assertIn("channels wecom-trial", wecom_trial_script)
+        self.assertIn("--approve", wecom_trial_script)
+        self.assertIn("artifacts/wecom-trial.json", wecom_trial_script)
+        self.assertIn("artifacts/wecom-receipt.json", wecom_trial_script)
+        self.assertIn("secret_echo", wecom_trial_script)
+        self.assertIn("Remove-Item Env:\\BAIRUI_WECOM_TRIAL_BOT_KEY", wecom_trial_script)
+        self.assertNotIn("WECOM_BOT_KEY=", wecom_trial_script)
         self.assertIn("check-public-brand.ps1", script)
         self.assertIn("check-repo-hygiene.ps1", script)
         self.assertIn("check-deploy-assets.ps1", script)

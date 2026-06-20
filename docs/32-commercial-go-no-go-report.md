@@ -33,6 +33,12 @@ python -m src.hermes document parse memory-trial
 .\scripts\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence -RequireWeComTrial
 ```
 
+Operator shortcut for the real Enterprise WeCom receipt:
+
+```powershell
+.\scripts\run-wecom-channel-trial.ps1 -BotKey "<enterprise-wecom-bot-key>" -Text "bairui commercial channel trial"
+```
+
 Linux server equivalent:
 
 ```bash

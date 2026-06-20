@@ -233,6 +233,12 @@ It also writes `artifacts\delivery-status.json` and
 `artifacts\wecom-trial.json` / `artifacts\wecom-receipt.json` as standalone
 operator evidence for the delivery gate and enterprise group bot receipt.
 
+Use `scripts/run-wecom-channel-trial.ps1` when the Enterprise WeCom Bot Key is
+available and the owner is ready for one real external group send. The script
+saves the Bot Key without echoing it, creates the governed test approval,
+approves and sends the message, then writes `artifacts\wecom-trial.json` and
+`artifacts\wecom-receipt.json`.
+
 Use `scripts/export-commercial-handoff-bundle.ps1` after collecting server and
 PostgreSQL evidence. It regenerates local product acceptance and Go/No-Go
 reports by default, copies only operator-safe JSON reports, writes
@@ -253,6 +259,8 @@ memory. The Dashboard also has a `Run Demo Flow` button that calls the real
 For the real Enterprise WeCom pilot, use `python -m src.hermes channels
 wecom-trial --approve`, then inspect archived delivery receipts with
 `python -m src.hermes channels receipts`.
+If you want the guarded one-command operator path, run
+`.\scripts\run-wecom-channel-trial.ps1 -BotKey "<enterprise-wecom-bot-key>"`.
 
 ## Multi-Agent Command Boundary
 

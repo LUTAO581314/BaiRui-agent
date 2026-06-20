@@ -101,8 +101,7 @@ Use this when the package is installed on a real server or domain host.
 .\scripts\deploy-usable.ps1 -Mode domain -Domain bairui.example.com
 .\scripts\verify-server-deployment.ps1 -BaseUrl https://bairui.example.com -RequireReady -RequirePostgreSQL
 .\scripts\verify-postgres-production.ps1 -RequireDatabase -RunMigration
-python -m src.hermes channels wecom-trial --text "bairui commercial channel trial"
-python -m src.hermes channels wecom-trial --text "bairui commercial channel trial" --approve
+.\scripts\run-wecom-channel-trial.ps1 -BotKey "<enterprise-wecom-bot-key>" -Text "bairui commercial channel trial"
 python -m src.hermes channels receipts
 .\scripts\commercial-go-no-go.ps1 -RequireServerEvidence -RequirePostgresEvidence -RequireWeComTrial
 ```
@@ -138,6 +137,7 @@ REQUIRE_SERVER_EVIDENCE=1 REQUIRE_POSTGRES_EVIDENCE=1 REQUIRE_WECOM_TRIAL=1 bash
 - Fix: set `WECOM_BOT_KEY` in Settings or the protected server environment.
 - Verify: run `python -m src.hermes channels wecom-trial --text "bairui channel trial"` first. It should create an approval without sending.
 - Final trial: run `python -m src.hermes channels wecom-trial --text "bairui channel trial" --approve` only after the owner is ready to send a real Enterprise WeCom group message.
+- Operator shortcut: run `.\scripts\run-wecom-channel-trial.ps1 -BotKey "<enterprise-wecom-bot-key>"` to save the Bot Key, create approval, approve, send, and export the receipt without echoing secrets.
 
 `outside the allowed bairui path scope`
 
