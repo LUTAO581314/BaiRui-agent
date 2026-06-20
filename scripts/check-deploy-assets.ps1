@@ -11,6 +11,7 @@ $required = @(
     "scripts/verify-server-deployment.ps1",
     "scripts/verify-postgres-production.ps1",
     "scripts/run-wecom-channel-trial.ps1",
+    "scripts/run-wecom-channel-trial.sh",
     "scripts/commercial-go-no-go.ps1",
     "scripts/commercial-go-no-go.sh",
     "scripts/export-commercial-handoff-bundle.ps1",

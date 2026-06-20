@@ -238,6 +238,8 @@ available and the owner is ready for one real external group send. The script
 saves the Bot Key without echoing it, creates the governed test approval,
 approves and sends the message, then writes `artifacts\wecom-trial.json` and
 `artifacts\wecom-receipt.json`.
+On Linux servers, use `BOT_KEY="<enterprise-wecom-bot-key>" bash
+scripts/run-wecom-channel-trial.sh`.
 
 Use `scripts/export-commercial-handoff-bundle.ps1` after collecting server and
 PostgreSQL evidence. It regenerates local product acceptance and Go/No-Go
@@ -261,6 +263,8 @@ wecom-trial --approve`, then inspect archived delivery receipts with
 `python -m src.hermes channels receipts`.
 If you want the guarded one-command operator path, run
 `.\scripts\run-wecom-channel-trial.ps1 -BotKey "<enterprise-wecom-bot-key>"`.
+On Linux, run `BOT_KEY="<enterprise-wecom-bot-key>" bash
+scripts/run-wecom-channel-trial.sh`.
 
 ## Multi-Agent Command Boundary
 

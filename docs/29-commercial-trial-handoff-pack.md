@@ -163,6 +163,12 @@ The script saves the Bot Key locally without echoing it, creates the governed
 approval, approves and sends the test message, then writes
 `artifacts/wecom-trial.json` and `artifacts/wecom-receipt.json`.
 
+Linux server equivalent:
+
+```bash
+BOT_KEY="<enterprise-wecom-bot-key>" TEXT="bairui commercial channel trial" bash scripts/run-wecom-channel-trial.sh
+```
+
 Export the operator handoff bundle:
 
 ```powershell
@@ -226,6 +232,7 @@ Enterprise WeCom trial blocked
   message, and keep the recorded `delivery_status` / `external_message_id`.
 - Shortcut evidence: `.\scripts\run-wecom-channel-trial.ps1 -BotKey "<enterprise-wecom-bot-key>"`
   creates the same trial and receipt files without printing the Bot Key.
+- Linux shortcut evidence: `BOT_KEY="<enterprise-wecom-bot-key>" bash scripts/run-wecom-channel-trial.sh`.
 
 Path scope error
 

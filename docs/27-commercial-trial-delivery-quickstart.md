@@ -109,6 +109,7 @@ python -m src.hermes channels receipts
 Linux server equivalent when PowerShell is not installed:
 
 ```bash
+BOT_KEY="<enterprise-wecom-bot-key>" TEXT="bairui commercial channel trial" bash scripts/run-wecom-channel-trial.sh
 REQUIRE_SERVER_EVIDENCE=1 REQUIRE_POSTGRES_EVIDENCE=1 REQUIRE_WECOM_TRIAL=1 bash scripts/commercial-go-no-go.sh
 ```
 
@@ -138,6 +139,7 @@ REQUIRE_SERVER_EVIDENCE=1 REQUIRE_POSTGRES_EVIDENCE=1 REQUIRE_WECOM_TRIAL=1 bash
 - Verify: run `python -m src.hermes channels wecom-trial --text "bairui channel trial"` first. It should create an approval without sending.
 - Final trial: run `python -m src.hermes channels wecom-trial --text "bairui channel trial" --approve` only after the owner is ready to send a real Enterprise WeCom group message.
 - Operator shortcut: run `.\scripts\run-wecom-channel-trial.ps1 -BotKey "<enterprise-wecom-bot-key>"` to save the Bot Key, create approval, approve, send, and export the receipt without echoing secrets.
+- Linux shortcut: run `BOT_KEY="<enterprise-wecom-bot-key>" bash scripts/run-wecom-channel-trial.sh` for the same guarded receipt flow.
 
 `outside the allowed bairui path scope`
 

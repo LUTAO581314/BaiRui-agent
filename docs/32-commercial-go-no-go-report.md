@@ -39,6 +39,12 @@ Operator shortcut for the real Enterprise WeCom receipt:
 .\scripts\run-wecom-channel-trial.ps1 -BotKey "<enterprise-wecom-bot-key>" -Text "bairui commercial channel trial"
 ```
 
+Linux equivalent:
+
+```bash
+BOT_KEY="<enterprise-wecom-bot-key>" TEXT="bairui commercial channel trial" bash scripts/run-wecom-channel-trial.sh
+```
+
 Linux server equivalent:
 
 ```bash
